@@ -1,0 +1,111 @@
+# ---------------------------------------------------------------------------
+# Fale com Seus Dados — Docker Compose stack for VPS deployment
+#
+# Two services:
+#   - db    PostgreSQL 16 with a persistent volume (pg_data)
+#   - app   FastAPI / uvicorn behind the same network, talks to db over the
+#           internal `db` hostname, ports 8000 published on the host.
+#
+# Variables come from .env in the same directory (see .env.docker.example).
+# Bring up:    docker compose up -d --build
+# Tail logs:   docker compose logs -f app
+# Stop:        docker compose down
+# Wipe state:  docker compose down -v   (DESTROYS pg_data + uploads + data)
+# ---------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: fcsd-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-fcsd_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-S3nhahostinger01}
+      # Tune to the VPS — these are sane defaults for a 2 vCPU / 4 GB box.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-fcsd_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    # Postgres is NOT exposed on the host by default — only the app reaches it.
+    # Uncomment if you need to connect from a desktop client.
+    # ports:
+    #   - "127.0.0.1:5432:5432"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fcsd-app:latest
+    container_name: fcsd-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # ---- Database (composed from DB_* by app.core.config) -----------------
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-fcsd_db}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-S3nhafalecomseusdados}
+
+      # ---- LLM routing -------------------------------------------------------
+      LLM_PROVIDER: ${LLM_PROVIDER:-oss120b_http}
+      LLM_GENERAL_PROVIDER: ${LLM_GENERAL_PROVIDER:-azure}
+      LLM_SQL_PROVIDER: ${LLM_SQL_PROVIDER:-azure}
+      LLM_FALLBACK_PROVIDER: ${LLM_FALLBACK_PROVIDER:-azure}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
+      LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-1}
+
+      # ---- Azure OpenAI ------------------------------------------------------
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-https://openaicopilotoatendimento.openai.azure.com}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}
+      AZURE_OPENAI_CHAT_DEPLOYMENT: ${AZURE_OPENAI_CHAT_DEPLOYMENT:-gpt-4o}
+
+      # ---- OSS 120B HTTP -----------------------------------------------------
+      OSS120B_URL: ${OSS120B_URL:-}
+      OSS120B_MODEL: ${OSS120B_MODEL:-openai/gpt-oss-120b}
+      OSS120B_API_KEY: ${OSS120B_API_KEY:-not-needed}
+
+      # ---- OpenAI legacy ----------------------------------------------------
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+
+      # ---- Security ---------------------------------------------------------
+      API_SALT: ${API_SALT:-OoDKjKKoblf8s9Qi1Yww6b6M+EW14KOk+7YAolfuiZ8=}
+      API_SECRET_KEY: ${API_SECRET_KEY:-E48QwBxfKaaYovnph5kHr8PQPjBHzKiyUurzaGao9qg=}
+      SESSION_SECRET: ${SESSION_SECRET:-0NOi94NtYrnrw5HouopCwBfrfwArYMu3SUcW3zO9T8Q=}
+      # COOKIE_SECURE=true requires HTTPS to the user. Keep false on a plain
+      # HTTP-only deploy; flip to true once you put a TLS-terminating proxy
+      # (Caddy, nginx + certbot, Cloudflare Tunnel) in front.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+
+      # ---- Observability ----------------------------------------------------
+      LANGFUSE_HOST: ${LANGFUSE_HOST:-https://us.cloud.langfuse.com}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-pk-lf-69a7f636-3ade-469f-b48b-8180e6e0af67}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-sk-lf-39c97757-f61c-4368-80a5-84737272d317}
+
+      # ---- Server -----------------------------------------------------------
+      HOST: 0.0.0.0
+      PORT: 8000
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    volumes:
+      # User uploads and any local files persist across restarts/upgrades.
+      - app_uploads:/app/uploads
+      - app_data:/app/data
+    ports:
+      # Bind to localhost only when fronting with a reverse proxy on the host;
+      # change to "0.0.0.0:8000:8000" if you want direct access (no TLS).
+      - "8000:8000"
+
+volumes:
+  pg_data:
+  app_uploads:
+  app_data:
