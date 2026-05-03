@@ -1,0 +1,39 @@
+[project]
+name = "fale-com-seus-dados"
+version = "2.1.0"
+description = "Consulte seus dados usando linguagem natural."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Sergio Gaiotto", email = "sergio.gaiotto@claro.com.br"},
+]
+dependencies = [
+    "deepagents>=0.3.5",
+    "langgraph>=1.0.6",
+    "langchain>=1.2.3",
+    "langchain-openai>=0.3.0",
+    "langchain-community>=0.3.0",
+    "sqlalchemy>=2.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "python-multipart>=0.0.20",
+    "jinja2>=3.1.0",
+    "aiosqlite>=0.20.0",
+    "openpyxl>=3.1.0",
+    "pandas>=2.2.0",
+    "exchangelib>=5.4.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "pygwalker>=0.5.0",
+    "rich>=13.0.0",
+]
+
+[project.urls]
+Homepage = "https://www.falagaiotto.com.br"
+Repository = "https://github.com/sergiogaiotto/quick-insights"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
