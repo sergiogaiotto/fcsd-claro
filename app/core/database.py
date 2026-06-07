@@ -100,7 +100,7 @@ INTERNAL_TABLES = {
     "saved_questions","catalog_datasets", "catalog_columns", "catalog_relationships",
     "json_sources", "data_products", "shared_results", "reports",
     "codegen_tables", "codegen_snippets", "codegen_runs",
-    "codegen_techniques", "codegen_patterns",
+    "codegen_techniques", "codegen_patterns", "codegen_chats",
 }
 
 
@@ -485,6 +485,16 @@ _DDL_STATEMENTS: list[str] = [
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS codegen_chats (
+        id BIGSERIAL PRIMARY KEY,
+        owner_id BIGINT NOT NULL,
+        title TEXT NOT NULL DEFAULT 'Nova conversa',
+        messages TEXT NOT NULL DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
 ]
 
 # Indexes — created AFTER all CREATE TABLE statements have run, so an
@@ -518,6 +528,7 @@ _INDEX_STATEMENTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_codegen_tables_owner ON codegen_tables(owner_id)",
     "CREATE INDEX IF NOT EXISTS idx_codegen_snippets_user ON codegen_snippets(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_codegen_runs_user ON codegen_runs(user_id, created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_codegen_chats_owner ON codegen_chats(owner_id, updated_at DESC)",
 ]
 
 # Per-table list of (column_name, column_definition) tuples added in
