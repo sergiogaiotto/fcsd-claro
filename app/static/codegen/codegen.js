@@ -15,6 +15,8 @@ let cgLastResult = null;   // último {columns, rows, row_count} para export
 let cgSchemaTables = {};   // {tabela: [colunas]} p/ autocomplete (escopo do usuário)
 let cgSnippets = {};       // id -> snippet salvo
 let cgHistoryRows = [];    // últimas execuções (codegen_runs)
+let cgPyCode = '';         // último código Python gerado
+let cgPyName = 'tdia_codegen.py';
 
 function _cgIsDark() { return document.getElementById('html-root').classList.contains('dark'); }
 
@@ -322,6 +324,42 @@ function cgUseHistoryItem(i) {
 function cgUseExampleEl(btn) {
     const code = btn.parentElement.querySelector('code');
     if (code && cgEditor) { cgEditor.setValue(code.textContent.trim()); cgShowSection('editor'); }
+}
+
+// ---- P3: gerar código Python --------------------------------------------
+async function cgGenPython() {
+    const sql = cgEditor ? cgEditor.getValue().trim() : '';
+    const pre = document.getElementById('cgPyCode');
+    const bar = document.getElementById('cgPyBar');
+    if (!sql) { pre.textContent = 'Escreva um SQL na aba "Editor SQL" primeiro.'; return; }
+    const lib = (document.getElementById('cgPyLib') || {}).value || 'pandas';
+    pre.textContent = 'Gerando…';
+    if (bar) bar.style.display = 'none';
+    try {
+        const res = await fetch('/api/codegen/pycode', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql, lib }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) { pre.textContent = data.error || 'Erro ao gerar.'; return; }
+        cgPyCode = data.code || '';
+        cgPyName = data.filename || 'tdia_codegen.py';
+        pre.textContent = cgPyCode;        // textContent → sem risco de injeção
+        if (bar) { bar.style.display = 'flex'; document.getElementById('cgPyName').textContent = cgPyName; }
+    } catch (e) { pre.textContent = 'Falha: ' + e.message; }
+}
+function cgCopyPython() {
+    if (!cgPyCode) return;
+    if (navigator.clipboard) navigator.clipboard.writeText(cgPyCode).catch(() => {});
+}
+function cgDownloadPython() {
+    if (!cgPyCode) return;
+    const blob = new Blob([cgPyCode], { type: 'text/x-python' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = cgPyName;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
 }
 
 // ---- Init ---------------------------------------------------------------

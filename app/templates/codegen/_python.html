@@ -1,0 +1,23 @@
+{# Gerar código Python (P3) — a partir do SQL no editor. #}
+<div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+    <div class="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider">Gerar código Python</h2>
+        <span class="flex-1"></span>
+        <select id="cgPyLib" class="cg-select" style="width:auto;min-width:150px;padding:6px 8px;font-size:12px">
+            <option value="pandas">pandas</option>
+            <option value="sqlalchemy">SQLAlchemy</option>
+            <option value="pyspark">PySpark</option>
+        </select>
+        <button class="cg-btn-primary" style="padding:7px 12px;font-size:12px" onclick="cgGenPython()">Gerar do SQL atual</button>
+    </div>
+    <p class="text-xs text-fg-muted mb-3">
+        Gera um script a partir do SQL na aba <strong>Editor SQL</strong>, pronto para rodar em dataflow ou numa VM.
+        A conexão usa variáveis de ambiente (sem segredos embutidos no código).
+    </p>
+    <div id="cgPyBar" class="items-center gap-2 mb-2" style="display:none">
+        <button class="cg-btn-mini" onclick="cgCopyPython()">Copiar</button>
+        <button class="cg-btn-mini" onclick="cgDownloadPython()">Baixar .py</button>
+        <span id="cgPyName" class="text-[10px] text-fg-muted font-mono"></span>
+    </div>
+    <pre id="cgPyCode" class="cg-py-pre">Escolha a biblioteca e clique em "Gerar do SQL atual".</pre>
+</div>

@@ -3262,3 +3262,16 @@ async def codegen_schema(user: dict = Depends(require_codegen)):
         if scope["root"] or (allowed is not None and t["name"].lower() in allowed):
             out[t["name"]] = [c["name"] for c in (t.get("columns") or [])]
     return {"tables": out}
+
+
+# --- P3: Gerar código Python a partir do SQL ---
+@router.post("/codegen/pycode")
+async def codegen_pycode(req: dict, user: dict = Depends(require_codegen)):
+    from app.services.codegen_service import generate_pycode
+    sql = (req.get("sql") or "").strip()
+    if not sql:
+        raise HTTPException(400, "Escreva uma consulta no editor antes de gerar o código.")
+    lib = (req.get("lib") or "pandas").lower()
+    if lib not in ("pandas", "sqlalchemy", "pyspark"):
+        lib = "pandas"
+    return {"code": generate_pycode(sql, lib), "filename": f"tdia_codegen_{lib}.py", "lib": lib}
