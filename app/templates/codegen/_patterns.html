@@ -1,0 +1,48 @@
+{# Padrões (M2.2) — CRUD + matriz de compatibilidade, só Root/Admin. #}
+<div class="space-y-4">
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+                <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider">Padrões (admin)</h2>
+                <p class="text-xs text-fg-muted mt-1">
+                    Estruturas de código (<em>Template Method</em>): um template Jinja que encaixa os fragmentos da técnica
+                    (<code>t.imports</code>, <code>t.setup</code>, <code>t.read</code>, <code>t.show</code>, <code>t.teardown</code>)
+                    + o <code>schema</code> + as <code>options</code>.
+                </p>
+            </div>
+            <button class="cg-btn-primary" style="padding:7px 12px;font-size:12px" onclick="cgNewPattern()">+ Novo padrão</button>
+        </div>
+        <div id="cgPatList" class="space-y-2"><div class="text-fg-muted text-sm py-4 text-center">Carregando…</div></div>
+    </div>
+
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+        <h2 class="text-sm font-bold text-fg-blue uppercase tracking-wider mb-3">Matriz de compatibilidade</h2>
+        <div id="cgMatrix" class="overflow-x-auto"></div>
+    </div>
+
+    <div id="cgPatForm" class="bg-fg-800 border border-fg-accent/30 rounded-xl p-5" style="display:none">
+        <h3 id="cgPatFormTitle" class="text-sm font-bold text-fg-bright mb-3">Novo padrão</h3>
+        <input type="hidden" id="cgPatId">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <div><label class="cg-lbl">Chave (única)</label><input id="cgPatKey" class="cg-select" placeholder="ex.: repository"></div>
+            <div><label class="cg-lbl">Rótulo</label><input id="cgPatLabel" class="cg-select" placeholder="ex.: Repository tipado"></div>
+        </div>
+        <div class="mb-3"><label class="cg-lbl">Descrição</label><input id="cgPatDesc" class="cg-select"></div>
+        <div class="mb-3">
+            <label class="cg-lbl">Template (Jinja — usa <code>t.*</code>, <code>schema</code>, <code>options</code>, <code>sql_literal</code>)</label>
+            <textarea id="cgPatTemplate" class="cg-frag" rows="11" spellcheck="false"></textarea>
+        </div>
+        <div class="mb-3">
+            <label class="cg-lbl">Compatível com</label>
+            <label class="flex items-center gap-2 text-xs text-fg-muted cursor-pointer mb-1"><input type="checkbox" id="cgPatAll" checked onchange="cgPatToggleAll()" class="accent-fg-accent"> Todas as técnicas</label>
+            <div id="cgPatCompat" class="flex flex-wrap gap-3"></div>
+        </div>
+        <label class="flex items-center gap-2 text-xs text-fg-muted cursor-pointer mb-3"><input type="checkbox" id="cgPatActive" checked class="accent-fg-accent"> Ativo</label>
+        <div class="flex items-center gap-2">
+            <button class="cg-btn-primary" style="padding:8px 14px;font-size:13px" onclick="cgSavePattern()">Salvar</button>
+            <button class="cg-btn-mini" onclick="cgCancelPattern()">Cancelar</button>
+            <span id="cgPatMsg" class="text-xs ml-2 text-fg-muted"></span>
+        </div>
+        <p class="text-[10px] text-fg-muted mt-2">Ao salvar, validamos que o template gera Python válido (compondo com a técnica pandas de referência).</p>
+    </div>
+</div>
