@@ -206,7 +206,7 @@ def execute_script(sql: str, user: dict, target_datamart_id: int | None = None,
         return {"error": f"Erro na execução: {msg}"}
     conn.close()
 
-    _log_history(user, sql, has_writes, final)
+    _log_history(user, sql, has_writes, final, affected)
 
     if final is not None:
         final["writes"] = has_writes
@@ -236,17 +236,119 @@ def _unregister(cur, table_name: str):
     cur.execute("DELETE FROM datamart_tables WHERE LOWER(table_name) = %s", (table_name,))
 
 
-def _log_history(user: dict, sql: str, has_writes: bool, final):
+def _log_history(user: dict, sql: str, has_writes: bool, final, affected: int = 0):
+    """Registra a execução no histórico ISOLADO do módulo (codegen_runs) — não
+    polui o query_history do app principal."""
     conn = get_sync_connection()
     try:
-        summary = "(escrita)" if has_writes else (f"{final['row_count']} linha(s)" if final else "(sem retorno)")
+        rc = final["row_count"] if final else affected
         conn.execute(
-            "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id) "
-            "VALUES (?, ?, ?, ?)",
-            (f"[TDIA-CodeGen] {user['login']}", sql, summary, None),
+            "INSERT INTO codegen_runs (user_id, sql, kind, row_count) VALUES (?, ?, ?, ?)",
+            (user["id"], sql, "write" if has_writes else "read", rc),
         )
         conn.commit()
     except Exception:
         pass
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# P3 — geração de código Python a partir do SQL (templates de string; injeção
+# crua e segura — Jinja com autoescape estragaria o código).
+# ---------------------------------------------------------------------------
+
+_PANDAS_TPL = '''# Gerado pelo TDIA-CodeGen — pandas + psycopg2
+# Conexao via variavel de ambiente DATABASE_URL, ex.:
+#   export DATABASE_URL="postgresql://usuario:senha@host:5432/banco"
+import os
+import pandas as pd
+import psycopg2
+
+SQL = """___SQL___"""
+
+
+def main():
+    dsn = os.environ.get("DATABASE_URL", "postgresql://USUARIO:SENHA@HOST:5432/BANCO")
+    conn = psycopg2.connect(dsn)
+    try:
+        df = pd.read_sql_query(SQL, conn)
+    finally:
+        conn.close()
+    print(df.head(50).to_string(index=False))
+    print(f"\\n{len(df)} linha(s).")
+    return df
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+_SQLALCHEMY_TPL = '''# Gerado pelo TDIA-CodeGen — SQLAlchemy
+# Conexao via variavel de ambiente DATABASE_URL, ex.:
+#   export DATABASE_URL="postgresql+psycopg2://usuario:senha@host:5432/banco"
+import os
+from sqlalchemy import create_engine, text
+
+SQL = """___SQL___"""
+
+
+def main():
+    url = os.environ.get("DATABASE_URL", "postgresql+psycopg2://USUARIO:SENHA@HOST:5432/BANCO")
+    engine = create_engine(url)
+    with engine.connect() as conn:
+        result = conn.execute(text(SQL))
+        cols = list(result.keys())
+        rows = result.fetchall()
+    print(cols)
+    for row in rows[:50]:
+        print(dict(zip(cols, row)))
+    print(f"\\n{len(rows)} linha(s).")
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+_PYSPARK_TPL = '''# Gerado pelo TDIA-CodeGen — PySpark (leitura via JDBC)
+# Requer o driver JDBC do PostgreSQL no classpath do Spark, ex.:
+#   spark-submit --packages org.postgresql:postgresql:42.7.3 este_script.py
+import os
+from pyspark.sql import SparkSession
+
+SQL = """___SQL___"""
+
+
+def main():
+    spark = SparkSession.builder.appName("tdia-codegen").getOrCreate()
+    df = (
+        spark.read.format("jdbc")
+        .option("url", os.environ.get("JDBC_URL", "jdbc:postgresql://HOST:5432/BANCO"))
+        .option("query", SQL)
+        .option("user", os.environ.get("DB_USER", "USUARIO"))
+        .option("password", os.environ.get("DB_PASSWORD", "SENHA"))
+        .option("driver", "org.postgresql.Driver")
+        .load()
+    )
+    df.show(50, truncate=False)
+    print(f"{df.count()} linha(s).")
+    return df
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+_PYCODE_TEMPLATES = {"pandas": _PANDAS_TPL, "sqlalchemy": _SQLALCHEMY_TPL, "pyspark": _PYSPARK_TPL}
+
+
+def _embed_sql(sql: str) -> str:
+    """Escapa o SQL para embutir com segurança numa string tripla Python."""
+    return sql.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+
+
+def generate_pycode(sql: str, lib: str) -> str:
+    """Gera um script Python (pandas / sqlalchemy / pyspark) que executa o SQL."""
+    tpl = _PYCODE_TEMPLATES.get((lib or "pandas").lower(), _PANDAS_TPL)
+    clean = (sql or "").strip().rstrip(";").strip()
+    return tpl.replace("___SQL___", _embed_sql(clean))
