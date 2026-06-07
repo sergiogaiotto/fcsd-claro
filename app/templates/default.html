@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="dark" id="html-root">
+<html lang="pt-BR" class="light" id="html-root">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -177,8 +177,8 @@
             opacity: 0; transition: opacity 0.15s ease;
         }
         .app-header-peek:hover .app-header-peek-hint { opacity: 1; }
-        html.light .app-header-peek { background: linear-gradient(180deg, rgba(207,48,16,0.4) 0%, rgba(207,48,16,0) 100%); border-bottom-color: rgba(207,48,16,0.3); }
-        html.light .app-header-peek:hover { background: linear-gradient(180deg, rgba(207,48,16,0.7) 0%, rgba(207,48,16,0.1) 100%); }
+        html.light .app-header-peek { background: linear-gradient(180deg, rgba(227,6,19,0.4) 0%, rgba(227,6,19,0) 100%); border-bottom-color: rgba(227,6,19,0.3); }
+        html.light .app-header-peek:hover { background: linear-gradient(180deg, rgba(227,6,19,0.7) 0%, rgba(227,6,19,0.1) 100%); }
         html.light .app-header-peek-hint { color: rgba(31,35,40,0.85); }
         @media (max-width: 768px) {
             body.app-header-collapsed .app-header { transform: none; }
@@ -216,12 +216,12 @@
         .cfg-trigger.cfg-trigger-active { color: #ff6347; }
         html.light .cfg-dropdown-menu { background: #ffffff; border-color: #d0d7de; }
         html.light .cfg-dropdown-menu button { color: #57606a; }
-        html.light .cfg-dropdown-menu button:hover { background: rgba(207,48,16,0.06); color: #cf3010; }
-        html.light .cfg-dropdown-menu button.cfg-active { color: #cf3010; }
+        html.light .cfg-dropdown-menu button:hover { background: rgba(227,6,19,0.06); color: #e30613; }
+        html.light .cfg-dropdown-menu button.cfg-active { color: #e30613; }
         html.light .cfg-dropdown-menu .cfg-sep { background: #d0d7de; }
         html.light .cfg-trigger { color: #57606a; }
         html.light .cfg-trigger:hover, html.light .cfg-trigger.cfg-trigger-active { color: #1f2328; }
-        html.light .cfg-trigger.cfg-trigger-active { color: #cf3010; }    
+        html.light .cfg-trigger.cfg-trigger-active { color: #e30613; }    
         
         /* ── Light mode overrides ─────────────────────────── */
         html.light { color-scheme: light; }
@@ -248,27 +248,27 @@
         html.light select option { background:#ffffff; color:#1f2328; }
         html.light .table-container table th { background-color:#f6f8fa!important; color:#57606a!important; }
         html.light .shimmer { background:linear-gradient(90deg,#e1e8f0 25%,#eaeef2 50%,#e1e8f0 75%)!important; background-size:200% 100%; }
-        html.light .tab-btn.tab-active { color:#cf3010!important; }
-        html.light .tab-btn.tab-active::after { background:#cf3010!important; }
-        html.light .glow-accent { box-shadow:0 0 20px rgba(207,48,16,.05)!important; }
+        html.light .tab-btn.tab-active { color:#e30613!important; }
+        html.light .tab-btn.tab-active::after { background:#e30613!important; }
+        html.light .glow-accent { box-shadow:0 0 20px rgba(227,6,19,.05)!important; }
         html.light ::-webkit-scrollbar-thumb { background:#c8d3e0; }
-        html.light .bg-fg-accent\/10,html.light .bg-fg-accent\/15 { background-color:rgba(207,48,16,.1)!important; }
-        html.light .border-fg-accent\/20,html.light .border-fg-accent\/25 { border-color:rgba(207,48,16,.3)!important; }
+        html.light .bg-fg-accent\/10,html.light .bg-fg-accent\/15 { background-color:rgba(227,6,19,.1)!important; }
+        html.light .border-fg-accent\/20,html.light .border-fg-accent\/25 { border-color:rgba(227,6,19,.3)!important; }
         html.light .bg-fg-blue\/10,html.light .bg-fg-blue\/15 { background-color:rgba(9,105,218,.1)!important; }
         html.light .border-fg-blue\/25,html.light .border-fg-blue\/30 { border-color:rgba(9,105,218,.3)!important; }
         html.light .bg-fg-green\/15,html.light .bg-fg-green\/20 { background-color:rgba(26,127,55,.12)!important; }
         html.light .border-fg-green\/25,html.light .border-fg-green\/30 { border-color:rgba(26,127,55,.35)!important; }
-        html.light .text-fg-accent { color:#cf3010!important; }
-        html.light .bg-fg-accent { background-color:#cf3010!important; }
+        html.light .text-fg-accent { color:#e30613!important; }
+        html.light .bg-fg-accent { background-color:#e30613!important; }
         html.light .hover\:bg-fg-accent-hover:hover { background-color:#b52800!important; }
         html.light .prose-custom strong { color:#0d1117!important; }
         html.light .prose-custom code { background:#e8ecf0!important; color:#1f2328!important; }
         html.light pre { background:#eaeef2!important; border-color:#d0d7de!important; color:#1f2328!important; }
         html.light code { color:#1f2328!important; }
         html.light .qi-suggestion-link { color:#0969da!important; border-bottom-color:rgba(9,105,218,.3)!important; }
-        html.light .qi-suggestion-link:hover { color:#cf3010!important; }
+        html.light .qi-suggestion-link:hover { color:#e30613!important; }
         html.light details summary { color:#57606a!important; }
-        html.light .pulse-dot { background-color:#cf3010!important; }
+        html.light .pulse-dot { background-color:#e30613!important; }
         html.light .peer-period-active { background:rgba(79,70,229,.15)!important; color:#4f46e5!important; border-color:rgba(79,70,229,.4)!important; }
         
         /* Transition suave */
@@ -288,7 +288,54 @@
         }
         #themeToggle:hover { border-color:#ff6347; color:#ff6347; }
         html.light #themeToggle { border-color:#d0d7de; color:#57606a; }
-        html.light #themeToggle:hover { border-color:#cf3010; color:#cf3010; }    
+        html.light #themeToggle:hover { border-color:#e30613; color:#e30613; }
+
+        /* Preview do "Testar SQL" em Visoes: scrollbar visivel + altura util */
+        .vision-preview-scroll { max-height: 24rem; overflow-y: auto; overflow-x: auto; scrollbar-width: auto; scrollbar-color: #e30613 #f3f3f3; }
+        .vision-preview-scroll::-webkit-scrollbar { width: 14px; height: 14px; }
+        .vision-preview-scroll::-webkit-scrollbar-track { background: #f3f3f3; border-radius: 7px; }
+        .vision-preview-scroll::-webkit-scrollbar-thumb { background: #e30613; border-radius: 7px; border: 3px solid #f3f3f3; min-height: 30px; }
+        .vision-preview-scroll::-webkit-scrollbar-thumb:hover { background: #b8000b; }
+        .vision-preview-scroll::-webkit-scrollbar-corner { background: #f3f3f3; }
+        html.dark .vision-preview-scroll { scrollbar-color: #ff6347 #161b22; }
+        html.dark .vision-preview-scroll::-webkit-scrollbar-track { background: #161b22; }
+        html.dark .vision-preview-scroll::-webkit-scrollbar-thumb { background: #ff6347; border-color: #161b22; }
+        html.dark .vision-preview-scroll::-webkit-scrollbar-corner { background: #161b22; }
+
+        /* Catalogo: container da tabela de colunas - sem cap de altura para nao
+           cortar a row de edicao expandida. */
+        .catalog-cols-container { border-radius: 8px; overflow-x: auto; }
+
+        /* Catalogo: row de edicao de coluna - garante contraste e legibilidade
+           em ambos os temas. Sobrescreve o bg-fg-900/60 que ficava escuro no light. */
+        .catalog-col-edit-row > td { background: #ffffff !important; padding: 16px !important; }
+        .catalog-col-edit-row label { color: #57606a !important; }
+        .catalog-col-edit-row input[type="text"],
+        .catalog-col-edit-row textarea,
+        .catalog-col-edit-row select {
+            background-color: #ffffff !important;
+            border: 1px solid #d0d7de !important;
+            color: #1f2328 !important;
+        }
+        .catalog-col-edit-row input[type="text"]:focus,
+        .catalog-col-edit-row textarea:focus,
+        .catalog-col-edit-row select:focus { border-color: #e30613 !important; box-shadow: 0 0 0 2px rgba(227,6,19,0.12) !important; }
+        .catalog-col-edit-row .text-fg-muted { color: #57606a !important; }
+        .catalog-col-edit-row .text-fg-text { color: #1f2328 !important; }
+        .catalog-col-edit-row .border-fg-border { border-color: #d0d7de !important; }
+
+        html.dark .catalog-col-edit-row > td { background: #0d1117 !important; }
+        html.dark .catalog-col-edit-row label { color: #8b949e !important; }
+        html.dark .catalog-col-edit-row input[type="text"],
+        html.dark .catalog-col-edit-row textarea,
+        html.dark .catalog-col-edit-row select {
+            background-color: #161b22 !important;
+            border: 1px solid #30363d !important;
+            color: #e6edf3 !important;
+        }
+        html.dark .catalog-col-edit-row .text-fg-muted { color: #8b949e !important; }
+        html.dark .catalog-col-edit-row .text-fg-text { color: #c9d1d9 !important; }
+        html.dark .catalog-col-edit-row .border-fg-border { border-color: #30363d !important; }
     </style>
 </head>
 <body class="bg-fg-900 text-fg-text min-h-screen">
@@ -510,7 +557,12 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                 Compartilhar
             </button>
-            
+            <button onclick="saveCockpitAnalysis()" id="btnSaveCockpitAnalysis" title="Salvar análise (gráficos + insights) na Galeria"
+                class="text-fg-muted hover:text-fg-green border border-fg-border px-3 py-2 rounded-lg transition text-xs inline-flex items-center gap-1.5 hover:border-fg-green/40">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                Salvar Análise
+            </button>
+
         </div>
     </div>
 
@@ -620,7 +672,15 @@
                 </div>
             </div>
         </div>
- 
+
+        <!-- Data Caveats (qualidade / PII-LGPD) -->
+        <div id="cockpitDataCaveats" class="hidden mb-6">
+            <p class="text-[10px] text-fg-muted uppercase tracking-wider font-mono mb-3">Ressalvas de Dados &amp; LGPD</p>
+            <div class="bg-amber-500/5 border border-amber-500/25 rounded-xl p-4">
+                <ul id="cockpitDataCaveatsList" class="space-y-1.5"></ul>
+            </div>
+        </div>
+
         <!-- Recommendations -->
         <div id="cockpitRecommendations" class="hidden">
             <p class="text-[10px] text-fg-muted uppercase tracking-wider font-mono mb-3">Recomendações de Análise</p>
@@ -1779,7 +1839,24 @@
                         <button onclick="closeCatalogDetail()" class="text-fg-muted hover:text-red-400 transition text-xs">Fechar ✕</button>
                     </div>
                 </div>
-                <div id="catalogDetailDesc" class="text-xs text-fg-muted mb-4 italic"></div>
+                <div class="mb-4 group">
+                    <div id="catalogDetailDescView" class="flex items-start gap-2">
+                        <div id="catalogDetailDesc" class="text-xs text-fg-muted italic flex-1"></div>
+                        <button onclick="startEditCatalogDesc()" id="btnEditCatalogDesc"
+                                class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border hover:border-fg-accent/40 px-2 py-0.5 rounded transition opacity-0 group-hover:opacity-100"
+                                title="Editar descricao">Editar</button>
+                    </div>
+                    <div id="catalogDetailDescEdit" class="hidden">
+                        <textarea id="catalogDetailDescTa" rows="3"
+                            class="w-full bg-fg-800 border border-fg-border rounded-lg px-3 py-2 text-xs text-fg-text focus:border-fg-accent/60 focus:outline-none resize-y"
+                            placeholder="Descreva o conteudo desta tabela..."></textarea>
+                        <div class="flex items-center gap-2 mt-1.5">
+                            <button onclick="saveCatalogDesc()" class="text-[10px] text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1 rounded transition font-semibold">Salvar</button>
+                            <button onclick="cancelEditCatalogDesc()" class="text-[10px] text-fg-muted hover:text-fg-text border border-fg-border px-3 py-1 rounded transition">Cancelar</button>
+                            <span id="catalogDetailDescStatus" class="text-[10px] text-fg-muted"></span>
+                        </div>
+                    </div>
+                </div>
  
                 <!-- Detail tabs -->
                 <div class="flex gap-0 mb-4 border-b border-fg-border">
@@ -1790,7 +1867,7 @@
  
                 <!-- Columns tab -->
                 <div id="cdpanel-columns" class="catalog-detail-panel">
-                    <div class="table-container rounded-lg border border-fg-border" id="catalogColumnsTable"></div>
+                    <div class="catalog-cols-container rounded-lg border border-fg-border" id="catalogColumnsTable"></div>
                 </div>
  
                 <!-- Quality tab -->
@@ -4121,7 +4198,41 @@ function newAnalysisType() { document.getElementById('editorTitle').textContent 
 async function editAnalysisType(id) { const res = await fetch(`/api/analysis-types/${id}`); const t = await res.json(); document.getElementById('editorTitle').textContent = 'Editar: ' + t.name; document.getElementById('analysisForm').classList.remove('hidden'); document.getElementById('editId').value = t.id; document.getElementById('editName').value = t.name; document.getElementById('editPrompt').value = t.system_prompt; document.getElementById('editGuardIn').value = t.guardrails_input; document.getElementById('editGuardOut').value = t.guardrails_output; const canEdit = _canEditAnalysisType(t); document.getElementById('btnDelete').classList.toggle('hidden', !canEdit); _setAnalysisFormReadOnly(!canEdit); }
 async function saveAnalysisType() { const id = document.getElementById('editId').value; const payload = { name: document.getElementById('editName').value, system_prompt: document.getElementById('editPrompt').value, guardrails_input: document.getElementById('editGuardIn').value, guardrails_output: document.getElementById('editGuardOut').value }; const res = await fetch(id ? `/api/analysis-types/${id}` : '/api/analysis-types', { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao salvar.'); return; } loadAnalysisTypes(); loadAnalysisTypeSelector(); alert('Salvo.'); }
 async function deleteAnalysisType() { const id = document.getElementById('editId').value; if (!id || !confirm('Excluir?')) return; const res = await fetch(`/api/analysis-types/${id}`, { method: 'DELETE' }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao excluir.'); return; } document.getElementById('analysisForm').classList.add('hidden'); loadAnalysisTypes(); loadAnalysisTypeSelector(); }
-async function loadGallery() { const list = document.getElementById('galleryList'); const empty = document.getElementById('galleryEmpty'); try { const items = await (await fetch('/api/gallery')).json(); if (!items.length) { list.classList.add('hidden'); empty.classList.remove('hidden'); document.getElementById('galleryCount').textContent = ''; return; } list.classList.remove('hidden'); empty.classList.add('hidden'); document.getElementById('galleryCount').textContent = items.length + ' análise(s)'; const baseUrl = window.location.origin; list.innerHTML = items.map(item => { const link = `${baseUrl}/api/gallery/${item.share_token}/view`; return `<div class="bg-fg-900 border border-fg-border rounded-lg p-4 fade-in"><div class="flex items-start justify-between gap-3"><div class="flex-1 min-w-0"><h3 class="text-sm font-semibold text-fg-bright truncate">${escapeHtml(item.title)}</h3></div><div class="flex gap-1.5"><button onclick="window.open('${link}','_blank','width=1400,height=850')" class="text-[10px] bg-fg-accent/15 text-fg-accent border border-fg-accent/25 px-2.5 py-1 rounded-md hover:bg-fg-accent/25 transition">Abrir</button><button onclick="navigator.clipboard.writeText('${link}')" class="text-[10px] bg-fg-blue/15 text-fg-blue border border-fg-blue/25 px-2.5 py-1 rounded-md hover:bg-fg-blue/25 transition">Copiar Link</button><button onclick="deleteGalleryItem(${item.id})" class="text-[10px] bg-red-500/15 text-red-400 border border-red-500/25 px-2.5 py-1 rounded-md hover:bg-red-500/25 transition">Excluir</button></div></div></div>`; }).join(''); } catch(e) { list.innerHTML = `<p class="text-xs text-red-400">Erro: ${e.message}</p>`; } }
+async function loadGallery() {
+    const list = document.getElementById('galleryList');
+    const empty = document.getElementById('galleryEmpty');
+    try {
+        const items = await (await fetch('/api/gallery')).json();
+        if (!items.length) {
+            list.classList.add('hidden');
+            empty.classList.remove('hidden');
+            document.getElementById('galleryCount').textContent = '';
+            return;
+        }
+        list.classList.remove('hidden');
+        empty.classList.add('hidden');
+        document.getElementById('galleryCount').textContent = items.length + ' análise(s)';
+        const baseUrl = window.location.origin;
+
+        const card = (item) => {
+            const link = `${baseUrl}/api/gallery/${item.share_token}/view`;
+            return `<div class="bg-fg-900 border border-fg-border rounded-lg p-4 fade-in"><div class="flex items-start justify-between gap-3"><div class="flex-1 min-w-0"><h3 class="text-sm font-semibold text-fg-bright truncate">${escapeHtml(item.title)}</h3></div><div class="flex gap-1.5"><button onclick="window.open('${link}','_blank','width=1400,height=850')" class="text-[10px] bg-fg-accent/15 text-fg-accent border border-fg-accent/25 px-2.5 py-1 rounded-md hover:bg-fg-accent/25 transition">Abrir</button><button onclick="navigator.clipboard.writeText('${link}')" class="text-[10px] bg-fg-blue/15 text-fg-blue border border-fg-blue/25 px-2.5 py-1 rounded-md hover:bg-fg-blue/25 transition">Copiar Link</button><button onclick="deleteGalleryItem(${item.id})" class="text-[10px] bg-red-500/15 text-red-400 border border-red-500/25 px-2.5 py-1 rounded-md hover:bg-red-500/25 transition">Excluir</button></div></div></div>`;
+        };
+
+        const cockpit = items.filter(i => (i.category || 'analysis') === 'cockpit');
+        const regular = items.filter(i => (i.category || 'analysis') !== 'cockpit');
+
+        const section = (titleTxt, arr) => arr.length ? `
+            <div class="mb-5">
+                <p class="text-[10px] text-fg-muted uppercase tracking-wider font-mono mb-2">${titleTxt} · ${arr.length}</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${arr.map(card).join('')}</div>
+            </div>` : '';
+
+        list.innerHTML = section('Análises', regular) + section('Análises Cockpit', cockpit);
+    } catch(e) {
+        list.innerHTML = `<p class="text-xs text-red-400">Erro: ${e.message}</p>`;
+    }
+}
 async function deleteGalleryItem(id) { if (!confirm('Excluir?')) return; await fetch('/api/gallery/' + id, { method: 'DELETE' }); loadGallery(); }
 
 // ============================
@@ -6009,6 +6120,15 @@ function renderCatalogTableList(tables, sortBy) {
         const rows = (t.row_count || 0).toLocaleString('pt-BR');
         const cols = t.col_count || (t.columns || []).length;
  
+        const dms = Array.isArray(t.datamarts) ? t.datamarts : [];
+        const dls = Array.isArray(t.diamond_layers) ? t.diamond_layers : [];
+        const dmChips = dms.length
+            ? dms.map(dm => `<span class="text-[9px] font-mono px-2 py-0.5 rounded-full border" style="color:#0969da;border-color:rgba(9,105,218,0.35);background:rgba(9,105,218,0.08)" title="DataMart: ${escapeHtml(dm.name)}">DM · ${escapeHtml(dm.name)}</span>`).join('')
+            : `<span class="text-[9px] font-mono px-2 py-0.5 rounded-full border border-dashed" style="color:#8b949e;border-color:#d0d7de" title="Sem DataMart associado">DM · —</span>`;
+        const dlChips = dls.length
+            ? dls.map(dl => `<span class="text-[9px] font-mono px-2 py-0.5 rounded-full border" style="color:#a371f7;border-color:rgba(163,113,247,0.35);background:rgba(163,113,247,0.08)" title="Diamond Layer: ${escapeHtml(dl.name)}">DL · ${escapeHtml(dl.name)}</span>`).join('')
+            : `<span class="text-[9px] font-mono px-2 py-0.5 rounded-full border border-dashed" style="color:#8b949e;border-color:#d0d7de" title="Sem Diamond Layer associada">DL · —</span>`;
+
         return `<div class="bg-fg-900 rounded-lg px-4 py-3 border border-fg-border hover:border-fg-accent/30 transition-all cursor-pointer group" onclick="showCatalogDetail('${t.table_name}')">
             <div class="flex items-center justify-between mb-1.5">
                 <span class="text-sm text-fg-green font-mono font-bold group-hover:text-fg-accent transition">${escapeHtml(t.table_name)}</span>
@@ -6018,11 +6138,12 @@ function renderCatalogTableList(tables, sortBy) {
                     <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full" style="color:${qColor};background:${qBg}">${q}%</span>
                 </div>
             </div>
-            <div class="flex items-center gap-4 text-[10px] text-fg-muted font-mono">
+            <div class="flex items-center gap-4 text-[10px] text-fg-muted font-mono mb-1.5">
                 <span>${rows} registros</span>
                 <span>${cols} colunas</span>
                 <span>${t.enriched_at ? '✦ enriquecido' : ''}</span>
             </div>
+            <div class="flex items-center flex-wrap gap-1.5">${dmChips}${dlChips}</div>
         </div>`;
     }).join('');
 }
@@ -6407,6 +6528,13 @@ function showCatalogDetailTab(tab) {
     });
 }
  
+const CATALOG_SEMANTIC_TYPES = [
+    'identificador','numérico','monetário','percentual','quantidade',
+    'categórico','data/tempo','geográfico','booleano','texto','texto descritivo','desconhecido',
+];
+const CATALOG_PII_TYPES = ['', 'cpf','cnpj','email','telefone','cep','credit_card','nome:salario','nome:nome','outro'];
+const CATALOG_PII_SENS  = ['baixo','medio','alto'];
+
 function renderCatalogColumns(t) {
     const cols = t.columns || [];
     const typeColors = {
@@ -6415,7 +6543,7 @@ function renderCatalogColumns(t) {
         'data/tempo': '#a371f7', 'geográfico': '#d2a8ff', 'booleano': '#ffa657',
         'texto': '#c9d1d9', 'texto descritivo': '#c9d1d9', 'desconhecido': '#484f58',
     };
- 
+
     let html = `<table class="min-w-full"><thead><tr class="bg-fg-700 text-fg-muted text-[10px] uppercase tracking-wider">
         <th class="px-3 py-2 text-left">Coluna</th>
         <th class="px-3 py-2 text-left">Tipo Técnico</th>
@@ -6424,27 +6552,83 @@ function renderCatalogColumns(t) {
         <th class="px-3 py-2 text-right">Completude</th>
         <th class="px-3 py-2 text-right">Cardinalidade</th>
         <th class="px-3 py-2 text-center">PII</th>
+        <th class="px-3 py-2 text-center">Ações</th>
     </tr></thead><tbody class="text-xs divide-y divide-fg-border">`;
- 
-    cols.forEach(c => {
+
+    cols.forEach((c, idx) => {
         const p = c.profile_data || {};
         const pii = c.pii_data || {};
         const semType = c.semantic_type || 'desconhecido';
         const semColor = typeColors[semType] || '#8b949e';
         const completeness = p.completeness != null ? p.completeness : '—';
         const compColor = completeness >= 95 ? '#39d353' : (completeness >= 80 ? '#f0883e' : '#ff6347');
- 
-        html += `<tr class="hover:bg-fg-700/50 transition-colors">
+        const colKey = `${t.table_name}::${c.column_name}`;
+
+        html += `<tr id="catcol-view-${idx}" class="hover:bg-fg-700/50 transition-colors" data-colkey="${escapeHtml(colKey)}">
             <td class="px-3 py-2 font-mono font-bold text-fg-bright">${escapeHtml(c.column_name)}</td>
-            <td class="px-3 py-2 font-mono text-fg-muted">${c.technical_type || '—'}</td>
-            <td class="px-3 py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold" style="color:${semColor};background:${semColor}15">${semType}</span></td>
-            <td class="px-3 py-2 text-fg-muted max-w-[200px] truncate" title="${escapeHtml(c.description || '')}">${c.description || '<span class="opacity-40">—</span>'}</td>
+            <td class="px-3 py-2 font-mono text-fg-muted">${escapeHtml(c.technical_type || '—')}</td>
+            <td class="px-3 py-2"><span class="px-1.5 py-0.5 rounded text-[10px] font-semibold" style="color:${semColor};background:${semColor}15">${escapeHtml(semType)}</span></td>
+            <td class="px-3 py-2 text-fg-muted max-w-[200px] truncate" title="${escapeHtml(c.description || '')}">${c.description ? escapeHtml(c.description) : '<span class="opacity-40">—</span>'}</td>
             <td class="px-3 py-2 text-right font-mono" style="color:${typeof completeness === 'number' ? compColor : '#8b949e'}">${typeof completeness === 'number' ? completeness + '%' : completeness}</td>
             <td class="px-3 py-2 text-right font-mono text-fg-muted">${p.cardinality != null ? p.cardinality.toLocaleString('pt-BR') : '—'}</td>
-            <td class="px-3 py-2 text-center">${pii.is_sensitive ? '<span class="text-red-400 font-bold" title="' + (pii.pii_type || '') + '">⚠</span>' : '<span class="text-fg-green">✓</span>'}</td>
+            <td class="px-3 py-2 text-center">${pii.is_sensitive ? '<span class="text-red-400 font-bold" title="' + escapeHtml(pii.pii_type || '') + '">⚠</span>' : '<span class="text-fg-green">✓</span>'}</td>
+            <td class="px-3 py-2 text-center">
+                <button onclick="startEditCatalogCol(${idx})" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border hover:border-fg-accent/40 px-2 py-0.5 rounded transition" title="Editar coluna">Editar</button>
+            </td>
+        </tr>
+        <tr id="catcol-edit-${idx}" class="hidden catalog-col-edit-row">
+            <td colspan="8" class="px-3 py-3">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Tipo Técnico</label>
+                        <input id="catcol-tech-${idx}" type="text" value="${escapeHtml(c.technical_type || '')}"
+                            class="w-full bg-fg-800 border border-fg-border rounded px-2 py-1.5 text-xs text-fg-text focus:border-fg-accent/60 focus:outline-none" />
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Tipo Semântico</label>
+                        <select id="catcol-sem-${idx}"
+                            class="w-full bg-fg-800 border border-fg-border rounded px-2 py-1.5 text-xs text-fg-text focus:border-fg-accent/60 focus:outline-none">
+                            ${CATALOG_SEMANTIC_TYPES.map(s => `<option value="${escapeHtml(s)}" ${s === semType ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Descrição</label>
+                        <textarea id="catcol-desc-${idx}" rows="2"
+                            class="w-full bg-fg-800 border border-fg-border rounded px-2 py-1.5 text-xs text-fg-text focus:border-fg-accent/60 focus:outline-none resize-y"
+                            placeholder="O que esta coluna representa...">${escapeHtml(c.description || '')}</textarea>
+                    </div>
+                    <div class="col-span-2 border border-fg-border rounded p-2">
+                        <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1.5">Dados Sensíveis (PII)</label>
+                        <div class="flex items-center gap-3 flex-wrap">
+                            <label class="inline-flex items-center gap-1.5 text-xs text-fg-text">
+                                <input id="catcol-piiOn-${idx}" type="checkbox" ${pii.is_sensitive ? 'checked' : ''} />
+                                Coluna contém PII
+                            </label>
+                            <span class="text-fg-muted">·</span>
+                            <label class="text-[10px] text-fg-muted">Tipo
+                                <select id="catcol-piiType-${idx}" class="ml-1 bg-fg-800 border border-fg-border rounded px-2 py-1 text-xs text-fg-text">
+                                    ${CATALOG_PII_TYPES.map(s => `<option value="${escapeHtml(s)}" ${(pii.pii_type || '') === s ? 'selected' : ''}>${s ? escapeHtml(s) : '(nenhum)'}</option>`).join('')}
+                                </select>
+                            </label>
+                            <label class="text-[10px] text-fg-muted">Sensibilidade
+                                <select id="catcol-piiSens-${idx}" class="ml-1 bg-fg-800 border border-fg-border rounded px-2 py-1 text-xs text-fg-text">
+                                    ${CATALOG_PII_SENS.map(s => `<option value="${escapeHtml(s)}" ${(pii.sensitivity || 'medio') === s ? 'selected' : ''}>${escapeHtml(s)}</option>`).join('')}
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 mt-3">
+                    <button onclick="saveCatalogCol(${idx}, '${escapeHtml(c.column_name)}')"
+                        class="text-[10px] text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1 rounded transition font-semibold">Salvar</button>
+                    <button onclick="cancelEditCatalogCol(${idx})"
+                        class="text-[10px] text-fg-muted hover:text-fg-text border border-fg-border px-3 py-1 rounded transition">Cancelar</button>
+                    <span id="catcol-status-${idx}" class="text-[10px] text-fg-muted"></span>
+                </div>
+            </td>
         </tr>`;
     });
- 
+
     html += '</tbody></table>';
 
     // Legenda PII + tipos sensíveis
@@ -6604,16 +6788,53 @@ function renderCatalogEntitiesDetail(t) {
         html += '</div>';
     }
  
-    const joins = extras.suggested_joins || [];
-    if (joins.length) {
-        html += '<h4 class="text-[10px] text-fg-muted uppercase tracking-wider mb-2 font-mono mt-4">Joins Sugeridos</h4>';
-        html += '<div class="space-y-1">';
-        joins.forEach(j => { html += `<div class="text-xs text-fg-muted bg-fg-900 rounded-lg px-3 py-2 border border-fg-border font-mono">${escapeHtml(j)}</div>`; });
-        html += '</div>';
+    const joins = Array.isArray(extras.suggested_joins) ? extras.suggested_joins.slice() : [];
+    _catalogEditJoins = joins.slice();  // working copy para edicao
+
+    html += '<div class="flex items-center justify-between mb-2 mt-4">';
+    html += '<h4 class="text-[10px] text-fg-muted uppercase tracking-wider font-mono">Joins Sugeridos</h4>';
+    html += '<button onclick="addCatalogJoin()" class="text-[10px] text-fg-green bg-fg-green/10 border border-fg-green/30 hover:bg-fg-green/20 px-2 py-1 rounded transition">+ Adicionar join</button>';
+    html += '</div>';
+    html += '<div id="catalogJoinsList" class="space-y-1"></div>';
+
+    if (!entities.length && !kpis.length && !joins.length) {
+        html = '<p class="text-xs text-fg-muted mb-3">Execute o enriquecimento com IA para gerar entidades, KPIs e sugestões de joins. Você também pode adicionar joins manualmente abaixo.</p>'
+            + '<div class="flex items-center justify-between mb-2 mt-4">'
+            + '<h4 class="text-[10px] text-fg-muted uppercase tracking-wider font-mono">Joins Sugeridos</h4>'
+            + '<button onclick="addCatalogJoin()" class="text-[10px] text-fg-green bg-fg-green/10 border border-fg-green/30 hover:bg-fg-green/20 px-2 py-1 rounded transition">+ Adicionar join</button>'
+            + '</div>'
+            + '<div id="catalogJoinsList" class="space-y-1"></div>';
     }
- 
-    if (!html) html = '<p class="text-xs text-fg-muted">Execute o enriquecimento com IA para gerar entidades, KPIs e sugestões de joins.</p>';
     document.getElementById('catalogEntitiesDetail').innerHTML = html;
+    renderCatalogJoinsList();
+}
+
+function renderCatalogJoinsList() {
+    const box = document.getElementById('catalogJoinsList');
+    if (!box) return;
+    if (!_catalogEditJoins.length) {
+        box.innerHTML = '<div class="text-xs text-fg-muted italic px-3 py-2">Nenhum join cadastrado.</div>';
+        return;
+    }
+    box.innerHTML = _catalogEditJoins.map((j, i) => `
+        <div class="bg-fg-900 rounded-lg border border-fg-border group" data-idx="${i}">
+            <div id="join-view-${i}" class="flex items-start gap-2 px-3 py-2">
+                <div class="text-xs text-fg-muted font-mono flex-1 whitespace-pre-wrap break-words">${escapeHtml(j)}</div>
+                <div class="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition">
+                    <button onclick="editCatalogJoin(${i})" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border hover:border-fg-accent/40 px-2 py-0.5 rounded transition" title="Editar">Editar</button>
+                    <button onclick="deleteCatalogJoin(${i})" class="text-[10px] text-fg-muted hover:text-red-400 border border-fg-border hover:border-red-400/40 px-2 py-0.5 rounded transition" title="Excluir">Excluir</button>
+                </div>
+            </div>
+            <div id="join-edit-${i}" class="hidden px-3 py-2">
+                <textarea id="join-ta-${i}" rows="3"
+                    class="w-full bg-fg-800 border border-fg-border rounded px-2 py-1.5 text-xs text-fg-text font-mono focus:border-fg-accent/60 focus:outline-none resize-y">${escapeHtml(j)}</textarea>
+                <div class="flex items-center gap-2 mt-2">
+                    <button onclick="saveCatalogJoinEdit(${i})" class="text-[10px] text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1 rounded transition font-semibold">Salvar</button>
+                    <button onclick="cancelCatalogJoinEdit(${i})" class="text-[10px] text-fg-muted hover:text-fg-text border border-fg-border px-3 py-1 rounded transition">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
 }
  
 async function enrichCatalogTable() {
@@ -6636,6 +6857,202 @@ async function enrichCatalogTable() {
  
     btn.disabled = false;
     btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Enriquecer com IA';
+}
+
+// ============================
+// Catalogo: edicao manual (descricao, colunas, joins)
+// ============================
+
+let _catalogEditJoins = [];
+
+function _catalogSelectedTableObj() {
+    if (!_catalogSelectedTable) return null;
+    return (_catalogData?.tables || []).find(x => x.table_name === _catalogSelectedTable) || null;
+}
+
+// ---- Descricao da tabela --------------------------------------------------
+
+function startEditCatalogDesc() {
+    const t = _catalogSelectedTableObj();
+    if (!t) return;
+    document.getElementById('catalogDetailDescTa').value = t.description || '';
+    document.getElementById('catalogDetailDescView').classList.add('hidden');
+    document.getElementById('catalogDetailDescEdit').classList.remove('hidden');
+    document.getElementById('catalogDetailDescStatus').textContent = '';
+    document.getElementById('catalogDetailDescTa').focus();
+}
+
+function cancelEditCatalogDesc() {
+    document.getElementById('catalogDetailDescView').classList.remove('hidden');
+    document.getElementById('catalogDetailDescEdit').classList.add('hidden');
+}
+
+async function saveCatalogDesc() {
+    if (!_catalogSelectedTable) return;
+    const ta = document.getElementById('catalogDetailDescTa');
+    const status = document.getElementById('catalogDetailDescStatus');
+    const description = ta.value.trim();
+    status.style.color = '#8b949e';
+    status.textContent = 'Salvando...';
+    try {
+        const res = await fetch(`/api/catalog/${encodeURIComponent(_catalogSelectedTable)}/description`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error || data.detail) {
+            status.style.color = '#ff6347';
+            status.textContent = 'Erro: ' + (data.error || data.detail || `HTTP ${res.status}`);
+            return;
+        }
+        // Atualiza no cache local + UI
+        const t = _catalogSelectedTableObj();
+        if (t) t.description = description;
+        document.getElementById('catalogDetailDesc').textContent = description || 'Sem descrição. Clique em "Enriquecer com IA" para gerar automaticamente.';
+        cancelEditCatalogDesc();
+    } catch(e) {
+        status.style.color = '#ff6347';
+        status.textContent = 'Erro: ' + e.message;
+    }
+}
+
+// ---- Coluna ---------------------------------------------------------------
+
+function startEditCatalogCol(idx) {
+    document.getElementById('catcol-view-' + idx).classList.add('hidden');
+    document.getElementById('catcol-edit-' + idx).classList.remove('hidden');
+    const status = document.getElementById('catcol-status-' + idx);
+    if (status) status.textContent = '';
+}
+
+function cancelEditCatalogCol(idx) {
+    document.getElementById('catcol-view-' + idx).classList.remove('hidden');
+    document.getElementById('catcol-edit-' + idx).classList.add('hidden');
+}
+
+async function saveCatalogCol(idx, columnName) {
+    if (!_catalogSelectedTable) return;
+    const status = document.getElementById('catcol-status-' + idx);
+    const tech = document.getElementById('catcol-tech-' + idx).value.trim();
+    const sem  = document.getElementById('catcol-sem-' + idx).value;
+    const desc = document.getElementById('catcol-desc-' + idx).value.trim();
+    const piiOn = document.getElementById('catcol-piiOn-' + idx).checked;
+    const piiType = document.getElementById('catcol-piiType-' + idx).value;
+    const piiSens = document.getElementById('catcol-piiSens-' + idx).value;
+
+    status.style.color = '#8b949e';
+    status.textContent = 'Salvando...';
+
+    const payload = {
+        description: desc,
+        technical_type: tech,
+        semantic_type: sem,
+        pii_data: {
+            is_sensitive: !!piiOn,
+            pii_type: piiOn ? (piiType || '') : '',
+            sensitivity: piiOn ? (piiSens || 'medio') : '',
+            confidence: piiOn ? 1.0 : 0.0,
+            manual: true,
+        },
+    };
+
+    try {
+        const res = await fetch(
+            `/api/catalog/${encodeURIComponent(_catalogSelectedTable)}/columns/${encodeURIComponent(columnName)}`,
+            { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error || data.detail) {
+            status.style.color = '#ff6347';
+            status.textContent = 'Erro: ' + (data.error || data.detail || `HTTP ${res.status}`);
+            return;
+        }
+        // Re-carrega catalog para refletir mudancas (tabela + alerta PII)
+        await loadCatalog();
+        showCatalogDetail(_catalogSelectedTable);
+        showCatalogDetailTab('columns');
+    } catch(e) {
+        status.style.color = '#ff6347';
+        status.textContent = 'Erro: ' + e.message;
+    }
+}
+
+// ---- Joins ---------------------------------------------------------------
+
+function addCatalogJoin() {
+    _catalogEditJoins.push('');
+    renderCatalogJoinsList();
+    // Abre direto em edicao no novo item
+    const newIdx = _catalogEditJoins.length - 1;
+    editCatalogJoin(newIdx);
+}
+
+function editCatalogJoin(idx) {
+    document.getElementById('join-view-' + idx).classList.add('hidden');
+    document.getElementById('join-edit-' + idx).classList.remove('hidden');
+    const ta = document.getElementById('join-ta-' + idx);
+    if (ta) { ta.focus(); ta.selectionStart = ta.selectionEnd = ta.value.length; }
+}
+
+function cancelCatalogJoinEdit(idx) {
+    // Se o join estava vazio (acabou de ser adicionado), remove
+    if (!_catalogEditJoins[idx]) {
+        _catalogEditJoins.splice(idx, 1);
+        renderCatalogJoinsList();
+        return;
+    }
+    document.getElementById('join-view-' + idx).classList.remove('hidden');
+    document.getElementById('join-edit-' + idx).classList.add('hidden');
+}
+
+async function saveCatalogJoinEdit(idx) {
+    const ta = document.getElementById('join-ta-' + idx);
+    const txt = (ta?.value || '').trim();
+    if (!txt) {
+        // Se vazio, trata como exclusao
+        _catalogEditJoins.splice(idx, 1);
+    } else {
+        _catalogEditJoins[idx] = txt;
+    }
+    const ok = await _persistCatalogJoins();
+    if (ok) renderCatalogJoinsList();
+}
+
+async function deleteCatalogJoin(idx) {
+    if (!confirm('Excluir este join?')) return;
+    _catalogEditJoins.splice(idx, 1);
+    const ok = await _persistCatalogJoins();
+    if (ok) renderCatalogJoinsList();
+}
+
+async function _persistCatalogJoins() {
+    if (!_catalogSelectedTable) return false;
+    try {
+        const res = await fetch(`/api/catalog/${encodeURIComponent(_catalogSelectedTable)}/joins`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ joins: _catalogEditJoins }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error || data.detail) {
+            alert('Erro ao salvar joins: ' + (data.error || data.detail || `HTTP ${res.status}`));
+            return false;
+        }
+        // Atualiza cache local
+        const t = _catalogSelectedTableObj();
+        if (t) {
+            try {
+                const extras = (typeof t.extras === 'object' && t.extras) ? t.extras : JSON.parse(t.extras || '{}');
+                extras.suggested_joins = _catalogEditJoins.slice();
+                t.extras = extras;
+            } catch(e) { /* ignore */ }
+        }
+        return true;
+    } catch(e) {
+        alert('Erro ao salvar joins: ' + e.message);
+        return false;
+    }
 }
 
 // ============================
@@ -7418,6 +7835,7 @@ async function generateCockpitInsights() {
     indEl.classList.add('hidden');
     combEl.classList.add('hidden');
     recsEl.classList.add('hidden');
+    document.getElementById('cockpitDataCaveats').classList.add('hidden');
     if (btn) btn.disabled = true;
  
     try {
@@ -7435,10 +7853,12 @@ async function generateCockpitInsights() {
             return;
         }
  
+        window._cockpitLastInsights = data;
         _renderIndividualInsights(data.individual_insights || []);
         _renderCombinedAnalysis(data.combined_analysis || {});
+        _renderDataCaveats(data.data_caveats || []);
         _renderRecommendations(data.recommendations || []);
- 
+
     } catch(e) {
         loading.classList.add('hidden');
         errEl.textContent = 'Erro: ' + e.message;
@@ -7528,6 +7948,22 @@ function _renderCombinedAnalysis(analysis) {
     el.classList.remove('hidden');
 }
  
+function _renderDataCaveats(caveats) {
+    const wrap = document.getElementById('cockpitDataCaveats');
+    const list = document.getElementById('cockpitDataCaveatsList');
+    if (!Array.isArray(caveats) || caveats.length === 0) {
+        wrap.classList.add('hidden');
+        list.innerHTML = '';
+        return;
+    }
+    list.innerHTML = caveats.map(c => `
+        <li class="flex items-start gap-2 text-xs text-fg-text leading-relaxed">
+            <span class="text-amber-400 flex-shrink-0 mt-0.5">⚠</span>
+            <span>${escapeHtml(String(c))}</span>
+        </li>`).join('');
+    wrap.classList.remove('hidden');
+}
+
 function _renderRecommendations(recs) {
     const grid = document.getElementById('cockpitRecsGrid');
     const el   = document.getElementById('cockpitRecommendations');
@@ -7577,6 +8013,111 @@ function _executeRecommendation(idx) {
     document.getElementById('queryInput').value = description;
     window._pendingSavedSql = null;
     setTimeout(() => sendQuery(), 200);
+}
+
+// ── Salvar Análise do Cockpit na Galeria ──────────────────────────────────
+async function saveCockpitAnalysis() {
+    const data = window._cockpitLastInsights;
+    if (!data) {
+        alert('Gere as Análises Inteligentes antes de salvar.');
+        return;
+    }
+    const defaultTitle = 'Análises Cockpit — ' + new Date().toLocaleString('pt-BR');
+    const title = prompt('Título da análise para a Galeria:', defaultTitle);
+    if (title === null) return; // cancelado
+    const finalTitle = (title || '').trim() || defaultTitle;
+
+    const btn = document.getElementById('btnSaveCockpitAnalysis');
+    const orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span style="animation:spin 1s linear infinite;display:inline-block">⟳</span> Salvando...'; }
+
+    try {
+        if (typeof html2canvas === 'undefined') await _loadHtml2Canvas();
+        const target = document.getElementById('panel-cockpit');
+        const bg = getComputedStyle(document.body).backgroundColor || '#ffffff';
+        const canvas = await html2canvas(target, {
+            backgroundColor: bg,
+            scale: 1.5,
+            useCORS: true,
+            logging: false,
+            ignoreElements: (el) =>
+                el.id === 'cockpitShareModal' ||
+                el.id === 'addTileModal' ||
+                el.id === 'btnSaveCockpitAnalysis',
+        });
+        const imgDataUrl = canvas.toDataURL('image/png');
+        const pageHtml = _buildCockpitAnalysisHtml(finalTitle, imgDataUrl, data);
+
+        const res = await fetch('/api/gallery', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: finalTitle,
+                description: (data.combined_analysis && data.combined_analysis.summary)
+                    ? String(data.combined_analysis.summary).slice(0, 280) : '',
+                category: 'cockpit',
+                query_data: { kind: 'cockpit', insights: data },
+                page_html: pageHtml,
+            }),
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok || out.error || out.detail) {
+            alert('Erro ao salvar: ' + (out.error || out.detail || ('HTTP ' + res.status)));
+        } else {
+            alert('Análise salva na Galeria, seção "Análises Cockpit".');
+        }
+    } catch(e) {
+        alert('Erro ao salvar análise: ' + e.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    }
+}
+
+function _buildCockpitAnalysisHtml(title, imgDataUrl, data) {
+    const esc = (s) => String(s == null ? '' : s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const ind = (data.individual_insights || []).map(i => `
+        <div style="border:1px solid #eee;border-radius:10px;padding:12px 14px;margin-bottom:8px;background:#fff;">
+            <div style="font-weight:700;color:#1f1f1f;font-size:13px;">${esc(i.label)}</div>
+            <div style="color:#555;font-size:13px;margin-top:4px;">${esc(i.insight)}</div>
+            ${i.key_metric ? `<div style="color:#e30613;font-weight:700;font-size:12px;margin-top:6px;">${esc(i.key_metric)}</div>` : ''}
+        </div>`).join('');
+    const ca = data.combined_analysis || {};
+    const lst = (arr, color) => (arr || []).map(x => `<li style="color:${color};font-size:13px;margin-bottom:4px;">${esc(x)}</li>`).join('');
+    const caveats = (data.data_caveats || []).map(c => `<li style="color:#92600a;font-size:13px;margin-bottom:4px;">⚠ ${esc(c)}</li>`).join('');
+    const recs = (data.recommendations || []).map((r,i) => `
+        <div style="border:1px solid #eee;border-radius:10px;padding:12px 14px;margin-bottom:8px;background:#fff;">
+            <div style="font-weight:700;color:#1f1f1f;font-size:13px;">${i+1}. ${esc(r.title)}</div>
+            <div style="color:#555;font-size:13px;margin-top:4px;">${esc(r.description)}</div>
+            ${r.query ? `<div style="color:#777;font-size:12px;font-family:monospace;margin-top:6px;">${esc(r.query)}</div>` : ''}
+        </div>`).join('');
+    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${esc(title)}</title>
+<style>body{font-family:Arial,Helvetica,sans-serif;background:#f7f7f7;color:#1f1f1f;margin:0;padding:24px;}
+.wrap{max-width:1100px;margin:0 auto;}
+h1{font-size:22px;color:#e30613;margin:0 0 4px;} .meta{color:#777;font-size:12px;margin-bottom:18px;}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#555;border-bottom:2px solid #e30613;padding-bottom:4px;margin:24px 0 12px;}
+.card{background:#fff;border:1px solid #eee;border-radius:14px;padding:18px;box-shadow:0 4px 12px rgba(0,0,0,.06);}
+img.snap{width:100%;border:1px solid #eee;border-radius:12px;margin-bottom:8px;}
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-top:10px;}
+ul{margin:6px 0 0;padding-left:18px;}</style></head>
+<body><div class="wrap">
+<h1>${esc(title)}</h1>
+<div class="meta">Análise inteligente do Cockpit — Fale com Seus Dados</div>
+<h2>Visão dos Gráficos</h2>
+<img class="snap" src="${imgDataUrl}" alt="Cockpit"/>
+<h2>Insights por Indicador</h2>${ind || '<p style="color:#777">—</p>'}
+<h2>Análise Conjunta</h2>
+<div class="card"><p style="font-size:14px;color:#1f1f1f;margin:0;">${esc(ca.summary)}</p>
+<div class="grid4">
+<div><strong style="color:#0969da;font-size:12px;">Correlações</strong><ul>${lst(ca.correlations,'#0969da')}</ul></div>
+<div><strong style="color:#1a7f37;font-size:12px;">Padrões</strong><ul>${lst(ca.patterns,'#1a7f37')}</ul></div>
+<div><strong style="color:#e30613;font-size:12px;">Riscos</strong><ul>${lst(ca.risks,'#e30613')}</ul></div>
+<div><strong style="color:#92600a;font-size:12px;">Oportunidades</strong><ul>${lst(ca.opportunities,'#92600a')}</ul></div>
+</div></div>
+${caveats ? `<h2>Ressalvas de Dados &amp; LGPD</h2><div class="card"><ul>${caveats}</ul></div>` : ''}
+<h2>Recomendações</h2>${recs || '<p style="color:#777">—</p>'}
+</div></body></html>`;
 }
 
         
@@ -8246,7 +8787,7 @@ async function loadVisionsTab() {
                              class="mt-2 text-[11px] min-h-[18px]"></div>
  
                         <div id="vision-sql-preview-${v.id}"
-                             class="mt-2 hidden max-h-40 overflow-auto rounded border border-fg-border"></div>
+                             class="mt-2 hidden vision-preview-scroll rounded border border-fg-border"></div>
                     </div>
                 </td>
             </tr>`;
@@ -8321,20 +8862,26 @@ async function testVisionSql(visionId) {
     status.textContent = 'Testando…';
     preview.classList.add('hidden');
  
-    // Adicionar LIMIT 5 apenas para o teste
-    const sqlTest = sql.replace(/\s+LIMIT\s+\d+\s*;?\s*$/i, '').trim() + ' LIMIT 5';
- 
+    // Normaliza: remove LIMIT existente E ; final (senao vira "...;" + " LIMIT 5"
+    // que o backend rejeita como multiplas instrucoes SQL).
+    const sqlTest = sql
+        .replace(/\s+LIMIT\s+\d+\s*;?\s*$/i, '')
+        .replace(/;+\s*$/g, '')
+        .trim() + ' LIMIT 5';
+
     try {
         const res = await fetch('/api/query/full-data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sql: sqlTest }),
         });
-        const data = await res.json();
- 
-        if (data.error) {
+        const data = await res.json().catch(() => ({}));
+
+        // FastAPI HTTPException devolve { detail: "..." }; alguns endpoints usam { error: "..." }.
+        // Tratar ambos + status >= 400 para que erros nao virem "0 linhas / 0 colunas".
+        if (!res.ok || data.error || data.detail) {
             status.style.color = '#ff6347';
-            status.textContent = '✗ Erro: ' + data.error;
+            status.textContent = '✗ Erro: ' + (data.error || data.detail || `HTTP ${res.status}`);
             return;
         }
  
@@ -8460,16 +9007,13 @@ function toggleTheme() {
     const isCurrentlyDark = document.getElementById('html-root').classList.contains('dark');
     const newIsDark = !isCurrentlyDark;
     _applyTheme(newIsDark);
-    try { localStorage.setItem('qi_theme', newIsDark ? 'dark' : 'light'); } catch(e) {}
+    try { localStorage.setItem('qi_theme_v2', newIsDark ? 'dark' : 'light'); } catch(e) {}
 }
 
 (function initTheme() {
-    let pref = 'dark';
-    try { pref = localStorage.getItem('qi_theme') || 'dark'; } catch(e) {}
-    if (!pref) {
-        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        pref = prefersDark ? 'dark' : 'light';
-    }
+    try { localStorage.removeItem('qi_theme'); } catch(e) {}
+    let pref = 'light';
+    try { pref = localStorage.getItem('qi_theme_v2') || 'light'; } catch(e) {}
     _applyTheme(pref === 'dark');
 })();
 

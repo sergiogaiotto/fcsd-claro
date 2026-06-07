@@ -451,7 +451,10 @@ _INDEX_STATEMENTS: list[str] = [
 # Per-table list of (column_name, column_definition) tuples added in
 # subsequent versions. ``column_exists`` skips already-applied migrations.
 _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
-    "analysis_gallery": [("page_html", "TEXT NOT NULL DEFAULT ''")],
+    "analysis_gallery": [
+        ("page_html", "TEXT NOT NULL DEFAULT ''"),
+        ("category", "TEXT NOT NULL DEFAULT 'analysis'"),
+    ],
     "saved_questions": [
         ("sql_generated", "TEXT NOT NULL DEFAULT ''"),
         ("is_favorite", "INTEGER NOT NULL DEFAULT 0"),
