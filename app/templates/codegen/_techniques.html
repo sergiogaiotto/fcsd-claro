@@ -1,0 +1,44 @@
+{# Técnicas (M2.1) — CRUD, só Root/Admin (a seção inteira é gateada no index). #}
+<div class="space-y-4">
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div>
+                <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider">Técnicas (admin)</h2>
+                <p class="text-xs text-fg-muted mt-1">
+                    Runtimes do gerador (<em>Strategy</em>). Cada técnica declara os fragmentos
+                    <code>imports/setup/read/show/teardown</code> — convenção: o resultado fica em <code>result</code>.
+                    São templates Jinja (sandbox); ao salvar, validamos que geram Python válido.
+                </p>
+            </div>
+            <button class="cg-btn-primary" style="padding:7px 12px;font-size:12px" onclick="cgNewTechnique()">+ Nova técnica</button>
+        </div>
+        <div id="cgTechList" class="space-y-2"><div class="text-fg-muted text-sm py-4 text-center">Carregando…</div></div>
+    </div>
+
+    <div id="cgTechForm" class="bg-fg-800 border border-fg-accent/30 rounded-xl p-5" style="display:none">
+        <h3 id="cgTechFormTitle" class="text-sm font-bold text-fg-bright mb-3">Nova técnica</h3>
+        <input type="hidden" id="cgTechId">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+            <div><label class="cg-lbl">Chave (única)</label><input id="cgTechKey" class="cg-select" placeholder="ex.: polars"></div>
+            <div><label class="cg-lbl">Rótulo</label><input id="cgTechLabel" class="cg-select" placeholder="ex.: Polars"></div>
+            <div><label class="cg-lbl">Runtime</label>
+                <select id="cgTechRuntime" class="cg-select"><option value="python">python</option><option value="spark">spark</option></select>
+            </div>
+        </div>
+        <div class="mb-3"><label class="cg-lbl">Descrição</label><input id="cgTechDesc" class="cg-select"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div><label class="cg-lbl">imports</label><textarea id="cgTechImports" class="cg-frag" rows="3" spellcheck="false"></textarea></div>
+            <div><label class="cg-lbl">setup (abre a conexão)</label><textarea id="cgTechSetup" class="cg-frag" rows="3" spellcheck="false"></textarea></div>
+            <div><label class="cg-lbl">read (popula <code>result</code>)</label><textarea id="cgTechRead" class="cg-frag" rows="3" spellcheck="false"></textarea></div>
+            <div><label class="cg-lbl">show (exibe <code>result</code>)</label><textarea id="cgTechShow" class="cg-frag" rows="3" spellcheck="false"></textarea></div>
+            <div><label class="cg-lbl">teardown (opcional)</label><textarea id="cgTechTeardown" class="cg-frag" rows="2" spellcheck="false"></textarea></div>
+            <div class="flex items-end pb-1"><label class="flex items-center gap-2 text-xs text-fg-muted cursor-pointer"><input type="checkbox" id="cgTechActive" checked class="accent-fg-accent"> Ativa</label></div>
+        </div>
+        <div class="flex items-center gap-2 mt-4">
+            <button class="cg-btn-primary" style="padding:8px 14px;font-size:13px" onclick="cgSaveTechnique()">Salvar</button>
+            <button class="cg-btn-mini" onclick="cgCancelTechnique()">Cancelar</button>
+            <span id="cgTechMsg" class="text-xs ml-2 text-fg-muted"></span>
+        </div>
+        <p class="text-[10px] text-fg-muted mt-2">Dica: o contexto Jinja expõe <code>schema</code> (colunas tipadas), <code>options</code> e <code>sql_literal</code>. O padrão "Script" usa <code>result</code>.</p>
+    </div>
+</div>

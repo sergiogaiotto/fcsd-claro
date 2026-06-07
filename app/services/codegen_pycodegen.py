@@ -270,3 +270,101 @@ def ensure_seeded():
         conn.rollback()
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# CRUD de Técnicas (M2.1) — autoria só por Root/Admin (require_admin nas rotas).
+# Toda gravação valida que os fragmentos renderizam no sandbox e que a técnica
+# gera Python válido com o padrão 'script' (ast.parse).
+# ---------------------------------------------------------------------------
+
+def validate_technique(data: dict) -> str | None:
+    key = (data.get("key") or "").strip()
+    if not re.fullmatch(r"[a-z0-9_]+", key):
+        return "A chave deve ter só minúsculas, números e _ (ex.: 'polars')."
+    env = _env()
+    ctx = {"schema": [], "query": "SELECT 1", "options": {}, "sql_literal": "SELECT 1"}
+    try:
+        frags = {f: env.from_string(data.get("frag_" + f) or "").render(**ctx) for f in _FRAGS}
+    except Exception as e:
+        return f"Fragmento inválido (Jinja): {str(e).splitlines()[0]}"
+    pat = load_pattern("script")
+    if pat:
+        try:
+            code = env.from_string(pat["template"]).render(t=frags, **ctx)
+            import ast
+            ast.parse(code)
+        except SyntaxError as e:
+            return f"O código gerado não é Python válido: {e}"
+        except Exception as e:
+            return f"Erro ao validar: {str(e).splitlines()[0]}"
+    return None
+
+
+def list_techniques_full() -> list[dict]:
+    ensure_seeded()
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, key, label, runtime, description, frag_imports, frag_setup, "
+            "frag_read, frag_show, frag_teardown, is_active FROM codegen_techniques ORDER BY label"
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def create_technique(data: dict, created_by: str = "") -> dict:
+    err = validate_technique(data)
+    if err:
+        return {"error": err}
+    from app.core.database import _exec_returning_id
+    conn = get_sync_connection()
+    try:
+        tid = _exec_returning_id(
+            conn,
+            "INSERT INTO codegen_techniques (key, label, runtime, description, frag_imports, frag_setup, "
+            "frag_read, frag_show, frag_teardown, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (data["key"].strip(), data.get("label", ""), data.get("runtime", "python"), data.get("description", ""),
+             data.get("frag_imports", ""), data.get("frag_setup", ""), data.get("frag_read", ""),
+             data.get("frag_show", ""), data.get("frag_teardown", ""), created_by),
+        )
+        conn.commit()
+        return {"ok": True, "id": tid}
+    except Exception as e:
+        conn.rollback()
+        msg = str(e).splitlines()[0] if str(e) else "erro"
+        if "unique" in msg.lower() or "duplicate" in msg.lower():
+            return {"error": f"Já existe uma técnica com a chave '{data.get('key')}'."}
+        return {"error": f"Erro ao criar: {msg}"}
+    finally:
+        conn.close()
+
+
+def update_technique(tid: int, data: dict) -> dict:
+    err = validate_technique(data)
+    if err:
+        return {"error": err}
+    conn = get_sync_connection()
+    try:
+        conn.execute(
+            "UPDATE codegen_techniques SET label=?, runtime=?, description=?, frag_imports=?, frag_setup=?, "
+            "frag_read=?, frag_show=?, frag_teardown=?, is_active=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (data.get("label", ""), data.get("runtime", "python"), data.get("description", ""),
+             data.get("frag_imports", ""), data.get("frag_setup", ""), data.get("frag_read", ""),
+             data.get("frag_show", ""), data.get("frag_teardown", ""), int(data.get("is_active", 1) or 0), tid),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def delete_technique(tid: int) -> dict:
+    conn = get_sync_connection()
+    try:
+        conn.execute("DELETE FROM codegen_techniques WHERE id = ?", (tid,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()

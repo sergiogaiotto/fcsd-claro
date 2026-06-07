@@ -56,6 +56,7 @@ function cgShowSection(name) {
     if (name === 'editor' && cgEditor) setTimeout(() => cgEditor.refresh(), 0);
     if (name === 'tables') loadCgTables();
     if (name === 'historico') loadCgHistory();
+    if (name === 'techniques') loadCgTechniques();
 }
 
 // ---- Editor SQL (P1a) ----------------------------------------------------
@@ -360,6 +361,87 @@ function cgDownloadPython() {
     a.href = url; a.download = cgPyName;
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
+}
+
+// ---- M2.1: CRUD de Técnicas (admin) -------------------------------------
+let cgTechniques = [];
+
+async function loadCgTechniques() {
+    const box = document.getElementById('cgTechList');
+    if (!box) return;
+    box.innerHTML = '<div class="text-fg-muted text-sm py-4 text-center">Carregando…</div>';
+    try {
+        const res = await fetch('/api/codegen/admin/techniques');
+        if (!res.ok) { box.innerHTML = '<div class="text-red-400 text-sm py-3">Sem permissão ou erro.</div>'; return; }
+        cgTechniques = await res.json();
+        if (!cgTechniques.length) { box.innerHTML = '<div class="text-fg-muted text-sm py-4 text-center">Nenhuma técnica cadastrada.</div>'; return; }
+        box.innerHTML = cgTechniques.map((t, i) => {
+            const inactive = t.is_active ? '' : '<span class="text-[10px] text-fg-muted ml-2">(inativa)</span>';
+            return '<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border">'
+                + '<div><span class="text-sm text-fg-green font-mono font-bold">' + _cgEscape(t.key) + '</span>'
+                + '<span class="text-fg-muted text-sm ml-2">' + _cgEscape(t.label || '') + '</span>'
+                + '<span class="text-[10px] bg-fg-blue/15 text-fg-blue px-1.5 py-0.5 rounded ml-2 uppercase">' + _cgEscape(t.runtime) + '</span>' + inactive + '</div>'
+                + '<div class="flex items-center gap-2">'
+                + '<button class="cg-btn-mini" onclick="cgEditTechnique(' + i + ')">Editar</button>'
+                + '<button class="cg-btn-mini" onclick="cgDeleteTechnique(' + i + ')">Excluir</button></div></div>';
+        }).join('');
+    } catch (e) { box.innerHTML = '<div class="text-red-400 text-sm py-3">Falha: ' + _cgEscape(e.message) + '</div>'; }
+}
+
+function _cgTechSetForm(t) {
+    const g = (id) => document.getElementById(id);
+    g('cgTechId').value = t.id || '';
+    g('cgTechKey').value = t.key || '';
+    g('cgTechKey').disabled = !!t.id;   // chave imutável na edição
+    g('cgTechLabel').value = t.label || '';
+    g('cgTechRuntime').value = t.runtime || 'python';
+    g('cgTechDesc').value = t.description || '';
+    g('cgTechImports').value = t.frag_imports || '';
+    g('cgTechSetup').value = t.frag_setup || '';
+    g('cgTechRead').value = t.frag_read || '';
+    g('cgTechShow').value = t.frag_show || '';
+    g('cgTechTeardown').value = t.frag_teardown || '';
+    g('cgTechActive').checked = (t.is_active === undefined) ? true : !!t.is_active;
+    g('cgTechMsg').textContent = '';
+    g('cgTechFormTitle').textContent = t.id ? ('Editar — ' + t.key) : 'Nova técnica';
+    g('cgTechForm').style.display = 'block';
+}
+
+function cgNewTechnique() { _cgTechSetForm({}); }
+function cgEditTechnique(i) { if (cgTechniques[i]) _cgTechSetForm(cgTechniques[i]); }
+function cgCancelTechnique() { document.getElementById('cgTechForm').style.display = 'none'; }
+
+async function cgSaveTechnique() {
+    const g = (id) => document.getElementById(id);
+    const id = g('cgTechId').value;
+    const body = {
+        key: g('cgTechKey').value.trim(),
+        label: g('cgTechLabel').value.trim(),
+        runtime: g('cgTechRuntime').value,
+        description: g('cgTechDesc').value.trim(),
+        frag_imports: g('cgTechImports').value,
+        frag_setup: g('cgTechSetup').value,
+        frag_read: g('cgTechRead').value,
+        frag_show: g('cgTechShow').value,
+        frag_teardown: g('cgTechTeardown').value,
+        is_active: g('cgTechActive').checked ? 1 : 0,
+    };
+    const msg = g('cgTechMsg');
+    msg.textContent = 'Validando e salvando…'; msg.className = 'text-xs ml-2 text-fg-muted';
+    try {
+        const url = id ? '/api/codegen/admin/techniques/' + id : '/api/codegen/admin/techniques';
+        const res = await fetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok || data.error) { msg.textContent = data.error || 'Erro ao salvar.'; msg.className = 'text-xs ml-2 text-red-400'; return; }
+        cgCancelTechnique(); loadCgTechniques();
+    } catch (e) { msg.textContent = 'Falha: ' + e.message; msg.className = 'text-xs ml-2 text-red-400'; }
+}
+
+async function cgDeleteTechnique(i) {
+    const t = cgTechniques[i];
+    if (!t || !confirm('Excluir a técnica "' + t.key + '"?')) return;
+    const res = await fetch('/api/codegen/admin/techniques/' + t.id, { method: 'DELETE' });
+    if (res.ok) loadCgTechniques(); else alert('Erro ao excluir.');
 }
 
 // ---- Init ---------------------------------------------------------------
