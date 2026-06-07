@@ -3356,3 +3356,43 @@ async def codegen_admin_patterns_delete(pid: int, user: dict = Depends(require_a
     if "error" in r:
         return JSONResponse(status_code=400, content={"error": r["error"]})
     return r
+
+
+# --- Copiloto de Dados (programação em linguagem natural) — chat + memória ---
+# O LLM PROPÕE; a execução de SQL continua via /codegen/run (autorizador). As
+# "actions" devolvidas (insert_sql/run_sql/python/save_snippet) são acionadas
+# pelo painel, reusando os endpoints já governados.
+@router.post("/codegen/assist")
+async def codegen_assist_endpoint(req: dict, user: dict = Depends(require_codegen)):
+    from app.services.codegen_assist import assist
+    message = (req.get("message") or "").strip()
+    if not message:
+        raise HTTPException(400, "Escreva uma mensagem para o copiloto.")
+    return await assist(user, message, req.get("history") or [], req.get("context") or {})
+
+
+@router.get("/codegen/chats")
+async def codegen_chats_list(user: dict = Depends(require_codegen)):
+    from app.services.codegen_assist import list_chats
+    return list_chats(user)
+
+
+@router.get("/codegen/chats/{cid}")
+async def codegen_chats_get(cid: int, user: dict = Depends(require_codegen)):
+    from app.services.codegen_assist import get_chat
+    c = get_chat(user, cid)
+    if not c:
+        raise HTTPException(404, "Conversa não encontrada.")
+    return c
+
+
+@router.post("/codegen/chats")
+async def codegen_chats_save(req: dict, user: dict = Depends(require_codegen)):
+    from app.services.codegen_assist import save_chat
+    return save_chat(user, req.get("id"), req.get("title") or "", req.get("messages") or [])
+
+
+@router.delete("/codegen/chats/{cid}")
+async def codegen_chats_delete(cid: int, user: dict = Depends(require_codegen)):
+    from app.services.codegen_assist import delete_chat
+    return delete_chat(user, cid)
