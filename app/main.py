@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core.config import settings
 from app.core.database import init_metadata_tables
-from app.core.security import validate_session, can_codegen
+from app.core.security import validate_session, can_codegen, is_admin
 from app.api.routes import router as api_router, COOKIE_NAME
 
 # Cache-buster for static JS/CSS — bumps every server restart so deployments
@@ -225,4 +225,5 @@ async def codegen_page(request: Request):
         "static_v": STATIC_VERSION,
         "user": user,
         "user_type_label": _role_labels.get(user.get("user_type"), user.get("user_type")),
+        "is_admin": is_admin(user),
     })

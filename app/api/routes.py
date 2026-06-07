@@ -3291,3 +3291,34 @@ async def codegen_techniques_inventory(user: dict = Depends(require_codegen)):
     """Inventário de técnicas e padrões disponíveis (para o seletor do editor)."""
     from app.services.codegen_pycodegen import list_inventory
     return list_inventory()
+
+
+# --- M2.1: CRUD de Técnicas (autoria só Root/Admin) ---
+@router.get("/codegen/admin/techniques")
+async def codegen_admin_techniques_list(user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import list_techniques_full
+    return list_techniques_full()
+
+
+@router.post("/codegen/admin/techniques")
+async def codegen_admin_techniques_create(req: dict, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import create_technique
+    r = create_technique(req, created_by=user.get("login", ""))
+    if "error" in r:
+        return JSONResponse(status_code=400, content={"error": r["error"]})
+    return r
+
+
+@router.put("/codegen/admin/techniques/{tid}")
+async def codegen_admin_techniques_update(tid: int, req: dict, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import update_technique
+    r = update_technique(tid, req)
+    if "error" in r:
+        return JSONResponse(status_code=400, content={"error": r["error"]})
+    return r
+
+
+@router.delete("/codegen/admin/techniques/{tid}")
+async def codegen_admin_techniques_delete(tid: int, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import delete_technique
+    return delete_technique(tid)
