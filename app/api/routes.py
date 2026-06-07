@@ -3264,14 +3264,61 @@ async def codegen_schema(user: dict = Depends(require_codegen)):
     return {"tables": out}
 
 
-# --- P3: Gerar código Python a partir do SQL ---
+# --- M2: Gerar código Python via motor Spec-Driven (técnica × padrão) ---
 @router.post("/codegen/pycode")
 async def codegen_pycode(req: dict, user: dict = Depends(require_codegen)):
-    from app.services.codegen_service import generate_pycode
+    from app.services.codegen_pycodegen import render_spec
     sql = (req.get("sql") or "").strip()
     if not sql:
         raise HTTPException(400, "Escreva uma consulta no editor antes de gerar o código.")
-    lib = (req.get("lib") or "pandas").lower()
-    if lib not in ("pandas", "sqlalchemy", "pyspark"):
-        lib = "pandas"
-    return {"code": generate_pycode(sql, lib), "filename": f"tdia_codegen_{lib}.py", "lib": lib}
+    technique = (req.get("technique") or req.get("lib") or "pandas").lower()
+    pattern = (req.get("pattern") or "script").lower()
+    result = render_spec(sql, technique, pattern, req.get("options") or {})
+    if "error" in result:
+        return JSONResponse(status_code=400, content={"error": result["error"]})
+    return {
+        "code": result["code"],
+        "filename": f"tdia_codegen_{result['technique']}_{result['pattern']}.py",
+        "lib": result["technique"],
+        "technique": result["technique"],
+        "pattern": result["pattern"],
+        "schema": result.get("schema", []),
+    }
+
+
+@router.get("/codegen/techniques")
+async def codegen_techniques_inventory(user: dict = Depends(require_codegen)):
+    """Inventário de técnicas e padrões disponíveis (para o seletor do editor)."""
+    from app.services.codegen_pycodegen import list_inventory
+    return list_inventory()
+
+
+# --- M2.1: CRUD de Técnicas (autoria só Root/Admin) ---
+@router.get("/codegen/admin/techniques")
+async def codegen_admin_techniques_list(user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import list_techniques_full
+    return list_techniques_full()
+
+
+@router.post("/codegen/admin/techniques")
+async def codegen_admin_techniques_create(req: dict, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import create_technique
+    r = create_technique(req, created_by=user.get("login", ""))
+    if "error" in r:
+        return JSONResponse(status_code=400, content={"error": r["error"]})
+    return r
+
+
+@router.put("/codegen/admin/techniques/{tid}")
+async def codegen_admin_techniques_update(tid: int, req: dict, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import update_technique
+    r = update_technique(tid, req)
+    if "error" in r:
+        return JSONResponse(status_code=400, content={"error": r["error"]})
+    return r
+
+
+@router.delete("/codegen/admin/techniques/{tid}")
+async def codegen_admin_techniques_delete(tid: int, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import delete_technique
+    return delete_technique(tid)

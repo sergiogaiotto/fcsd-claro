@@ -100,6 +100,7 @@ INTERNAL_TABLES = {
     "saved_questions","catalog_datasets", "catalog_columns", "catalog_relationships",
     "json_sources", "data_products", "shared_results", "reports",
     "codegen_tables", "codegen_snippets", "codegen_runs",
+    "codegen_techniques", "codegen_patterns",
 }
 
 
@@ -449,6 +450,39 @@ _DDL_STATEMENTS: list[str] = [
         row_count INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS codegen_techniques (
+        id BIGSERIAL PRIMARY KEY,
+        key TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL DEFAULT '',
+        runtime TEXT NOT NULL DEFAULT 'python',
+        description TEXT NOT NULL DEFAULT '',
+        frag_imports TEXT NOT NULL DEFAULT '',
+        frag_setup TEXT NOT NULL DEFAULT '',
+        frag_read TEXT NOT NULL DEFAULT '',
+        frag_show TEXT NOT NULL DEFAULT '',
+        frag_teardown TEXT NOT NULL DEFAULT '',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS codegen_patterns (
+        id BIGSERIAL PRIMARY KEY,
+        key TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        template TEXT NOT NULL DEFAULT '',
+        compatible TEXT NOT NULL DEFAULT '*',
+        params_schema TEXT NOT NULL DEFAULT '[]',
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
 ]

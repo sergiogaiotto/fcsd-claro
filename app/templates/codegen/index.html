@@ -26,6 +26,7 @@
         <button id="cg-subtab-ajuda"     class="cg-subtab" onclick="cgShowSection('ajuda')">Ajuda</button>
         <button id="cg-subtab-historico" class="cg-subtab" onclick="cgShowSection('historico')">Histórico</button>
         <button id="cg-subtab-python"    class="cg-subtab" onclick="cgShowSection('python')">Gerar Python</button>
+        {% if is_admin %}<button id="cg-subtab-techniques" class="cg-subtab" onclick="cgShowSection('techniques')">Técnicas ⚙</button>{% endif %}
     </nav>
 
     <!-- Editor SQL (Parte 1a) -->
@@ -52,6 +53,13 @@
     <section id="cg-section-python" class="cg-section hidden">
         {% include "codegen/_python.html" %}
     </section>
+
+    {% if is_admin %}
+    <!-- Técnicas (M2.1) — só Root/Admin -->
+    <section id="cg-section-techniques" class="cg-section hidden">
+        {% include "codegen/_techniques.html" %}
+    </section>
+    {% endif %}
 
 </div>
 {% endblock %}
