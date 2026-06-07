@@ -229,6 +229,8 @@
         html.light header { background-color:rgba(255,255,255,0.92)!important; border-color:#d0d7de!important; backdrop-filter:blur(8px); }
         html.light .bg-fg-900 { background-color:#f0f4f8!important; }
         html.light .bg-fg-800 { background-color:#ffffff!important; }
+        html.light .bg-fg-800\/40 { background-color:#ffffff!important; }
+        html.light .bg-fg-800\/50 { background-color:#ffffff!important; }
         html.light .bg-fg-700 { background-color:#f6f8fa!important; }
         html.light .bg-fg-700\/50 { background-color:rgba(246,248,250,.5)!important; }
         html.light .bg-fg-600 { background-color:#eaeef2!important; }
@@ -348,6 +350,12 @@
         /* Card do gráfico inline — fundo limpo por tema (evita tinta escura no claro) */
         .inline-chart-card { background:#0d1117; border:1px solid #30363d; }
         html.light .inline-chart-card { background:#ffffff; border:1px solid #e6e9ee; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+
+        /* Card do reporte inline (Consulta) */
+        .inline-report-card { background:#0d1117; border:1px solid #30363d; }
+        html.light .inline-report-card { background:#ffffff; border:1px solid #e6e9ee; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
+        .inline-report-body { max-height:520px; overflow:auto; }
+        .inline-report-body .report-preview { background:transparent; }
     </style>
 </head>
 <body class="bg-fg-900 text-fg-text min-h-screen">
@@ -2882,6 +2890,7 @@ async function sendQuery() {
         conversationContext = (conversationContext + '\n' + q + '\n' + (data.explanation || '')).slice(-2000);
         let html = '';
         let inlineChart = null;
+        let inlineReport = null;
         // Show auto-detected skills indicator
         if (data.auto_skill_ids && data.auto_skill_ids.length > 0 && !pendingSql) {
             html += `<div class="flex items-center gap-2 mb-2 text-[10px] text-purple-400 bg-purple-500/8 border border-purple-500/20 rounded-lg px-3 py-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span>Skills auto-detectadas: <strong>${data.auto_skill_ids.length}</strong> skill(s) ativada(s) via Skill Router</span></div>`;
@@ -2918,9 +2927,12 @@ async function sendQuery() {
             html += renderActions();
             inlineChart = _maybeBuildInlineChart(lastQuestion, data.data);
             if (inlineChart) html += inlineChart.cardHtml;
+            inlineReport = _maybeBuildInlineReport(lastQuestion, data.data);
+            if (inlineReport) html += inlineReport.cardHtml;
         }
         appendMessage('assistant', html, true);
         if (inlineChart) inlineChart.render();
+        if (inlineReport) inlineReport.render();
     } catch (e) { removeLoading(); appendMessage('error', 'Erro de conexão: ' + e.message); }
 }
 
@@ -3453,6 +3465,219 @@ async function pinInlineChartToCockpit() {
         if (!cres.ok) { const e = await cres.json().catch(() => ({})); alert(e.detail || 'Erro ao fixar (limite de 6 tiles?).'); return; }
         appendMessage('assistant', '<div class="text-xs text-indigo-400 flex items-center gap-1.5">📌 <strong>Fixado no Cockpit.</strong></div>', true);
     } catch(e) { alert('Erro: ' + e.message); }
+}
+
+// ============================
+// Reporte automático e inline (acionado quando a pergunta pede)
+// ============================
+let _inlineReportSeq = 0;
+let _inlineReportState = null;   // { data, def, question }
+
+function _detectReportIntent(question) {
+    const q = (question || '').toLowerCase();
+    const wants = /(relat[óo]rio|reporte|\breport\b)/.test(q);
+    if (!wants) return { wants: false };
+    let groupHint = null, subGroupHint = null;
+    const m = q.match(/\b(?:por|agrupad[oa]\s+por|quebr[ae]\s+por|agrupar\s+por)\s+([a-zà-ú0-9_ ]+?)(?:\s+e\s+([a-zà-ú0-9_ ]+?))?(?:\s*$|[,.;]|\s+(?:em|no|na|com|de|para|onde|que|ordenad|mostr))/);
+    if (m) {
+        groupHint = (m[1] || '').trim() || null;
+        subGroupHint = (m[2] || '').trim() || null;
+    }
+    return { wants: true, groupHint, subGroupHint };
+}
+
+async function _ensureCatalogForReport() {
+    if (_catalogData && _catalogData.tables) return _catalogData;
+    try {
+        const res = await fetch('/api/catalog');
+        const data = await res.json();
+        if (data && data.scanned) _catalogData = data;
+        return _catalogData;
+    } catch(e) { return null; }
+}
+
+function _catalogSemanticMap(catalog) {
+    const map = {};
+    (catalog?.tables || []).forEach(t => {
+        (t.columns || []).forEach(c => {
+            const k = (c.column_name || '').toLowerCase();
+            if (k && !map[k]) map[k] = { sem: (c.semantic_type || '').toLowerCase(), desc: c.description || '' };
+        });
+    });
+    return map;
+}
+
+function _inferReportAgg(colName, sem) {
+    const n = (colName || '').toLowerCase();
+    if (sem === 'monetário' || sem === 'monetario') return 'sum';
+    if (sem === 'percentual') return 'avg';
+    if (sem === 'identificador') return 'count';
+    if (/(vr_|valor|total|montante|receita|custo|saldo|pagament|r\$)/.test(n)) return 'sum';
+    if (/(taxa|pct|percent|%|m[ée]dia|m[ée]dio|indice|índice|ratio)/.test(n)) return 'avg';
+    if (/^(cd_|id_)|(_id$)|^id$/.test(n)) return 'count';
+    return 'sum';
+}
+
+function _reportFmtFor(colName, sem, isNum, isDate) {
+    const n = (colName || '').toLowerCase();
+    if (isDate) return 'date_br';
+    if (sem === 'monetário' || sem === 'monetario' || /(vr_|valor|r\$|custo|receita|saldo|pagament)/.test(n)) return 'currency_brl';
+    if (sem === 'percentual' || /(taxa|pct|percent|%)/.test(n)) return 'percent_2';
+    if (isNum) return 'number_2';
+    return '';
+}
+
+function _reportCtx(question, rowCount) {
+    return {
+        report: { name: question, description: '', row_count: rowCount },
+        user: {
+            login: currentUser ? currentUser.login : '',
+            display_name: currentUser ? (currentUser.display_name || currentUser.login) : '',
+        },
+        date: (new Date()).toLocaleDateString('pt-BR'),
+        datetime: (new Date()).toLocaleString('pt-BR'),
+    };
+}
+
+function _buildAutoReportDefinition(data, question, catMap, intent) {
+    const columns = data.columns || [];
+    const rows = data.rows || [];
+    const numCols = columns.filter(c => rows.slice(0, 8).every(r => r[c] === null || r[c] === '' || !isNaN(Number(r[c]))));
+    const catCols = columns.filter(c => !numCols.includes(c));
+    const dateRe = /data|per[íi]odo|\bm[êe]s\b|\bano\b|\bdia\b|\bdt\b|date/i;
+
+    const matchCol = (hint) => {
+        if (!hint) return null;
+        const h = hint.toLowerCase().trim();
+        return columns.find(c => c.toLowerCase() === h)
+            || columns.find(c => c.toLowerCase().includes(h) || h.includes(c.toLowerCase()))
+            || null;
+    };
+
+    let groupCol = matchCol(intent.groupHint) || catCols[0] || null;
+    let subCol   = matchCol(intent.subGroupHint) || (catCols.filter(c => c !== groupCol)[0] || null);
+    if (subCol === groupCol) subCol = null;
+
+    const detail_columns = columns.map(c => {
+        const info  = catMap[c.toLowerCase()] || {};
+        const isNum = numCols.includes(c);
+        const isDate = dateRe.test(c);
+        return {
+            key: c,
+            label: (info.desc && info.desc.length <= 40) ? info.desc : c,
+            fmt: _reportFmtFor(c, info.sem, isNum, isDate),
+            align: '',
+            color_rule: isNum ? 'negative_red' : '',
+        };
+    });
+
+    const aggCols = numCols.filter(c => c !== groupCol && c !== subCol);
+    const aggs = aggCols.map(c => {
+        const info = catMap[c.toLowerCase()] || {};
+        const fn = _inferReportAgg(c, info.sem);
+        const base = (info.desc && info.desc.length <= 30) ? info.desc : c;
+        const label = (fn === 'sum' ? 'Total ' : fn === 'avg' ? 'Média ' : 'Qtd ') + base;
+        return { column: c, fn, label };
+    });
+
+    return {
+        report_header: `# ${question}`,
+        report_footer: `{% raw %}_Gerado em {{datetime}} por {{user.display_name}} — {{report.row_count}} registro(s)._{% endraw %}`,
+        page_header: '', page_footer: '',
+        detail_columns,
+        show_detail: true,
+        group: groupCol ? { column: groupCol, sort: 'asc', header_template: '', footer_template: '', aggregations: aggs } : null,
+        sub_group: subCol ? { column: subCol, sort: 'asc', header_template: '', footer_template: '', aggregations: aggs } : null,
+        grand_aggregations: aggs,
+    };
+}
+
+function _maybeBuildInlineReport(question, data) {
+    const intent = _detectReportIntent(question);
+    if (!intent.wants) return null;
+    if (!data || !Array.isArray(data.rows) || !data.rows.length) return null;
+    const columns = data.columns || [];
+    const numCols = columns.filter(c => data.rows.slice(0, 8).every(r => r[c] === null || r[c] === '' || !isNaN(Number(r[c]))));
+    const catCols = columns.filter(c => !numCols.includes(c));
+    if (!catCols.length && !numCols.length) return null;
+    const id = 'inlineReport_' + (++_inlineReportSeq);
+    const cardHtml = _renderInlineReportCard(id);
+    const render = async () => {
+        const host = document.getElementById(id + '_body');
+        const catalog = await _ensureCatalogForReport();
+        const catMap = _catalogSemanticMap(catalog);
+        const def = _buildAutoReportDefinition(data, question, catMap, intent);
+        _inlineReportState = { data, def, question };
+        try {
+            const payload = _buildPreviewPayload(data.rows, def, _reportCtx(question, data.rows.length));
+            const dark = !document.getElementById('html-root').classList.contains('light');
+            if (host) host.innerHTML = renderReportPayload(payload, dark);
+        } catch(e) {
+            if (host) host.innerHTML = '<div class="text-xs text-red-400">Erro ao gerar reporte: ' + escapeHtml(e.message) + '</div>';
+        }
+    };
+    return { cardHtml, render };
+}
+
+function _renderInlineReportCard(id) {
+    return `
+    <div class="mt-3 rounded-xl p-3 inline-report-card" id="${id}_card">
+        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+            <span class="text-[10px] uppercase tracking-wider font-mono text-fg-muted">Reporte automático</span>
+            <div class="flex gap-1.5">
+                <button onclick="saveInlineReport()" class="text-[10px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-2 py-1 rounded hover:bg-indigo-500/20 transition">💾 Salvar como Reporte</button>
+                <button onclick="printInlineReport('${id}')" class="text-[10px] text-fg-blue bg-fg-blue/10 border border-fg-blue/25 px-2 py-1 rounded hover:bg-fg-blue/20 transition">🖨 Imprimir / PDF</button>
+                <button onclick="exportExcel()" class="text-[10px] text-fg-green bg-fg-green/10 border border-fg-green/25 px-2 py-1 rounded hover:bg-fg-green/20 transition">Exportar Excel</button>
+            </div>
+        </div>
+        <div id="${id}_body" class="inline-report-body"><div class="text-xs text-fg-muted py-2">Gerando reporte…</div></div>
+    </div>`;
+}
+
+async function saveInlineReport() {
+    if (!_inlineReportState) return;
+    const st = _inlineReportState;
+    const defaultName = (st.question || 'Reporte').slice(0, 80);
+    const name = prompt('Nome do reporte para salvar em Reportes:', defaultName);
+    if (name === null) return;
+    const finalName = (name || '').trim() || defaultName;
+    try {
+        const res = await fetch('/api/reports', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name: finalName,
+                description: '',
+                question: st.question,
+                sql_generated: lastSqlNoLimit || '',
+                datamart_ids: (typeof getSelectedDatamartIds === 'function' ? getSelectedDatamartIds() : []) || [],
+                diamond_layer_ids: (typeof getSelectedDiamondLayerIds === 'function' ? getSelectedDiamondLayerIds() : []) || [],
+                definition: st.def,
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error || data.detail) {
+            alert('Erro ao salvar reporte: ' + (data.error || data.detail || ('HTTP ' + res.status)));
+            return;
+        }
+        appendMessage('assistant', '<div class="text-xs text-indigo-400 flex items-center gap-1.5">💾 <strong>Reporte salvo</strong> — disponível na aba Reportes para refinar, publicar e agendar.</div>', true);
+    } catch(e) { alert('Erro: ' + e.message); }
+}
+
+function printInlineReport(id) {
+    if (!_inlineReportState) return;
+    const st = _inlineReportState;
+    let inner;
+    try {
+        const payload = _buildPreviewPayload(st.data.rows, st.def, _reportCtx(st.question, st.data.rows.length));
+        inner = renderReportPayload(payload, false);  // sempre claro para PDF
+    } catch(e) { inner = '<div>Erro: ' + escapeHtml(e.message) + '</div>'; }
+    const css = Array.from(document.querySelectorAll('style')).map(s => s.innerHTML).join('\n');
+    const w = window.open('', '_blank');
+    if (!w) { alert('Permita pop-ups para imprimir/gerar PDF.'); return; }
+    w.document.write(`<!DOCTYPE html><html lang="pt-BR" class="light"><head><meta charset="utf-8"><title>Reporte</title><style>${css}\nbody{background:#fff;padding:24px;}</style></head><body>${inner}</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { try { w.print(); } catch(e) {} }, 300);
 }
 
 function appendMessage(role, content, isHtml = false) {
@@ -4758,7 +4983,7 @@ async function openReportViewer(id) {
         const editBtn = document.getElementById('btnEditReport');
         if (editBtn) editBtn.classList.toggle('hidden', !(payload.report && payload.report.owner_id === myId));
         document.getElementById('reportsViewerStatus').textContent = `${payload.row_count} registro(s) · executado em ${(new Date()).toLocaleString('pt-BR')}`;
-        document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, true);
+        document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, !document.getElementById('html-root').classList.contains('light'));
         // Fetch raw rows so we can apply client-side filters (multiselect on group/sub_group + free-text)
         await _viewerFetchRawRows(payload);
     } catch(e) {
@@ -4899,7 +5124,7 @@ async function _applyViewerFilters() {
         datetime: (new Date()).toLocaleString('pt-BR'),
     };
     const payload = _buildPreviewPayload(rows, def, ctx);
-    document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, true);
+    document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, !document.getElementById('html-root').classList.contains('light'));
     document.getElementById('reportsViewerStatus').textContent = `${rows.length} de ${_viewerRows.length} registro(s) · filtro local`;
     _renderViewerFilters();
 }
@@ -8928,18 +9153,52 @@ async function loadVisionsTab() {
                 <td class="px-4 py-2.5 text-fg-muted text-xs font-mono">${escapeHtml(userName)}</td>
                 <td class="px-4 py-2.5 text-fg-muted text-xs font-mono">${createdAt}</td>
                 <td class="px-4 py-2.5 text-center">
-                    <button onclick="deleteVisionFromTab(${v.id}, '${escapeHtml(question).replace(/'/g, "\\'").slice(0, 60)}')"
-                        class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                        title="Excluir">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
-                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
-                    </button>
+                    <div class="flex items-center justify-center gap-2">
+                        <button onclick="toggleVisionMetaEditor(${v.id})"
+                            class="text-fg-muted hover:text-indigo-400 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Editar rótulo e pergunta">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                        </button>
+                        <button onclick="deleteVisionFromTab(${v.id}, '${escapeHtml(question).replace(/'/g, "\\'").slice(0, 60)}')"
+                            class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Excluir">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14"
+                                viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    </div>
                 </td>
             </tr>
- 
+
+            <!-- Row do editor de rótulo + pergunta (oculta) -->
+            <tr id="vision-meta-editor-${v.id}" class="hidden bg-fg-900/60">
+                <td colspan="6" class="px-4 py-3">
+                    <div class="rounded-lg border border-indigo-500/30 bg-fg-900 p-3">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-[10px] text-indigo-400 uppercase tracking-wider font-mono font-bold">Editar Visão</span>
+                            <button onclick="toggleVisionMetaEditor(${v.id})" class="text-fg-muted hover:text-red-400 transition text-sm leading-none p-1">✕</button>
+                        </div>
+                        <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Rótulo</label>
+                        <input id="vision-meta-label-${v.id}" type="text" value="${escapeHtml(label)}" placeholder="Rótulo (opcional)"
+                            class="w-full bg-fg-800 border border-fg-border rounded px-3 py-2 text-xs text-fg-text focus:border-indigo-400 focus:outline-none mb-3" />
+                        <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Pergunta</label>
+                        <textarea id="vision-meta-question-${v.id}" rows="3"
+                            class="w-full bg-fg-800 border border-fg-border rounded px-3 py-2 text-xs text-fg-text focus:border-indigo-400 focus:outline-none resize-y leading-relaxed">${escapeHtml(question)}</textarea>
+                        <div class="flex items-center gap-2 mt-2">
+                            <button onclick="saveVisionMeta(${v.id})" class="text-[10px] text-white bg-indigo-500 hover:bg-indigo-600 px-3 py-1 rounded transition font-semibold">Salvar</button>
+                            <button onclick="toggleVisionMetaEditor(${v.id})" class="text-[10px] text-fg-muted hover:text-fg-text border border-fg-border px-3 py-1 rounded transition">Cancelar</button>
+                            <span id="vision-meta-status-${v.id}" class="text-[10px] text-fg-muted"></span>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+
             <!-- Row do editor SQL (oculta por padrão) -->
             <tr id="vision-sql-editor-${v.id}" class="hidden bg-fg-900/60">
                 <td colspan="6" class="px-4 py-3">
@@ -9019,8 +9278,54 @@ async function loadVisionsTab() {
     }
 }
  
+// ── Editor de rótulo + pergunta da visão ──────────────────────────────────
+
+function toggleVisionMetaEditor(visionId) {
+    const row = document.getElementById(`vision-meta-editor-${visionId}`);
+    if (!row) return;
+    const willShow = row.classList.contains('hidden');
+    row.classList.toggle('hidden');
+    if (willShow) {
+        // Fecha o editor de SQL se estiver aberto (um por vez)
+        const sqlRow = document.getElementById(`vision-sql-editor-${visionId}`);
+        if (sqlRow) sqlRow.classList.add('hidden');
+        const st = document.getElementById(`vision-meta-status-${visionId}`);
+        if (st) st.textContent = '';
+        const el = document.getElementById(`vision-meta-label-${visionId}`);
+        if (el) el.focus();
+    }
+}
+
+async function saveVisionMeta(visionId) {
+    const labelEl = document.getElementById(`vision-meta-label-${visionId}`);
+    const qEl     = document.getElementById(`vision-meta-question-${visionId}`);
+    const status  = document.getElementById(`vision-meta-status-${visionId}`);
+    if (!labelEl || !qEl) return;
+    const label    = labelEl.value.trim();
+    const question = qEl.value.trim();
+    if (!question) {
+        if (status) { status.style.color = '#f0883e'; status.textContent = 'A pergunta não pode ser vazia.'; }
+        return;
+    }
+    if (status) { status.style.color = '#8b949e'; status.textContent = 'Salvando…'; }
+    try {
+        const res = await fetch(`/api/visions/${visionId}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label, question }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.error || data.detail) {
+            if (status) { status.style.color = '#ff6347'; status.textContent = 'Erro: ' + (data.error || data.detail || `HTTP ${res.status}`); }
+            return;
+        }
+        loadVisionsTab();  // recarrega com os novos valores
+    } catch(e) {
+        if (status) { status.style.color = '#ff6347'; status.textContent = 'Erro: ' + e.message; }
+    }
+}
+
 // ── Toggle editor inline ──────────────────────────────────────────────────
- 
+
 function toggleSqlEditor(visionId) {
     const row = document.getElementById(`vision-sql-editor-${visionId}`);
     if (!row) return;

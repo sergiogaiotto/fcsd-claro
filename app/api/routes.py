@@ -53,7 +53,7 @@ from app.core.database import (
     import_saved_questions,
     INTERNAL_TABLES,
     get_visions, get_all_visions_with_user, get_visions_with_user,
-    create_vision, delete_vision, update_vision_label,
+    create_vision, delete_vision, update_vision_label, update_vision_meta,
     import_visions as import_visions_db,
     set_favorite_question, unset_favorite_question, get_favorite_question,
 )
@@ -2095,7 +2095,9 @@ async def save_vision(req: VisionCreate, user: dict = Depends(get_current_user))
 
 @router.put("/visions/{vision_id}")
 async def update_vision(vision_id: int, req: VisionUpdate, user: dict = Depends(get_current_user)):
-    update_vision_label(vision_id, user["id"], req.label)
+    uid = 0 if is_admin(user) else user["id"]
+    question = req.question.strip() if isinstance(req.question, str) else None
+    update_vision_meta(vision_id, uid, req.label, question)
     return {"success": True}
 
 
