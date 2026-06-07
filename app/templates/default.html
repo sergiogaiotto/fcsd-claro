@@ -68,7 +68,9 @@
         #skillPickerPopup .sp-item { transition: background 0.1s; }
 
         /* ── Reportes (banded layout) ─────────────────────────── */
-        .report-preview { color: #1f2328; font-family: 'Inter','Space Grotesk',sans-serif; }
+        /* O "papel" do relatório é SEMPRE branco com texto escuro (folha
+           impressa), independente do tema claro/escuro. */
+        .report-preview { background: #ffffff !important; color: #1f2328 !important; font-family: 'Inter','Space Grotesk',sans-serif; padding: 22px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.10); }
         .report-preview h1 { font-size: 18px; font-weight: 700; margin: 0 0 4px; color: #0a0a0a; }
         .report-preview h2 { font-size: 15px; font-weight: 600; margin: 12px 0 4px; color: #0a0a0a; }
         .report-preview h3 { font-size: 13px; font-weight: 600; margin: 10px 0 4px; color: #0a0a0a; }
@@ -355,7 +357,6 @@
         .inline-report-card { background:#0d1117; border:1px solid #30363d; }
         html.light .inline-report-card { background:#ffffff; border:1px solid #e6e9ee; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
         .inline-report-body { max-height:520px; overflow:auto; }
-        .inline-report-body .report-preview { background:transparent; }
     </style>
 </head>
 <body class="bg-fg-900 text-fg-text min-h-screen">
@@ -3610,8 +3611,7 @@ function _maybeBuildInlineReport(question, data) {
         _inlineReportState = { data, def, question };
         try {
             const payload = _buildPreviewPayload(data.rows, def, _reportCtx(question, data.rows.length));
-            const dark = !document.getElementById('html-root').classList.contains('light');
-            if (host) host.innerHTML = renderReportPayload(payload, dark);
+            if (host) host.innerHTML = renderReportPayload(payload, false);  // papel sempre branco
         } catch(e) {
             if (host) host.innerHTML = '<div class="text-xs text-red-400">Erro ao gerar reporte: ' + escapeHtml(e.message) + '</div>';
         }
@@ -4983,7 +4983,7 @@ async function openReportViewer(id) {
         const editBtn = document.getElementById('btnEditReport');
         if (editBtn) editBtn.classList.toggle('hidden', !(payload.report && payload.report.owner_id === myId));
         document.getElementById('reportsViewerStatus').textContent = `${payload.row_count} registro(s) · executado em ${(new Date()).toLocaleString('pt-BR')}`;
-        document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, !document.getElementById('html-root').classList.contains('light'));
+        document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, false);
         // Fetch raw rows so we can apply client-side filters (multiselect on group/sub_group + free-text)
         await _viewerFetchRawRows(payload);
     } catch(e) {
@@ -5124,7 +5124,7 @@ async function _applyViewerFilters() {
         datetime: (new Date()).toLocaleString('pt-BR'),
     };
     const payload = _buildPreviewPayload(rows, def, ctx);
-    document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, !document.getElementById('html-root').classList.contains('light'));
+    document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, false);
     document.getElementById('reportsViewerStatus').textContent = `${rows.length} de ${_viewerRows.length} registro(s) · filtro local`;
     _renderViewerFilters();
 }
