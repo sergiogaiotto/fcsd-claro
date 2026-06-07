@@ -336,6 +336,14 @@
         html.dark .catalog-col-edit-row .text-fg-muted { color: #8b949e !important; }
         html.dark .catalog-col-edit-row .text-fg-text { color: #c9d1d9 !important; }
         html.dark .catalog-col-edit-row .border-fg-border { border-color: #30363d !important; }
+
+        /* Chips de tipo do gráfico inline (Consulta) */
+        .inline-chip { color:#8b949e; border:1px solid #30363d; background:transparent; cursor:pointer; }
+        .inline-chip:hover { color:#c9d1d9; border-color:#484f58; }
+        .inline-chip-active { color:#fff !important; background:#ff6347 !important; border-color:#ff6347 !important; }
+        html.light .inline-chip { color:#57606a; border-color:#d0d7de; }
+        html.light .inline-chip:hover { color:#1f2328; border-color:#b8000b; }
+        html.light .inline-chip-active { color:#fff !important; background:#e30613 !important; border-color:#e30613 !important; }
     </style>
 </head>
 <body class="bg-fg-900 text-fg-text min-h-screen">
@@ -2869,6 +2877,7 @@ async function sendQuery() {
         // Legacy blob — kept only for the /api/email export path.
         conversationContext = (conversationContext + '\n' + q + '\n' + (data.explanation || '')).slice(-2000);
         let html = '';
+        let inlineChart = null;
         // Show auto-detected skills indicator
         if (data.auto_skill_ids && data.auto_skill_ids.length > 0 && !pendingSql) {
             html += `<div class="flex items-center gap-2 mb-2 text-[10px] text-purple-400 bg-purple-500/8 border border-purple-500/20 rounded-lg px-3 py-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg><span>Skills auto-detectadas: <strong>${data.auto_skill_ids.length}</strong> skill(s) ativada(s) via Skill Router</span></div>`;
@@ -2903,8 +2912,11 @@ async function sendQuery() {
         } else if (data.data && data.data.rows && data.data.rows.length > 0) {
             html += renderTable(data.data);
             html += renderActions();
+            inlineChart = _maybeBuildInlineChart(lastQuestion, data.data);
+            if (inlineChart) html += inlineChart.cardHtml;
         }
         appendMessage('assistant', html, true);
+        if (inlineChart) inlineChart.render();
     } catch (e) { removeLoading(); appendMessage('error', 'Erro de conexão: ' + e.message); }
 }
 
@@ -3234,6 +3246,195 @@ async function openTypedChart(type) {
     });
     appendMessage('assistant',
         '<div class="flex items-center gap-2 text-sm"><span class="text-[#39d353]">&#x2713;</span> Gráfico — <strong>' + data.rows.length.toLocaleString('pt-BR') + '</strong> registros (sem limite).</div>', true);}
+
+// ============================
+// Gráfico automático e inline (acionado quando a pergunta pede)
+// ============================
+let _inlineChartSeq = 0;
+let _inlineChartState = null;          // { canvasId, data, type, x, y, agg }
+const _inlineCharts = {};              // id -> Chart instance
+
+function _detectChartIntent(question) {
+    const q = (question || '').toLowerCase();
+    const wants = /(gr[áa]fico|gr[áa]fica|\bchart\b|\bplot|plote|visualiz)/.test(q);
+    if (!wants) return { wants: false };
+    let type = 'auto';
+    if (/barra/.test(q)) type = 'bar';
+    else if (/linha|evolu[çc][ãa]o|tend[êe]ncia|ao longo do tempo|s[ée]rie temporal/.test(q)) type = 'line';
+    else if (/\b[áa]rea\b/.test(q)) type = 'area';
+    else if (/pizza|torta/.test(q)) type = 'pie';
+    else if (/rosca|donut|doughnut/.test(q)) type = 'doughnut';
+    else if (/dispers[ãa]o|scatter|correla[çc]/.test(q)) type = 'scatter';
+    else if (/\bradar\b/.test(q)) type = 'radar';
+    else if (/\bpolar\b/.test(q)) type = 'polarArea';
+    let agg = null;
+    if (/\b(total|soma|somat[óo]rio)\b/.test(q)) agg = 'sum';
+    else if (/\b(m[ée]dia|m[ée]dio)\b/.test(q)) agg = 'mean';
+    else if (/\b(quantidade|contagem|quantos|n[úu]mero de)\b/.test(q)) agg = 'count';
+    return { wants: true, type, agg };
+}
+
+function _inferChartType(data, columns, numCols, catCols) {
+    const hasDate = columns.some(c => /data|per[íi]odo|\bm[êe]s\b|\bano\b|\bdia\b|\bdt\b|date/i.test(c));
+    if (hasDate && numCols.length) return 'line';
+    if (!catCols.length && numCols.length >= 2) return 'scatter';
+    if (catCols.length && numCols.length) {
+        const distinct = new Set((data.rows || []).map(r => String(r[catCols[0]] ?? ''))).size;
+        return distinct <= 6 ? 'doughnut' : 'bar';
+    }
+    return 'bar';
+}
+
+function _maybeBuildInlineChart(question, data) {
+    const intent = _detectChartIntent(question);
+    if (!intent.wants) return null;
+    if (!data || !Array.isArray(data.rows) || !data.rows.length) return null;
+    const columns = data.columns || [];
+    const numCols = columns.filter(c => data.rows.slice(0, 5).every(r => r[c] === null || r[c] === '' || !isNaN(Number(r[c]))));
+    if (!numCols.length) return null;  // nada numérico para plotar
+    const catCols = columns.filter(c => !numCols.includes(c));
+    const type = intent.type === 'auto' ? _inferChartType(data, columns, numCols, catCols) : intent.type;
+    const x = catCols[0] || columns[0];
+    const y = numCols[0] || columns[columns.length - 1];
+    const agg = intent.agg || (catCols.length ? 'sum' : 'none');
+    const id = 'inlineChart_' + (++_inlineChartSeq);
+    const cardHtml = _renderInlineChartCard(id, type);
+    const render = () => {
+        _inlineChartState = { canvasId: id, data, type, x, y, agg };
+        _renderInlineChart(id, data, type, x, y, agg);
+    };
+    return { cardHtml, render };
+}
+
+function _renderInlineChartCard(id, activeType) {
+    const chips = CHART_TYPES.map(ct => `
+        <button onclick="switchInlineChartType('${id}','${ct.type}')" data-chip="${ct.type}"
+            class="inline-chip text-[10px] px-2 py-1 rounded transition ${ct.type === activeType ? 'inline-chip-active' : ''}"
+            title="${ct.label}">${ct.icon} ${ct.label}</button>`).join('');
+    return `
+    <div class="mt-3 border border-fg-border rounded-xl p-3 bg-fg-700/30" id="${id}_card">
+        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+            <span class="text-[10px] uppercase tracking-wider font-mono text-fg-muted">Gráfico automático</span>
+            <div class="flex gap-1.5">
+                <button onclick="pinInlineChartToCockpit()" class="text-[10px] text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-2 py-1 rounded hover:bg-indigo-500/20 transition">📌 Fixar no Cockpit</button>
+                <button onclick="openInlineChartFull()" class="text-[10px] text-fg-accent bg-fg-accent/10 border border-fg-accent/25 px-2 py-1 rounded hover:bg-fg-accent/20 transition">Abrir completo ↗</button>
+            </div>
+        </div>
+        <div style="height:300px;position:relative;"><canvas id="${id}"></canvas></div>
+        <div id="${id}_insight" class="text-xs text-fg-text mt-2 leading-relaxed"></div>
+        <div class="flex flex-wrap gap-1 mt-2">${chips}</div>
+    </div>`;
+}
+
+function _renderInlineChart(id, data, type, x, y, agg) {
+    const canvas = document.getElementById(id);
+    if (!canvas || typeof Chart === 'undefined') return;
+    const rows = data.rows || [];
+    const { labels, values } = _aggregateForChart(rows, x, y, agg);
+    if (_inlineCharts[id]) { try { _inlineCharts[id].destroy(); } catch(e) {} }
+
+    const light  = document.getElementById('html-root').classList.contains('light');
+    const grid   = light ? '#e1e8f0' : '#21262d';
+    const txt    = light ? '#57606a' : '#8b949e';
+    const accent = light ? '#e30613' : '#ff6347';
+    const accentBg = light ? 'rgba(227,6,19,.28)' : 'rgba(255,99,71,.35)';
+    const pal = light
+        ? ['rgba(227,6,19,.75)','rgba(9,105,218,.75)','rgba(26,127,55,.75)','rgba(240,136,62,.75)','rgba(163,113,247,.75)','rgba(63,185,80,.75)','rgba(210,168,255,.75)','rgba(121,192,255,.75)']
+        : PAL_COCKPIT;
+
+    const typeMap = { area: 'line', scatter: 'scatter' };
+    const chartType = typeMap[type] || type;
+    const circ = ['pie', 'doughnut', 'polarArea'].includes(type);
+    const fill = type === 'area';
+
+    const dataset = circ ? {
+        label: y, data: values,
+        backgroundColor: labels.map((_, i) => pal[i % pal.length]),
+        borderColor: light ? '#ffffff' : '#0d1117', borderWidth: 2,
+    } : {
+        label: y + (agg && agg !== 'none' ? ` (${agg})` : ''),
+        data: type === 'scatter' ? labels.map((l, i) => ({ x: Number(l) || i, y: values[i] })) : values,
+        backgroundColor: accentBg, borderColor: accent, borderWidth: 2, fill, tension: 0.3,
+        borderRadius: type === 'bar' ? 4 : 0, pointRadius: type === 'scatter' ? 4 : 2,
+    };
+
+    const scales = {};
+    if (!circ && type !== 'radar') {
+        scales.x = { ticks: { maxRotation: 45, font: { size: 10 }, color: txt }, grid: { color: grid } };
+        scales.y = { beginAtZero: true, ticks: { font: { size: 10 }, color: txt }, grid: { color: grid } };
+    }
+
+    _inlineCharts[id] = new Chart(canvas, {
+        type: chartType,
+        data: { labels, datasets: [dataset] },
+        options: {
+            responsive: true, maintainAspectRatio: false, animation: { duration: 400 },
+            plugins: {
+                legend: { display: circ, labels: { color: txt, font: { size: 10 }, boxWidth: 12 } },
+                tooltip: {
+                    backgroundColor: light ? '#ffffff' : '#161b22', titleColor: accent,
+                    bodyColor: light ? '#1f2328' : '#c9d1d9', borderColor: grid, borderWidth: 1,
+                    padding: 8, cornerRadius: 6,
+                },
+            },
+            scales,
+        },
+    });
+
+    const ins = document.getElementById(id + '_insight');
+    if (ins) ins.innerHTML = _inlineChartInsight(labels, values);
+}
+
+function _inlineChartInsight(labels, values) {
+    if (!values || !values.length) return '';
+    const fmt = (n) => Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    let maxI = 0, minI = 0;
+    values.forEach((v, i) => { if (v > values[maxI]) maxI = i; if (v < values[minI]) minI = i; });
+    let trend = '';
+    if (values.length >= 2 && values[0] !== 0) {
+        const pct = ((values[values.length - 1] - values[0]) / Math.abs(values[0])) * 100;
+        trend = ` Variação ${escapeHtml(String(labels[0]))}→${escapeHtml(String(labels[labels.length - 1]))}: <strong>${pct >= 0 ? '+' : ''}${fmt(pct)}%</strong>.`;
+    }
+    return `<span class="text-fg-muted">⟶</span> Maior: <strong>${escapeHtml(String(labels[maxI]))}</strong> (${fmt(values[maxI])}); menor: <strong>${escapeHtml(String(labels[minI]))}</strong> (${fmt(values[minI])}).${trend}`;
+}
+
+function switchInlineChartType(id, type) {
+    if (!_inlineChartState || _inlineChartState.canvasId !== id) return;
+    _inlineChartState.type = type;
+    _renderInlineChart(id, _inlineChartState.data, type, _inlineChartState.x, _inlineChartState.y, _inlineChartState.agg);
+    document.querySelectorAll(`#${id}_card .inline-chip`).forEach(b => {
+        b.classList.toggle('inline-chip-active', b.dataset.chip === type);
+    });
+}
+
+function openInlineChartFull() {
+    if (!_inlineChartState) return;
+    openTypedChart(_inlineChartState.type || 'auto');
+}
+
+async function pinInlineChartToCockpit() {
+    if (!_inlineChartState || !lastQuestion) { alert('Nada para fixar.'); return; }
+    const st = _inlineChartState;
+    try {
+        const vres = await fetch('/api/visions', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: lastQuestion, label: '', sql_generated: lastSqlGenerated || '' }),
+        });
+        const vdata = await vres.json().catch(() => ({}));
+        if (!vres.ok || !vdata.id) { alert('Erro ao criar visão: ' + (vdata.detail || 'desconhecido')); return; }
+        const cres = await fetch('/api/cockpit', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                vision_id: vdata.id,
+                chart_type: st.type === 'auto' ? 'bar' : st.type,
+                x_field: st.x, y_field: st.y,
+                agg: st.agg === 'none' ? 'none' : (st.agg || 'sum'),
+            }),
+        });
+        if (!cres.ok) { const e = await cres.json().catch(() => ({})); alert(e.detail || 'Erro ao fixar (limite de 6 tiles?).'); return; }
+        appendMessage('assistant', '<div class="text-xs text-indigo-400 flex items-center gap-1.5">📌 <strong>Fixado no Cockpit.</strong></div>', true);
+    } catch(e) { alert('Erro: ' + e.message); }
+}
 
 function appendMessage(role, content, isHtml = false) {
     const chat = document.getElementById('chatArea');
