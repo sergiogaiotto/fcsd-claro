@@ -263,6 +263,27 @@ def build_agent():
         accessible = state.get("accessible_tables")
         schema_text = get_table_schema_text(accessible)
 
+        # Catalog enrichment: inject business context (descriptions, semantic
+        # types, PII flags, suggested joins/KPIs) for the tables that have a
+        # catalog entry. Tables without one fall back to the raw schema above.
+        # Empty string → no cataloged table → prompt identical to legacy. Flag
+        # CATALOG_ENRICH_AGENT can disable it without a code deploy.
+        catalog_context = ""
+        if getattr(settings, "catalog_enrich_agent", True):
+            try:
+                from app.services.catalog_service import build_catalog_context_text
+                catalog_context = build_catalog_context_text(accessible)
+            except Exception:
+                catalog_context = ""
+        catalog_section = (
+            "## Catálogo de Dados — Contexto de Negócio\n"
+            "Use as descrições, tipos semânticos e joins sugeridos abaixo como "
+            "fonte de verdade sobre o significado das tabelas e colunas — "
+            "prefira-os a inferir pelo nome. Tabelas não listadas aqui seguem "
+            "apenas o schema estrutural acima.\n"
+            f"{catalog_context}\n"
+        ) if catalog_context else ""
+
         # Progressive Disclosure: Level 1 (all skills metadata) + Level 2 (selected only)
         skills_level1 = _get_skills_level1_context()
         custom_skills = _get_custom_skills_context(state.get("skill_ids"))
@@ -334,6 +355,7 @@ def build_agent():
 ## Current Database Schema
 {schema_text}
 
+{catalog_section}
 ## Guardrails de Entrada
 {config['guardrails_input']}
 

@@ -63,6 +63,11 @@ services:
       LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
       LLM_MAX_RETRIES: ${LLM_MAX_RETRIES:-1}
 
+      # Enriquece o prompt NL→SQL com o contexto de negócio do Catálogo de Dados
+      # (descrições, tipos semânticos, PII, joins/KPIs) para tabelas catalogadas.
+      # Tabelas sem catálogo seguem o schema estrutural. false = comportamento legado.
+      CATALOG_ENRICH_AGENT: ${CATALOG_ENRICH_AGENT:-true}
+
       # ---- Azure OpenAI ------------------------------------------------------
       AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
       AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-https://openaicopilotoatendimento.openai.azure.com}

@@ -76,6 +76,7 @@ from app.services.viz_service import (
 from app.services.analytics_service import generate_analytics_html, run_prediction, run_causal_analysis
 from app.services.catalog_service import (
     run_catalog_scan, get_catalog_summary, enrich_table_with_llm, search_catalog,
+    tables_in_sql, build_cockpit_catalog_context,
 )
 from app.core.database import (
     get_cockpit_tiles, add_cockpit_tile, update_cockpit_tile,
@@ -1751,6 +1752,112 @@ async def catalog_update_domain(table_name: str, data: dict, user: dict = Depend
         conn.close()
 
 
+@router.put("/catalog/{table_name}/description")
+async def catalog_update_description(table_name: str, data: dict, user: dict = Depends(require_admin)):
+    description = (data.get("description") or "").strip()
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute("SELECT 1 FROM catalog_datasets WHERE table_name=?", (table_name,))
+        if not cur.fetchone():
+            raise HTTPException(404, "Tabela nao esta no catalogo.")
+        conn.execute(
+            "UPDATE catalog_datasets SET description=?, updated_at=CURRENT_TIMESTAMP WHERE table_name=?",
+            (description, table_name),
+        )
+        conn.commit()
+        return {"success": True, "description": description}
+    finally:
+        conn.close()
+
+
+@router.put("/catalog/{table_name}/columns/{column_name}")
+async def catalog_update_column(
+    table_name: str, column_name: str, data: dict,
+    user: dict = Depends(require_admin),
+):
+    """Edita description, technical_type, semantic_type e pii_data de uma coluna.
+
+    Apenas campos presentes no payload sao atualizados. pii_data e mesclado
+    com o JSON existente (nao substitui campos ausentes).
+    """
+    import json as _json
+    desc = data.get("description")
+    tech = data.get("technical_type")
+    sem = data.get("semantic_type")
+    pii_patch = data.get("pii_data")
+
+    conn = get_sync_connection()
+    try:
+        row = conn.execute(
+            "SELECT pii_data FROM catalog_columns WHERE table_name=? AND column_name=?",
+            (table_name, column_name),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Coluna nao encontrada no catalogo.")
+
+        sets = []
+        params: list = []
+        if desc is not None:
+            sets.append("description=?"); params.append(str(desc))
+        if tech is not None:
+            sets.append("technical_type=?"); params.append(str(tech))
+        if sem is not None:
+            sets.append("semantic_type=?"); params.append(str(sem))
+        if isinstance(pii_patch, dict):
+            try:
+                current = _json.loads(dict(row).get("pii_data") or "{}")
+            except (ValueError, TypeError):
+                current = {}
+            current.update(pii_patch)
+            sets.append("pii_data=?"); params.append(_json.dumps(current, ensure_ascii=False))
+
+        if not sets:
+            return {"success": True, "updated": []}
+
+        params.extend([table_name, column_name])
+        conn.execute(
+            f"UPDATE catalog_columns SET {', '.join(sets)} WHERE table_name=? AND column_name=?",
+            tuple(params),
+        )
+        conn.commit()
+        return {"success": True, "updated": [s.split("=")[0] for s in sets]}
+    finally:
+        conn.close()
+
+
+@router.put("/catalog/{table_name}/joins")
+async def catalog_update_joins(table_name: str, data: dict, user: dict = Depends(require_admin)):
+    """Substitui a lista de joins sugeridos (campo extras.suggested_joins)."""
+    import json as _json
+    joins = data.get("joins")
+    if not isinstance(joins, list):
+        raise HTTPException(400, "Payload deve conter 'joins' como lista de strings.")
+    joins = [str(j).strip() for j in joins if str(j).strip()]
+
+    conn = get_sync_connection()
+    try:
+        row = conn.execute(
+            "SELECT extras FROM catalog_datasets WHERE table_name=?", (table_name,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "Tabela nao esta no catalogo.")
+        try:
+            extras = _json.loads(dict(row).get("extras") or "{}")
+        except (ValueError, TypeError):
+            extras = {}
+        if not isinstance(extras, dict):
+            extras = {}
+        extras["suggested_joins"] = joins
+        conn.execute(
+            "UPDATE catalog_datasets SET extras=?, updated_at=CURRENT_TIMESTAMP WHERE table_name=?",
+            (_json.dumps(extras, ensure_ascii=False), table_name),
+        )
+        conn.commit()
+        return {"success": True, "joins": joins}
+    finally:
+        conn.close()
+
+
 # --- External API (with API Key auth) ---
 
 @router.post("/v1/query")
@@ -1771,7 +1878,7 @@ async def external_query(req: ApiQueryRequest, x_api_key: str = Header(...)):
 async def list_gallery():
     conn = get_sync_connection()
     try:
-        cursor = conn.execute("SELECT id, title, description, share_token, created_at FROM analysis_gallery ORDER BY created_at DESC")
+        cursor = conn.execute("SELECT id, title, description, share_token, category, created_at FROM analysis_gallery ORDER BY created_at DESC")
         return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
@@ -1782,10 +1889,11 @@ async def save_to_gallery(req: GallerySaveRequest, user: dict = Depends(get_curr
     token = uuid.uuid4().hex[:12]
     conn = get_sync_connection()
     try:
+        category = (req.category or "analysis").strip() or "analysis"
         conn.execute(
-            "INSERT INTO analysis_gallery (title, description, query_data, chart_config, page_html, share_token) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO analysis_gallery (title, description, query_data, chart_config, page_html, share_token, category) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (req.title, req.description, json.dumps(req.query_data),
-             json.dumps(req.local_storage) if req.local_storage else "", req.page_html, token),
+             json.dumps(req.local_storage) if req.local_storage else "", req.page_html, token, category),
         )
         conn.commit()
         return {"success": True, "share_token": token}
@@ -2121,6 +2229,7 @@ async def cockpit_insights(data: dict, user: dict = Depends(get_current_user)):
     """Generate AI insights for cockpit tiles: individual + combined + recommendations."""
     import json as _json
     import pandas as _pd
+    import numpy as _np
     # from langchain_openai import ChatOpenAI as _ChatOpenAI
     from app.services.llm_factory import make_chat_llm
 
@@ -2137,25 +2246,38 @@ async def cockpit_insights(data: dict, user: dict = Depends(get_current_user)):
         ct      = t.get("chart_type", "bar")
         xf      = t.get("x_field", "")
         yf      = t.get("y_field", "")
+        sql     = t.get("sql", "") or ""
         if not rows:
             continue
 
-        # Numeric summary
+        # Numeric summary (com dispersão + outliers de Tukey)
         num_stats = {}
         for col in columns:
             try:
                 vals = [float(r[col]) for r in rows if r[col] not in (None, "")]
-                if vals:
-                    total = sum(vals)
-                    mean  = total / len(vals)
-                    num_stats[col] = {
-                        "total": round(total, 4),
-                        "mean":  round(mean, 4),
-                        "min":   round(min(vals), 4),
-                        "max":   round(max(vals), 4),
-                    }
             except (ValueError, TypeError):
-                pass
+                continue
+            if not vals:
+                continue
+            arr = _np.array(vals, dtype=float)
+            total = float(arr.sum())
+            mean  = float(arr.mean())
+            std   = float(arr.std(ddof=1)) if len(arr) > 1 else 0.0
+            cv    = round(std / mean * 100, 2) if mean else None
+            q1    = float(_np.percentile(arr, 25))
+            q3    = float(_np.percentile(arr, 75))
+            iqr   = q3 - q1
+            lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            outliers = int(((arr < lo) | (arr > hi)).sum())
+            num_stats[col] = {
+                "total":      round(total, 4),
+                "mean":       round(mean, 4),
+                "min":        round(float(arr.min()), 4),
+                "max":        round(float(arr.max()), 4),
+                "std":        round(std, 4),
+                "cv_percent": cv,
+                "outliers":   outliers,
+            }
 
         # Top-5 category frequencies (first non-numeric col)
         cat_freq = {}
@@ -2174,18 +2296,55 @@ async def cockpit_insights(data: dict, user: dict = Depends(get_current_user)):
             "columns":     columns,
             "numeric":     num_stats,
             "top_categories": cat_freq,
+            "source_tables": tables_in_sql(sql),
             "sample":      rows[:8],
         })
 
     if not tiles_context:
         return {"error": "Nenhum dado válido para análise."}
 
+    # ── Enriquecimento por Catálogo de Dados ──────────────────────────────
+    # Tabelas por trás dos tiles → contexto de negócio + relacionamentos.
+    involved_tables = sorted({tb for t in tiles_context for tb in t.get("source_tables", [])})
+    catalog_block = build_cockpit_catalog_context(involved_tables) if involved_tables else ""
+    catalog_section = (
+        "\n## Contexto de Negócio (Catálogo de Dados)\n"
+        "Fonte de verdade sobre o significado das colunas, qualidade, PII e "
+        "métricas canônicas (KPIs). Prefira estes termos a inferir pelo nome.\n"
+        f"{catalog_block}\n"
+    ) if catalog_block else ""
+
+    rel_section = ""
+    if len(involved_tables) >= 2:
+        try:
+            _summary = get_catalog_summary()
+            _rels = [
+                r for r in (_summary.get("relationships") or [])
+                if r.get("source_table") in involved_tables
+                and r.get("target_table") in involved_tables
+            ]
+            if _rels:
+                _lines = [
+                    f"- {r['source_table']}.{r['source_column']} ↔ "
+                    f"{r['target_table']}.{r['target_column']} "
+                    f"(confiança {round((r.get('confidence') or 0) * 100)}%)"
+                    for r in _rels
+                ]
+                rel_section = (
+                    "\n## Relacionamentos entre Tabelas\n"
+                    "Quando ≥2 tiles usam tabelas relacionadas abaixo, proponha ao "
+                    "menos UMA análise combinada que cruze (JOIN) essas tabelas.\n"
+                    + "\n".join(_lines) + "\n"
+                )
+        except Exception:
+            rel_section = ""
+
     prompt = f"""Você é um analista de dados sênior. Analise os dados do Cockpit abaixo e gere insights precisos em português brasileiro.
 
 ## Dados do Cockpit ({len(tiles_context)} tiles)
 
 {_json.dumps(tiles_context, ensure_ascii=False, default=str, indent=2)}
-
+{catalog_section}{rel_section}
 ## Tarefa
 
 Retorne SOMENTE JSON válido (sem markdown, sem texto extra) com EXATAMENTE esta estrutura:
@@ -2214,6 +2373,9 @@ Retorne SOMENTE JSON válido (sem markdown, sem texto extra) com EXATAMENTE esta
       "oportunidade identificada"
     ]
   }},
+  "data_caveats": [
+    "ressalva de qualidade/completude ou conformidade PII/LGPD baseada no Catálogo — ex: 'vr_salario é PII sensível: evite expor valores individuais (LGPD)' ou 'coluna X com 62% de completude: interprete agregações com cautela'. Use [] se não houver."
+  ],
   "recommendations": [
     {{
       "title": "título curto (máx 6 palavras)",
@@ -2228,7 +2390,10 @@ Regras críticas:
 - status: positive=bom resultado, negative=resultado ruim/queda, alert=atenção necessária, neutral=informativo
 - correlations, patterns, risks, opportunities: entre 1 e 3 itens cada
 - recommendations: entre 3 e 5 itens, queries específicas e acionáveis baseadas nos dados reais
-- Insights com números reais extraídos dos dados — não use termos genéricos
+- Insights com números reais extraídos dos dados — use também desvio-padrão, coeficiente de variação (cv_percent) e nº de outliers quando relevante
+- Se houver "Contexto de Negócio (Catálogo)": use as descrições e ancore as recomendações nos KPIs canônicos listados; nomeie as colunas pelo significado de negócio, não pelo código
+- Se houver "Relacionamentos entre Tabelas": inclua em recommendations ao menos UMA análise que cruze (JOIN) as tabelas relacionadas, com a pergunta NL correspondente
+- data_caveats: liste ressalvas de qualidade (completude baixa) e de PII/LGPD com base no Catálogo; [] se não houver
 - Retorne APENAS o JSON, sem nenhum texto antes ou depois
 """
 

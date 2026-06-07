@@ -147,6 +147,12 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = int(os.getenv("LLM_TIMEOUT_SECONDS", "300"))
     llm_max_retries: int = int(os.getenv("LLM_MAX_RETRIES", "1"))
 
+    # When true, the NL→SQL agent prompt is enriched with Data Catalog business
+    # context (column descriptions, semantic types, PII flags, suggested
+    # joins/KPIs) for tables that have a catalog entry. Tables without one fall
+    # back to the raw structural schema. Disable to revert to legacy behavior.
+    catalog_enrich_agent: bool = os.getenv("CATALOG_ENRICH_AGENT", "true").lower() == "true"
+
     # OpenAI-compatible OSS endpoint.
     oss120b_url: str = os.getenv(
         "OSS120B_URL",

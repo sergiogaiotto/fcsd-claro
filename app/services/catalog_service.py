@@ -862,6 +862,32 @@ def get_catalog_summary() -> dict:
         if not datasets:
             return {"scanned": False, "tables": []}
 
+        # Maps de table_name -> [{id, name}, ...] para enriquecer cada tabela
+        # com seus DataMarts e DiamondLayers em uma unica query cada (evita N+1).
+        dm_map: dict[str, list] = {}
+        if _table_exists(conn, "datamart_tables") and _table_exists(conn, "datamarts"):
+            for r in conn.execute(
+                "SELECT dt.table_name, d.id, d.name "
+                "FROM datamart_tables dt JOIN datamarts d ON d.id = dt.datamart_id "
+                "ORDER BY d.name"
+            ).fetchall():
+                rd = dict(r)
+                dm_map.setdefault(rd["table_name"], []).append(
+                    {"id": rd["id"], "name": rd["name"]}
+                )
+
+        dl_map: dict[str, list] = {}
+        if _table_exists(conn, "diamond_layer_tables") and _table_exists(conn, "diamond_layers"):
+            for r in conn.execute(
+                "SELECT dlt.table_name, l.id, l.name "
+                "FROM diamond_layer_tables dlt JOIN diamond_layers l ON l.id = dlt.layer_id "
+                "ORDER BY l.name"
+            ).fetchall():
+                rd = dict(r)
+                dl_map.setdefault(rd["table_name"], []).append(
+                    {"id": rd["id"], "name": rd["name"]}
+                )
+
         tables = []
         for ds in datasets:
             d = dict(ds)
@@ -887,6 +913,9 @@ def get_catalog_summary() -> dict:
                         col[field] = json.loads(col.get(field) or "{}")
                     except (json.JSONDecodeError, TypeError):
                         col[field] = {}
+
+            d["datamarts"] = dm_map.get(d["table_name"], [])
+            d["diamond_layers"] = dl_map.get(d["table_name"], [])
 
             tables.append(d)
 
@@ -960,3 +989,244 @@ def search_catalog(query: str) -> list:
         return results
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Agent Enrichment — inject catalog business context into NL→SQL prompt
+# ---------------------------------------------------------------------------
+
+def _truncate(s: str, n: int) -> str:
+    """Trim a string to ``n`` chars with an ellipsis, collapsing surrounding space."""
+    s = (s or "").strip()
+    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+
+
+def get_catalog_context(table_names: list[str] | None = None) -> dict:
+    """Focused catalog read used to enrich the NL→SQL agent context.
+
+    Returns ``{table_name: {description, domain, columns, suggested_joins,
+    suggested_kpis}}`` ONLY for tables that have an entry in ``catalog_datasets``.
+    Tables without a catalog entry are simply omitted — the caller falls back to
+    the raw structural schema for those.
+
+    ``table_names=None`` → all cataloged tables (root without DataMart filter).
+    Returns ``{}`` when the catalog has not been built yet, so callers can treat
+    an empty result as "no enrichment, behave exactly as before".
+    """
+    from app.core.db_engine import table_exists as _table_exists
+    conn = get_sync_connection()
+    try:
+        if not _table_exists(conn, "catalog_datasets"):
+            return {}
+
+        if table_names:
+            names = list({n for n in table_names if n})
+            if not names:
+                return {}
+            ph = ",".join(["?"] * len(names))
+            ds_rows = conn.execute(
+                f"SELECT table_name, description, domain, quality_score, extras "
+                f"FROM catalog_datasets WHERE table_name IN ({ph})",
+                tuple(names),
+            ).fetchall()
+        else:
+            ds_rows = conn.execute(
+                "SELECT table_name, description, domain, quality_score, extras "
+                "FROM catalog_datasets"
+            ).fetchall()
+
+        if not ds_rows:
+            return {}
+
+        out: dict = {}
+        for r in ds_rows:
+            d = dict(r)
+            try:
+                extras = json.loads(d.get("extras") or "{}")
+            except (ValueError, TypeError):
+                extras = {}
+            if not isinstance(extras, dict):
+                extras = {}
+            out[d["table_name"]] = {
+                "description": (d.get("description") or "").strip(),
+                "domain": (d.get("domain") or "").strip(),
+                "quality_score": d.get("quality_score"),
+                "columns": [],
+                "suggested_joins": extras.get("suggested_joins") or [],
+                "suggested_kpis": extras.get("suggested_kpis") or [],
+            }
+
+        # Columns for the cataloged tables (single IN query — no N+1).
+        if _table_exists(conn, "catalog_columns") and out:
+            names = list(out.keys())
+            ph = ",".join(["?"] * len(names))
+            col_rows = conn.execute(
+                f"SELECT table_name, column_name, semantic_type, description, pii_data, profile_data "
+                f"FROM catalog_columns WHERE table_name IN ({ph}) "
+                f"ORDER BY table_name, column_name",
+                tuple(names),
+            ).fetchall()
+            for c in col_rows:
+                cd = dict(c)
+                t = cd["table_name"]
+                if t not in out:
+                    continue
+                try:
+                    pii = json.loads(cd.get("pii_data") or "{}")
+                except (ValueError, TypeError):
+                    pii = {}
+                try:
+                    prof = json.loads(cd.get("profile_data") or "{}")
+                except (ValueError, TypeError):
+                    prof = {}
+                out[t]["columns"].append({
+                    "name": cd["column_name"],
+                    "semantic_type": (cd.get("semantic_type") or "").strip(),
+                    "description": (cd.get("description") or "").strip(),
+                    "pii": bool(pii.get("is_sensitive")),
+                    "pii_type": (pii.get("pii_type") or "").strip(),
+                    "completeness": prof.get("completeness"),
+                })
+
+        return out
+    finally:
+        conn.close()
+
+
+def build_catalog_context_text(table_names: list[str] | None = None, max_tables: int = 25) -> str:
+    """Format the catalog of the given tables as a compact Markdown block for the
+    agent system prompt. Returns ``""`` when no table is cataloged — in that case
+    the agent runs with the raw structural schema only (identical to legacy
+    behavior). Only columns carrying business meaning (a description OR a known
+    semantic type) are included, to keep the prompt lean.
+    """
+    ctx = get_catalog_context(table_names)
+    if not ctx:
+        return ""
+
+    names = sorted(ctx.keys())
+    omitted = 0
+    if len(names) > max_tables:
+        omitted = len(names) - max_tables
+        names = names[:max_tables]
+
+    blocks = []
+    for tname in names:
+        info = ctx[tname]
+        lines = []
+        header = f"### {tname}"
+        if info.get("domain"):
+            header += f" — Domínio: {info['domain']}"
+        lines.append(header)
+        if info.get("description"):
+            lines.append(f"Descrição: {_truncate(info['description'], 280)}")
+
+        meaningful = [
+            c for c in info.get("columns", [])
+            if c.get("description")
+            or (c.get("semantic_type") and c["semantic_type"] != "desconhecido")
+        ]
+        if meaningful:
+            lines.append("Colunas (significado de negócio):")
+            for c in meaningful:
+                sem = (
+                    f" [{c['semantic_type']}]"
+                    if c.get("semantic_type") and c["semantic_type"] != "desconhecido"
+                    else ""
+                )
+                pii = " ⚠PII" if c.get("pii") else ""
+                desc = f": {_truncate(c['description'], 160)}" if c.get("description") else ""
+                lines.append(f"  - {c['name']}{sem}{pii}{desc}")
+
+        joins = info.get("suggested_joins") or []
+        if joins:
+            lines.append("Joins sugeridos:")
+            for j in joins:
+                lines.append(f"  - {_truncate(str(j), 240)}")
+
+        kpis = info.get("suggested_kpis") or []
+        if kpis:
+            lines.append("KPIs sugeridos: " + "; ".join(_truncate(str(k), 120) for k in kpis))
+
+        blocks.append("\n".join(lines))
+
+    text = "\n\n".join(blocks)
+    if omitted:
+        text += f"\n\n_({omitted} tabela(s) catalogada(s) omitida(s) por limite de contexto.)_"
+    return text
+
+
+def tables_in_sql(sql: str, known_tables: list[str] | None = None) -> list[str]:
+    """Return the cataloged tables referenced by a SQL string.
+
+    Matches known/cataloged table names against the SQL text by word boundary —
+    avoids a fragile SQL parser. ``known_tables=None`` → all cataloged tables.
+    """
+    if not sql:
+        return []
+    names = known_tables if known_tables is not None else list(get_catalog_context(None).keys())
+    if not names:
+        return []
+    low = sql.lower()
+    hits = []
+    for n in names:
+        if not n:
+            continue
+        if re.search(r"(?<![\w.])" + re.escape(n.lower()) + r"(?![\w])", low):
+            hits.append(n)
+    return hits
+
+
+def build_cockpit_catalog_context(table_names: list[str]) -> str:
+    """Like ``build_catalog_context_text`` but tuned for the Cockpit insights
+    prompt: adds data-quality (table score + per-column completeness) and PII
+    type annotations so the LLM can produce quality/LGPD caveats. Returns ``""``
+    when no table is cataloged.
+    """
+    ctx = get_catalog_context(table_names)
+    if not ctx:
+        return ""
+    blocks = []
+    for tname in sorted(ctx.keys()):
+        info = ctx[tname]
+        lines = []
+        header = f"### {tname}"
+        if info.get("domain"):
+            header += f" — Domínio: {info['domain']}"
+        if info.get("quality_score") is not None:
+            header += f" — Qualidade: {info['quality_score']}%"
+        lines.append(header)
+        if info.get("description"):
+            lines.append(f"Descrição: {_truncate(info['description'], 280)}")
+
+        cols = info.get("columns", [])
+        if cols:
+            lines.append("Colunas:")
+            for c in cols:
+                sem = (
+                    f" [{c['semantic_type']}]"
+                    if c.get("semantic_type") and c["semantic_type"] != "desconhecido"
+                    else ""
+                )
+                comp = c.get("completeness")
+                compflag = (
+                    f" ⚠completude {int(comp)}%"
+                    if isinstance(comp, (int, float)) and comp < 80
+                    else ""
+                )
+                pii = f" ⚠PII({c['pii_type']})" if c.get("pii") else ""
+                desc = f": {_truncate(c['description'], 140)}" if c.get("description") else ""
+                lines.append(f"  - {c['name']}{sem}{pii}{compflag}{desc}")
+
+        joins = info.get("suggested_joins") or []
+        if joins:
+            lines.append("Joins sugeridos:")
+            for j in joins:
+                lines.append(f"  - {_truncate(str(j), 240)}")
+
+        kpis = info.get("suggested_kpis") or []
+        if kpis:
+            lines.append("KPIs canônicos: " + "; ".join(_truncate(str(k), 120) for k in kpis))
+
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)

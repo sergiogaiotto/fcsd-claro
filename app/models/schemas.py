@@ -68,6 +68,7 @@ class GallerySaveRequest(BaseModel):
     chart_config: Optional[dict] = Field(None, description="Config do gráfico")
     page_html: str = Field("", description="HTML completo da página PyGWalker")
     local_storage: Optional[dict] = Field(None, description="Snapshot do localStorage do PyGWalker")
+    category: str = Field("analysis", description="Categoria: 'analysis' (padrão) ou 'cockpit'")
 
 
 class PredictionRequest(BaseModel):
