@@ -99,7 +99,7 @@ INTERNAL_TABLES = {
     "saved_visions", "cockpit_tiles",
     "saved_questions","catalog_datasets", "catalog_columns", "catalog_relationships",
     "json_sources", "data_products", "shared_results", "reports",
-    "codegen_tables",
+    "codegen_tables", "codegen_snippets", "codegen_runs",
 }
 
 
@@ -428,6 +428,29 @@ _DDL_STATEMENTS: list[str] = [
         FOREIGN KEY (datamart_id) REFERENCES datamarts(id) ON DELETE SET NULL
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS codegen_snippets (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        sql TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS codegen_runs (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        sql TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL DEFAULT 'read',
+        row_count INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """,
 ]
 
 # Indexes — created AFTER all CREATE TABLE statements have run, so an
@@ -459,6 +482,8 @@ _INDEX_STATEMENTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_query_history_created ON query_history(created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cockpit_tiles_user ON cockpit_tiles(user_id, position)",
     "CREATE INDEX IF NOT EXISTS idx_codegen_tables_owner ON codegen_tables(owner_id)",
+    "CREATE INDEX IF NOT EXISTS idx_codegen_snippets_user ON codegen_snippets(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_codegen_runs_user ON codegen_runs(user_id, created_at DESC)",
 ]
 
 # Per-table list of (column_name, column_definition) tuples added in

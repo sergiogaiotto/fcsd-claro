@@ -206,7 +206,7 @@ def execute_script(sql: str, user: dict, target_datamart_id: int | None = None,
         return {"error": f"Erro na execução: {msg}"}
     conn.close()
 
-    _log_history(user, sql, has_writes, final)
+    _log_history(user, sql, has_writes, final, affected)
 
     if final is not None:
         final["writes"] = has_writes
@@ -236,14 +236,15 @@ def _unregister(cur, table_name: str):
     cur.execute("DELETE FROM datamart_tables WHERE LOWER(table_name) = %s", (table_name,))
 
 
-def _log_history(user: dict, sql: str, has_writes: bool, final):
+def _log_history(user: dict, sql: str, has_writes: bool, final, affected: int = 0):
+    """Registra a execução no histórico ISOLADO do módulo (codegen_runs) — não
+    polui o query_history do app principal."""
     conn = get_sync_connection()
     try:
-        summary = "(escrita)" if has_writes else (f"{final['row_count']} linha(s)" if final else "(sem retorno)")
+        rc = final["row_count"] if final else affected
         conn.execute(
-            "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id) "
-            "VALUES (?, ?, ?, ?)",
-            (f"[TDIA-CodeGen] {user['login']}", sql, summary, None),
+            "INSERT INTO codegen_runs (user_id, sql, kind, row_count) VALUES (?, ?, ?, ?)",
+            (user["id"], sql, "write" if has_writes else "read", rc),
         )
         conn.commit()
     except Exception:

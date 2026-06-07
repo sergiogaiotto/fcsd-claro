@@ -1,0 +1,11 @@
+{# Histórico de execuções (P2) — isolado do módulo (codegen_runs). #}
+<div class="bg-fg-800 border border-fg-border rounded-xl p-5 max-w-3xl">
+    <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider">Histórico de Execuções</h2>
+        <button class="cg-btn-mini" onclick="loadCgHistory()">Atualizar</button>
+    </div>
+    <p class="text-xs text-fg-muted mb-4">Suas últimas execuções no módulo — clique numa linha para recarregar o SQL no editor.</p>
+    <div id="cgHistoryList" class="space-y-2">
+        <div class="text-fg-muted text-sm py-4 text-center">Carregando…</div>
+    </div>
+</div>
