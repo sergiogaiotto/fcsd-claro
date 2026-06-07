@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.core.config import settings
 from app.core.database import init_metadata_tables
-from app.core.security import validate_session
+from app.core.security import validate_session, can_codegen
 from app.api.routes import router as api_router, COOKIE_NAME
 
 # Cache-buster for static JS/CSS — bumps every server restart so deployments
@@ -208,3 +208,21 @@ async def login_page(request: Request):
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse(request, "default.html", {"static_v": STATIC_VERSION})
+
+
+@app.get("/codegen", response_class=HTMLResponse)
+async def codegen_page(request: Request):
+    """TDIA-CodeGen — página própria do módulo (Root/Admin/Engenheiro de Dados).
+    O auth_middleware já garante sessão válida; aqui restringimos por papel."""
+    user = getattr(request.state, "user", None)
+    if not user or not can_codegen(user):
+        return RedirectResponse(url="/", status_code=302)
+    _role_labels = {
+        "root": "Root", "superuser": "Super Usuário", "admin": "Administrador",
+        "analista": "Analista", "engenheiro_dados": "Engenheiro de Dados", "user": "Usuário",
+    }
+    return templates.TemplateResponse(request, "codegen/index.html", {
+        "static_v": STATIC_VERSION,
+        "user": user,
+        "user_type_label": _role_labels.get(user.get("user_type"), user.get("user_type")),
+    })

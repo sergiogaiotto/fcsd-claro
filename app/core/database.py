@@ -99,6 +99,7 @@ INTERNAL_TABLES = {
     "saved_visions", "cockpit_tiles",
     "saved_questions","catalog_datasets", "catalog_columns", "catalog_relationships",
     "json_sources", "data_products", "shared_results", "reports",
+    "codegen_tables",
 }
 
 
@@ -108,7 +109,7 @@ _DDL_STATEMENTS: list[str] = [
         id BIGSERIAL PRIMARY KEY,
         login TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
-        user_type TEXT NOT NULL DEFAULT 'user' CHECK(user_type IN ('root','superuser','admin','analista','user')),
+        user_type TEXT NOT NULL DEFAULT 'user' CHECK(user_type IN ('root','superuser','admin','analista','engenheiro_dados','user')),
         display_name TEXT NOT NULL DEFAULT '',
         profile_description TEXT NOT NULL DEFAULT '',
         is_active INTEGER NOT NULL DEFAULT 1,
@@ -416,6 +417,17 @@ _DDL_STATEMENTS: list[str] = [
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS codegen_tables (
+        id BIGSERIAL PRIMARY KEY,
+        table_name TEXT NOT NULL UNIQUE,
+        owner_id INTEGER NOT NULL,
+        datamart_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (datamart_id) REFERENCES datamarts(id) ON DELETE SET NULL
+    )
+    """,
 ]
 
 # Indexes — created AFTER all CREATE TABLE statements have run, so an
@@ -446,6 +458,7 @@ _INDEX_STATEMENTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_saved_visions_user ON saved_visions(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_query_history_created ON query_history(created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cockpit_tiles_user ON cockpit_tiles(user_id, position)",
+    "CREATE INDEX IF NOT EXISTS idx_codegen_tables_owner ON codegen_tables(owner_id)",
 ]
 
 # Per-table list of (column_name, column_definition) tuples added in
@@ -471,6 +484,33 @@ _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+def _migrate_user_type_constraint():
+    """Amplia o CHECK de users.user_type para papéis adicionados após a criação
+    inicial da tabela (ex.: engenheiro_dados). CREATE TABLE IF NOT EXISTS não
+    altera constraints de tabelas já existentes. Usa conexão própria para não
+    poluir a transação principal de init; idempotente via guarda."""
+    conn = get_sync_connection()
+    try:
+        row = conn.execute(
+            "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint "
+            "WHERE conname = 'users_user_type_check'"
+        ).fetchone()
+        current = ""
+        if row:
+            current = row["def"] if isinstance(row, dict) else row[0]
+        if "engenheiro_dados" not in (current or ""):
+            conn.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_user_type_check")
+            conn.execute(
+                "ALTER TABLE users ADD CONSTRAINT users_user_type_check "
+                "CHECK (user_type IN ('root','superuser','admin','analista','engenheiro_dados','user'))"
+            )
+            conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
 def init_metadata_tables():
     """Create or migrate all internal metadata tables in PostgreSQL.
 
@@ -492,6 +532,10 @@ def init_metadata_tables():
                 if not column_exists(conn, tbl, col_name):
                     conn.execute(f'ALTER TABLE {tbl} ADD COLUMN {col_name} {col_def}')
         conn.commit()
+
+        # Constraint migration: tabelas já existentes não são alteradas por
+        # CREATE TABLE IF NOT EXISTS — amplia o CHECK de users.user_type.
+        _migrate_user_type_constraint()
 
         for stmt in _INDEX_STATEMENTS:
             conn.execute(stmt)
@@ -1281,6 +1325,13 @@ def get_all_tables(use_cache: bool = True) -> list[dict]:
                 "owner_id": r["owner_id"],
             })
 
+        # 7. tabelas tech (TDIA-CodeGen) — marca para o grupo "DataMarts Tech"
+        tech_rows = conn.execute(
+            f"SELECT table_name FROM codegen_tables WHERE table_name IN ({placeholders})",
+            params,
+        ).fetchall()
+        tech_set = {r["table_name"] for r in tech_rows}
+
         result = [
             {
                 "name": t,
@@ -1288,6 +1339,7 @@ def get_all_tables(use_cache: bool = True) -> list[dict]:
                 "row_count": rowcount_by_table.get(t, 0),
                 "datamarts": dms_by_table.get(t, []),
                 "diamond_layers": layers_by_table.get(t, []),
+                "is_tech": t in tech_set,
             }
             for t in user_tables
         ]

@@ -1,0 +1,53 @@
+{# Editor SQL (P1a) — somente leitura. Escrita/DDL + autorizador chegam na P1b. #}
+<div class="space-y-4">
+
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+            <div>
+                <label class="cg-lbl">DataMart</label>
+                <select id="cgDatamart" class="cg-select"><option value="">— contexto —</option></select>
+            </div>
+            <div>
+                <label class="cg-lbl">DiamondLayer</label>
+                <select id="cgLayer" class="cg-select"><option value="">— contexto —</option></select>
+            </div>
+            <div>
+                <label class="cg-lbl">Limite de linhas</label>
+                <select id="cgLimit" class="cg-select">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                    <option value="5000">5000</option>
+                </select>
+            </div>
+            <div class="flex items-end">
+                <button id="cgRunBtn" class="cg-btn-primary w-full" onclick="cgRun()">▶ Executar</button>
+            </div>
+        </div>
+
+        <textarea id="cgSqlEditor" spellcheck="false">SELECT 1 AS exemplo;</textarea>
+        <div class="text-[11px] text-fg-muted mt-2">
+            Leitura e escrita escopadas aos seus DataMarts/DiamondLayers. No <code>CREATE</code>, o campo
+            <strong>DataMart</strong> acima define o destino; <code>DROP</code>/<code>ALTER</code> só em tabelas suas;
+            destrutivas pedem confirmação.
+            <span class="ml-1">Atalho: <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd>.</span>
+        </div>
+    </div>
+
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-4">
+        <div class="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div id="cgStatus" class="text-xs text-fg-muted">Pronto.</div>
+            <div id="cgExportBar" class="items-center gap-2" style="display:none">
+                <span class="text-[10px] uppercase tracking-wider text-fg-muted">Exportar</span>
+                <button class="cg-btn-mini" onclick="cgExport('csv')">CSV</button>
+                <button class="cg-btn-mini" onclick="cgExport('xlsx')">Excel</button>
+                <button class="cg-btn-mini" onclick="cgExport('json')">JSON</button>
+            </div>
+        </div>
+        <div id="cgResult" class="cg-result-scroll">
+            <div class="text-fg-muted text-sm py-6 text-center">Execute uma consulta para ver os resultados.</div>
+        </div>
+    </div>
+
+</div>

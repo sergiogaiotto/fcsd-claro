@@ -88,13 +88,21 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 ADMIN_ROLES = {"root", "superuser", "admin"}
 UPLOAD_ROLES = {"root", "superuser", "admin", "analista"}
-ALL_ROLES = {"root", "superuser", "admin", "analista", "user"}
+CODEGEN_ROLES = {"root", "superuser", "admin", "engenheiro_dados"}
+ALL_ROLES = {"root", "superuser", "admin", "analista", "engenheiro_dados", "user"}
 
 def is_analista(user: dict) -> bool:
     return user.get("user_type") == "analista"
 
+def is_engenheiro_dados(user: dict) -> bool:
+    return user.get("user_type") == "engenheiro_dados"
+
 def can_upload(user: dict) -> bool:
     return user.get("user_type") in UPLOAD_ROLES
+
+def can_codegen(user: dict) -> bool:
+    """Acesso ao módulo TDIA-CodeGen: Root, Admin/Superuser e Engenheiro de Dados."""
+    return user.get("user_type") in CODEGEN_ROLES
 
 def is_admin(user: dict) -> bool:
     return user.get("user_type") in ADMIN_ROLES
