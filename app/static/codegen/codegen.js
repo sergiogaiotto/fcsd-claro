@@ -57,6 +57,7 @@ function cgShowSection(name) {
     if (name === 'tables') loadCgTables();
     if (name === 'historico') loadCgHistory();
     if (name === 'techniques') loadCgTechniques();
+    if (name === 'patterns') loadCgPatterns();
 }
 
 // ---- Editor SQL (P1a) ----------------------------------------------------
@@ -442,6 +443,125 @@ async function cgDeleteTechnique(i) {
     if (!t || !confirm('Excluir a técnica "' + t.key + '"?')) return;
     const res = await fetch('/api/codegen/admin/techniques/' + t.id, { method: 'DELETE' });
     if (res.ok) loadCgTechniques(); else alert('Erro ao excluir.');
+}
+
+// ---- M2.2: CRUD de Padrões + matriz (admin) ----------------------------
+let cgPatterns = [];
+let cgPatTechKeys = [];
+
+function _cgParseCompat(c) {
+    if (!c || c === '*') return [];
+    try { return JSON.parse(c); } catch (e) { return String(c).split(',').map(s => s.trim()).filter(Boolean); }
+}
+function _cgPatCompatible(p, techKey) {
+    return (p.compatible === '*' || !p.compatible) || _cgParseCompat(p.compatible).includes(techKey);
+}
+
+async function loadCgPatterns() {
+    const box = document.getElementById('cgPatList');
+    if (!box) return;
+    box.innerHTML = '<div class="text-fg-muted text-sm py-4 text-center">Carregando…</div>';
+    try {
+        const [pr, ir] = await Promise.all([fetch('/api/codegen/admin/patterns'), fetch('/api/codegen/techniques')]);
+        if (!pr.ok) { box.innerHTML = '<div class="text-red-400 text-sm py-3">Sem permissão ou erro.</div>'; return; }
+        cgPatterns = await pr.json();
+        const inv = ir.ok ? await ir.json() : { techniques: [] };
+        cgPatTechKeys = (inv.techniques || []).map(t => t.key);
+        if (!cgPatterns.length) {
+            box.innerHTML = '<div class="text-fg-muted text-sm py-4 text-center">Nenhum padrão.</div>';
+        } else {
+            box.innerHTML = cgPatterns.map((p, i) => {
+                const compat = (p.compatible === '*' || !p.compatible) ? 'todas' : _cgParseCompat(p.compatible).join(', ');
+                const inactive = p.is_active ? '' : '<span class="text-[10px] text-fg-muted ml-2">(inativo)</span>';
+                const base = p.key === 'script' ? '<span class="text-[9px] text-fg-muted ml-2 uppercase">base</span>' : '';
+                return '<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border">'
+                    + '<div><span class="text-sm text-fg-green font-mono font-bold">' + _cgEscape(p.key) + '</span>'
+                    + '<span class="text-fg-muted text-sm ml-2">' + _cgEscape(p.label || '') + '</span>' + base + inactive
+                    + '<div class="text-[10px] text-fg-muted mt-0.5">compat: ' + _cgEscape(compat) + '</div></div>'
+                    + '<div class="flex items-center gap-2">'
+                    + '<button class="cg-btn-mini" onclick="cgEditPattern(' + i + ')">Editar</button>'
+                    + (p.key === 'script' ? '' : '<button class="cg-btn-mini" onclick="cgDeletePattern(' + i + ')">Excluir</button>') + '</div></div>';
+            }).join('');
+        }
+        cgRenderMatrix();
+    } catch (e) { box.innerHTML = '<div class="text-red-400 text-sm py-3">Falha: ' + _cgEscape(e.message) + '</div>'; }
+}
+
+function cgRenderMatrix() {
+    const box = document.getElementById('cgMatrix');
+    if (!box) return;
+    if (!cgPatterns.length || !cgPatTechKeys.length) { box.innerHTML = '<div class="text-fg-muted text-sm">—</div>'; return; }
+    let h = '<table class="cg-table"><thead><tr><th>Padrão \\ Técnica</th>';
+    cgPatTechKeys.forEach(k => { h += '<th class="text-center">' + _cgEscape(k) + '</th>'; });
+    h += '</tr></thead><tbody>';
+    cgPatterns.forEach(p => {
+        h += '<tr><td class="font-mono text-fg-green">' + _cgEscape(p.key) + '</td>';
+        cgPatTechKeys.forEach(k => { h += '<td class="text-center">' + (_cgPatCompatible(p, k) ? '<span class="text-fg-green">✓</span>' : '<span class="text-fg-muted">·</span>') + '</td>'; });
+        h += '</tr>';
+    });
+    h += '</tbody></table>';
+    box.innerHTML = h;
+}
+
+function _cgRenderCompatBoxes(selected, all) {
+    const wrap = document.getElementById('cgPatCompat');
+    wrap.innerHTML = cgPatTechKeys.map(k =>
+        '<label class="flex items-center gap-1.5 text-xs text-fg-muted cursor-pointer"><input type="checkbox" class="cg-pat-compat accent-fg-accent" value="' + k + '"'
+        + (selected.includes(k) ? ' checked' : '') + (all ? ' disabled' : '') + '> ' + _cgEscape(k) + '</label>'
+    ).join('');
+}
+function cgPatToggleAll() {
+    const all = document.getElementById('cgPatAll').checked;
+    document.querySelectorAll('.cg-pat-compat').forEach(cb => { cb.disabled = all; });
+}
+
+function _cgPatSetForm(p) {
+    const g = (id) => document.getElementById(id);
+    g('cgPatId').value = p.id || '';
+    g('cgPatKey').value = p.key || '';
+    g('cgPatKey').disabled = !!p.id;
+    g('cgPatLabel').value = p.label || '';
+    g('cgPatDesc').value = p.description || '';
+    g('cgPatTemplate').value = p.template || '';
+    const isAll = (p.compatible === '*' || p.compatible === undefined || !p.compatible);
+    g('cgPatAll').checked = isAll;
+    _cgRenderCompatBoxes(isAll ? [] : _cgParseCompat(p.compatible), isAll);
+    g('cgPatActive').checked = (p.is_active === undefined) ? true : !!p.is_active;
+    g('cgPatMsg').textContent = '';
+    g('cgPatFormTitle').textContent = p.id ? ('Editar — ' + p.key) : 'Novo padrão';
+    g('cgPatForm').style.display = 'block';
+}
+function cgNewPattern() { _cgPatSetForm({}); }
+function cgEditPattern(i) { if (cgPatterns[i]) _cgPatSetForm(cgPatterns[i]); }
+function cgCancelPattern() { document.getElementById('cgPatForm').style.display = 'none'; }
+
+async function cgSavePattern() {
+    const g = (id) => document.getElementById(id);
+    const id = g('cgPatId').value;
+    let compatible = '*';
+    if (!g('cgPatAll').checked) {
+        compatible = Array.from(document.querySelectorAll('.cg-pat-compat:checked')).map(cb => cb.value);
+    }
+    const body = {
+        key: g('cgPatKey').value.trim(), label: g('cgPatLabel').value.trim(),
+        description: g('cgPatDesc').value.trim(), template: g('cgPatTemplate').value,
+        compatible: compatible, is_active: g('cgPatActive').checked ? 1 : 0,
+    };
+    const msg = g('cgPatMsg'); msg.textContent = 'Validando e salvando…'; msg.className = 'text-xs ml-2 text-fg-muted';
+    try {
+        const url = id ? '/api/codegen/admin/patterns/' + id : '/api/codegen/admin/patterns';
+        const res = await fetch(url, { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const data = await res.json();
+        if (!res.ok || data.error) { msg.textContent = data.error || 'Erro ao salvar.'; msg.className = 'text-xs ml-2 text-red-400'; return; }
+        cgCancelPattern(); loadCgPatterns();
+    } catch (e) { msg.textContent = 'Falha: ' + e.message; msg.className = 'text-xs ml-2 text-red-400'; }
+}
+async function cgDeletePattern(i) {
+    const p = cgPatterns[i];
+    if (!p || !confirm('Excluir o padrão "' + p.key + '"?')) return;
+    const res = await fetch('/api/codegen/admin/patterns/' + p.id, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && !data.error) loadCgPatterns(); else alert(data.error || 'Erro ao excluir.');
 }
 
 // ---- Init ---------------------------------------------------------------

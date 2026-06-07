@@ -3322,3 +3322,37 @@ async def codegen_admin_techniques_update(tid: int, req: dict, user: dict = Depe
 async def codegen_admin_techniques_delete(tid: int, user: dict = Depends(require_admin)):
     from app.services.codegen_pycodegen import delete_technique
     return delete_technique(tid)
+
+
+# --- M2.2: CRUD de Padrões (autoria só Root/Admin) ---
+@router.get("/codegen/admin/patterns")
+async def codegen_admin_patterns_list(user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import list_patterns_full
+    return list_patterns_full()
+
+
+@router.post("/codegen/admin/patterns")
+async def codegen_admin_patterns_create(req: dict, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import create_pattern
+    r = create_pattern(req, created_by=user.get("login", ""))
+    if "error" in r:
+        return JSONResponse(status_code=400, content={"error": r["error"]})
+    return r
+
+
+@router.put("/codegen/admin/patterns/{pid}")
+async def codegen_admin_patterns_update(pid: int, req: dict, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import update_pattern
+    r = update_pattern(pid, req)
+    if "error" in r:
+        return JSONResponse(status_code=400, content={"error": r["error"]})
+    return r
+
+
+@router.delete("/codegen/admin/patterns/{pid}")
+async def codegen_admin_patterns_delete(pid: int, user: dict = Depends(require_admin)):
+    from app.services.codegen_pycodegen import delete_pattern
+    r = delete_pattern(pid)
+    if "error" in r:
+        return JSONResponse(status_code=400, content={"error": r["error"]})
+    return r

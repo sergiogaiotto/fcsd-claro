@@ -368,3 +368,108 @@ def delete_technique(tid: int) -> dict:
         return {"ok": True}
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# CRUD de Padrões (M2.2) — autoria só por Root/Admin. `compatible` = '*' (todas)
+# ou JSON com a lista de chaves de técnicas (a "matriz de compatibilidade").
+# ---------------------------------------------------------------------------
+
+def _norm_compatible(comp) -> str:
+    if isinstance(comp, list):
+        return "*" if not comp else json.dumps(comp)
+    if not comp or comp == "*":
+        return "*"
+    return str(comp)
+
+
+def validate_pattern(data: dict) -> str | None:
+    key = (data.get("key") or "").strip()
+    if not re.fullmatch(r"[a-z0-9_]+", key):
+        return "A chave deve ter só minúsculas, números e _ (ex.: 'repository')."
+    template = data.get("template") or ""
+    if not template.strip():
+        return "O template do padrão é obrigatório."
+    env = _env()
+    ctx = {"schema": [{"name": "id", "ident": "id", "py": "int", "pd": "Int64", "spark": "IntegerType"}],
+           "query": "SELECT 1", "options": {}, "sql_literal": "SELECT 1"}
+    tech = load_technique("pandas")  # técnica de referência p/ validar a composição
+    try:
+        t = {f: env.from_string((tech.get("frag_" + f) if tech else "") or "").render(**ctx) for f in _FRAGS}
+        code = env.from_string(template).render(t=t, **ctx)
+        import ast
+        ast.parse(code)
+    except SyntaxError as e:
+        return f"O código gerado não é Python válido: {e}"
+    except Exception as e:
+        return f"Template inválido: {str(e).splitlines()[0]}"
+    return None
+
+
+def list_patterns_full() -> list[dict]:
+    ensure_seeded()
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, key, label, description, template, compatible, is_active FROM codegen_patterns ORDER BY label"
+        ).fetchall()
+        return [_row_to_dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def create_pattern(data: dict, created_by: str = "") -> dict:
+    err = validate_pattern(data)
+    if err:
+        return {"error": err}
+    from app.core.database import _exec_returning_id
+    conn = get_sync_connection()
+    try:
+        pid = _exec_returning_id(
+            conn,
+            "INSERT INTO codegen_patterns (key, label, description, template, compatible, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (data["key"].strip(), data.get("label", ""), data.get("description", ""),
+             data.get("template", ""), _norm_compatible(data.get("compatible")), created_by),
+        )
+        conn.commit()
+        return {"ok": True, "id": pid}
+    except Exception as e:
+        conn.rollback()
+        msg = str(e).splitlines()[0] if str(e) else "erro"
+        if "unique" in msg.lower() or "duplicate" in msg.lower():
+            return {"error": f"Já existe um padrão com a chave '{data.get('key')}'."}
+        return {"error": f"Erro ao criar: {msg}"}
+    finally:
+        conn.close()
+
+
+def update_pattern(pid: int, data: dict) -> dict:
+    err = validate_pattern(data)
+    if err:
+        return {"error": err}
+    conn = get_sync_connection()
+    try:
+        conn.execute(
+            "UPDATE codegen_patterns SET label=?, description=?, template=?, compatible=?, is_active=?, "
+            "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (data.get("label", ""), data.get("description", ""), data.get("template", ""),
+             _norm_compatible(data.get("compatible")), int(data.get("is_active", 1) or 0), pid),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+def delete_pattern(pid: int) -> dict:
+    conn = get_sync_connection()
+    try:
+        r = conn.execute("SELECT key FROM codegen_patterns WHERE id = ?", (pid,)).fetchone()
+        if r and (r["key"] if isinstance(r, dict) else r[0]) == "script":
+            return {"error": "O padrão 'script' é o padrão base e não pode ser excluído."}
+        conn.execute("DELETE FROM codegen_patterns WHERE id = ?", (pid,))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
