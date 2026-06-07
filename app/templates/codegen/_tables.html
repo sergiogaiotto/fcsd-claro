@@ -1,0 +1,14 @@
+{# Minhas Tabelas (P1b-2) — tabelas criadas pelo usuário no módulo. #}
+<div class="bg-fg-800 border border-fg-border rounded-xl p-5 max-w-3xl">
+    <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider">Minhas Tabelas Tech</h2>
+        <button class="cg-btn-mini" onclick="loadCgTables()">Atualizar</button>
+    </div>
+    <p class="text-xs text-fg-muted mb-4">
+        Tabelas que você criou no TDIA-CodeGen (via <code>CREATE TABLE</code>). Ficam ocultas da
+        listagem comum em Configurações › Tabelas; só você, Root e Administradores as veem.
+    </p>
+    <div id="cgTablesList" class="space-y-2">
+        <div class="text-fg-muted text-sm py-4 text-center">Carregando…</div>
+    </div>
+</div>

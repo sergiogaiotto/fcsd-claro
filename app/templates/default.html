@@ -381,6 +381,7 @@
             <button onclick="showTab('gallery')" id="tab-gallery" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Galeria</button>
             <button onclick="showTab('skills')" id="tab-skills" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Skills</button>
             <button onclick="showTab('config')" id="tab-config" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Prompts</button>
+            <a href="/codegen" id="nav-codegen" class="tab-btn text-fg-accent hover:text-fg-accent-hover transition-colors hidden font-semibold" title="TDIA-CodeGen — IDE de SQL para Engenharia de Dados">TDIA-CodeGen</a>
             <!-- Dropdown Configurações -->
             <div class="cfg-dropdown" id="cfgDropdown">
                 <button class="cfg-trigger" id="cfgTrigger" onclick="toggleCfgDropdown()" title="Configurações">
@@ -401,7 +402,7 @@
                         </svg>
                         Tabelas
                     </button>
-                    <div class="cfg-sep"></div>
+                    <div class="cfg-sep" id="cfg-sep-tables"></div>
                     <button onclick="showCfgTab('catalog')" id="cfg-tab-catalog">
                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
                              fill="none" stroke="currentColor" stroke-width="2">
@@ -1267,10 +1268,18 @@
                         <select id="tablesDmFilter" onchange="renderTablesList()" title="Filtrar por DataMart" class="bg-fg-700 border border-fg-border rounded-md px-2 py-1 text-[11px] font-mono focus:border-fg-blue focus:outline-none transition">
                             <option value="">Todos os DataMarts</option>
                         </select>
+                        <label id="tablesShowTechWrapper" class="hidden flex items-center gap-1.5 text-[10px] text-fg-accent cursor-pointer select-none" title="Mostrar tabelas criadas no TDIA-CodeGen">
+                            <input type="checkbox" id="tablesShowTech" onchange="renderTablesList()" class="accent-fg-accent w-3 h-3">
+                            <span>DataMarts Tech</span>
+                        </label>
                         <button onclick="loadTables()" class="text-xs text-fg-muted hover:text-fg-accent transition">Atualizar</button>
                     </div>
                 </div>
                 <div id="tablesList" class="space-y-2 overflow-y-auto" style="max-height: 12.5rem;"><p class="text-xs text-fg-muted">Carregando...</p></div>
+                <div id="tablesTechGroup" class="hidden mt-3 pt-3 border-t border-fg-border">
+                    <div class="text-[10px] text-fg-accent uppercase tracking-wider mb-1">DataMarts Tech (criadas no TDIA-CodeGen)</div>
+                    <div id="techTablesList" class="space-y-2 overflow-y-auto" style="max-height: 9rem;"></div>
+                </div>
             </div>
             <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
                 <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -2357,7 +2366,7 @@
 <section id="panel-users" class="tab-panel hidden">
     <div class="bg-fg-800 border border-fg-border rounded-xl p-5 glow-accent">
         <div class="flex items-center justify-between mb-4"><h2 class="text-xs font-bold text-fg-accent uppercase tracking-wider">Gerenciamento de Usuários</h2><div class="flex gap-2"><button onclick="showCreateUserForm()" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">Novo Usuário</button><button onclick="exportUsers()" class="bg-fg-green/20 text-fg-green border border-fg-green/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-fg-green/30">Exportar</button><button onclick="importUsers()" class="bg-fg-blue/20 text-fg-blue border border-fg-blue/30 px-3 py-1.5 rounded-lg text-xs font-semibold transition hover:bg-fg-blue/30">Importar</button></div></div>
-        <div id="userFormPanel" class="hidden bg-fg-700 border border-fg-border rounded-lg p-4 mb-4"><h3 class="text-xs font-semibold text-fg-bright mb-3" id="userFormTitle">Novo Usuário</h3><input type="hidden" id="userFormId"><div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Login</label><input id="userFormLogin" type="text" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm font-mono focus:border-fg-accent focus:outline-none"></div><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Senha</label><input id="userFormPassword" type="password" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm font-mono focus:border-fg-accent focus:outline-none" placeholder="Obrigatório para novo usuário"></div><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Tipo</label><select id="userFormType" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm focus:border-fg-accent focus:outline-none"><option value="user">Usuário Comum</option><option value="analista">Analista</option><option value="admin">Administrador</option><option value="root">Root</option></select></div><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Nome de Exibição</label><input id="userFormName" type="text" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm focus:border-fg-accent focus:outline-none"></div><div class="sm:col-span-2"><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Descrição do Perfil</label><textarea id="userFormDesc" rows="2" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm focus:border-fg-accent focus:outline-none resize-none"></textarea></div><div class="sm:col-span-2"><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">DataMarts</label><div id="userFormDatamarts" class="flex flex-wrap gap-2 bg-fg-900 border border-fg-border rounded-lg p-2 max-h-[120px] overflow-y-auto"></div></div><div class="sm:col-span-2"><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">DiamondLayers</label><div id="userFormDiamondLayers" class="flex flex-wrap gap-2 bg-fg-900 border border-fg-border rounded-lg p-2 max-h-[120px] overflow-y-auto"></div></div></div><div class="flex gap-2 mt-3"><button onclick="saveUser()" class="bg-fg-green hover:opacity-90 text-fg-900 px-4 py-1.5 rounded-lg text-xs font-semibold transition">Salvar</button><button onclick="hideUserForm()" class="bg-fg-500 text-fg-muted px-4 py-1.5 rounded-lg text-xs transition hover:text-fg-text">Cancelar</button></div></div>
+        <div id="userFormPanel" class="hidden bg-fg-700 border border-fg-border rounded-lg p-4 mb-4"><h3 class="text-xs font-semibold text-fg-bright mb-3" id="userFormTitle">Novo Usuário</h3><input type="hidden" id="userFormId"><div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Login</label><input id="userFormLogin" type="text" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm font-mono focus:border-fg-accent focus:outline-none"></div><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Senha</label><input id="userFormPassword" type="password" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm font-mono focus:border-fg-accent focus:outline-none" placeholder="Obrigatório para novo usuário"></div><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Tipo</label><select id="userFormType" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm focus:border-fg-accent focus:outline-none"><option value="user">Usuário Comum</option><option value="analista">Analista</option><option value="engenheiro_dados">Engenheiro de Dados</option><option value="admin">Administrador</option><option value="root">Root</option></select></div><div><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Nome de Exibição</label><input id="userFormName" type="text" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm focus:border-fg-accent focus:outline-none"></div><div class="sm:col-span-2"><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Descrição do Perfil</label><textarea id="userFormDesc" rows="2" class="w-full bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-sm focus:border-fg-accent focus:outline-none resize-none"></textarea></div><div class="sm:col-span-2"><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">DataMarts</label><div id="userFormDatamarts" class="flex flex-wrap gap-2 bg-fg-900 border border-fg-border rounded-lg p-2 max-h-[120px] overflow-y-auto"></div></div><div class="sm:col-span-2"><label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">DiamondLayers</label><div id="userFormDiamondLayers" class="flex flex-wrap gap-2 bg-fg-900 border border-fg-border rounded-lg p-2 max-h-[120px] overflow-y-auto"></div></div></div><div class="flex gap-2 mt-3"><button onclick="saveUser()" class="bg-fg-green hover:opacity-90 text-fg-900 px-4 py-1.5 rounded-lg text-xs font-semibold transition">Salvar</button><button onclick="hideUserForm()" class="bg-fg-500 text-fg-muted px-4 py-1.5 rounded-lg text-xs transition hover:text-fg-text">Cancelar</button></div></div>
         <div id="usersTableContainer" class="table-container rounded-lg border border-fg-border overflow-y-auto"><table class="min-w-full"><thead><tr class="bg-fg-700 text-fg-muted text-[10px] uppercase tracking-wider"><th class="px-4 py-2.5 text-left">Login</th><th class="px-4 py-2.5 text-left">Nome</th><th class="px-4 py-2.5 text-left">Tipo</th><th class="px-4 py-2.5 text-left">DataMarts</th><th class="px-4 py-2.5 text-center">Status</th><th class="px-4 py-2.5 text-left">Criado em</th><th class="px-4 py-2.5 text-center">Ações</th></tr></thead><tbody id="usersTableBody" class="text-sm divide-y divide-fg-border"></tbody></table></div>
     </div>
 </section>
@@ -4484,7 +4493,9 @@ function renderTablesList() {
     const diamondEl = document.getElementById('diamondTablesList');
     const orphanEl = document.getElementById('orphanTablesList');
     if (!el) return;
-    const tables = _tablesCache || [];
+    const _allTables = _tablesCache || [];
+    const techTables = _allTables.filter(t => t.is_tech);
+    const tables = _allTables.filter(t => !t.is_tech);
     const isAdmin = currentUser && ['root','superuser','admin'].includes(currentUser.user_type);
     const isAnalista = currentUser && currentUser.user_type === 'analista';
     const analistaDmName = isAnalista ? ('dm-' + currentUser.login) : '';
@@ -4522,6 +4533,25 @@ function renderTablesList() {
             const canDrop = isAdmin || (isAnalista && (t.datamarts || []).some(d => d.name === analistaDmName));
             return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border hover:border-fg-accent/30 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span><span class="ml-2">${dmBadges}</span></div><div class="flex items-center gap-2">${canDrop ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
         }).join('');
+    }
+
+    // ---- DataMarts Tech (TDIA-CodeGen) — oculto por padrão; checkbox revela (Root/Admin) ----
+    const techWrap = document.getElementById('tablesShowTechWrapper');
+    if (techWrap) techWrap.classList.toggle('hidden', !isAdmin);
+    const techGroup = document.getElementById('tablesTechGroup');
+    const techListEl = document.getElementById('techTablesList');
+    const showTech = !!((document.getElementById('tablesShowTech') || {}).checked);
+    if (techGroup && techListEl) {
+        if (isAdmin && showTech && techTables.length) {
+            techGroup.classList.remove('hidden');
+            techListEl.innerHTML = techTables.map(t => {
+                const dmBadges = (t.datamarts || []).map(d => `<span class="text-[9px] bg-fg-accent/10 text-fg-accent px-1.5 py-0.5 rounded-full">${escapeHtml(d.name)}</span>`).join(' ');
+                return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-accent/20 hover:border-fg-accent/40 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-[9px] bg-fg-accent/15 text-fg-accent px-1.5 py-0.5 rounded mr-2 font-bold uppercase tracking-wider">tech</span><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span><span class="ml-2">${dmBadges}</span></div><div class="flex items-center gap-2">${isAdmin ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
+            }).join('');
+        } else {
+            techGroup.classList.add('hidden');
+            techListEl.innerHTML = '';
+        }
     }
 
     // ---- Tabelas Diamante / Por DiamondLayer ----
@@ -6133,7 +6163,7 @@ async function loadActiveSkillsBadge() { /* no-op — header skill entry point d
 // ============================
 // Users
 // ============================
-async function loadUsers() { try { const users = await (await fetch('/api/users')).json(); const tbody = document.getElementById('usersTableBody'); const typeLabels = { root: 'Root', superuser: 'Super Usuário', admin: 'Administrador', user: 'Usuário' }; const typeColors = { root: 'text-red-400', superuser: 'text-fg-accent', admin: 'text-fg-blue', user: 'text-fg-muted' }; const dmMap = {}; allDatamarts.forEach(d => dmMap[d.id] = d.name); tbody.innerHTML = users.map(u => { const dmNames = (u.datamart_ids || []).map(id => dmMap[id] || id).join(', ') || '—'; return `<tr class="hover:bg-fg-700/50 transition-colors"><td class="px-4 py-2.5 font-mono text-fg-bright">${u.login}</td><td class="px-4 py-2.5 text-fg-text">${u.display_name || '—'}</td><td class="px-4 py-2.5"><span class="${typeColors[u.user_type] || 'text-fg-muted'} text-xs font-semibold">${typeLabels[u.user_type] || u.user_type}</span></td><td class="px-4 py-2.5 text-fg-muted text-xs max-w-[150px] truncate font-mono" title="${dmNames}">${dmNames}</td><td class="px-4 py-2.5 text-center">${u.is_active ? '<span class="text-fg-green text-xs">Ativo</span>' : '<span class="text-red-400 text-xs">Inativo</span>'}</td><td class="px-4 py-2.5 text-fg-muted text-xs font-mono">${u.created_at ? u.created_at.slice(0,16).replace('T',' ') : '—'}</td><td class="px-4 py-2.5 text-center"><div class="flex items-center justify-center gap-1"><button onclick="editUser(${u.id})" class="text-fg-muted hover:text-fg-blue text-xs transition-colors">Editar</button><span class="text-fg-border">·</span><button onclick="resetUserPassword(${u.id}, '${u.login}')" class="text-fg-muted hover:text-fg-accent text-xs transition-colors">Senha</button>${u.user_type !== 'root' ? `<span class="text-fg-border">·</span><button onclick="removeUser(${u.id}, '${u.login}')" class="text-fg-muted hover:text-red-400 text-xs transition-colors">Excluir</button>` : ''}</div></td></tr>`; }).join(''); } catch(e) { console.error(e); } }
+async function loadUsers() { try { const users = await (await fetch('/api/users')).json(); const tbody = document.getElementById('usersTableBody'); const typeLabels = { root: 'Root', superuser: 'Super Usuário', admin: 'Administrador', analista: 'Analista', engenheiro_dados: 'Engenheiro de Dados', user: 'Usuário' }; const typeColors = { root: 'text-red-400', superuser: 'text-fg-accent', admin: 'text-fg-blue', analista: 'text-fg-green', engenheiro_dados: 'text-fg-green', user: 'text-fg-muted' }; const dmMap = {}; allDatamarts.forEach(d => dmMap[d.id] = d.name); tbody.innerHTML = users.map(u => { const dmNames = (u.datamart_ids || []).map(id => dmMap[id] || id).join(', ') || '—'; return `<tr class="hover:bg-fg-700/50 transition-colors"><td class="px-4 py-2.5 font-mono text-fg-bright">${u.login}</td><td class="px-4 py-2.5 text-fg-text">${u.display_name || '—'}</td><td class="px-4 py-2.5"><span class="${typeColors[u.user_type] || 'text-fg-muted'} text-xs font-semibold">${typeLabels[u.user_type] || u.user_type}</span></td><td class="px-4 py-2.5 text-fg-muted text-xs max-w-[150px] truncate font-mono" title="${dmNames}">${dmNames}</td><td class="px-4 py-2.5 text-center">${u.is_active ? '<span class="text-fg-green text-xs">Ativo</span>' : '<span class="text-red-400 text-xs">Inativo</span>'}</td><td class="px-4 py-2.5 text-fg-muted text-xs font-mono">${u.created_at ? u.created_at.slice(0,16).replace('T',' ') : '—'}</td><td class="px-4 py-2.5 text-center"><div class="flex items-center justify-center gap-1"><button onclick="editUser(${u.id})" class="text-fg-muted hover:text-fg-blue text-xs transition-colors">Editar</button><span class="text-fg-border">·</span><button onclick="resetUserPassword(${u.id}, '${u.login}')" class="text-fg-muted hover:text-fg-accent text-xs transition-colors">Senha</button>${u.user_type !== 'root' ? `<span class="text-fg-border">·</span><button onclick="removeUser(${u.id}, '${u.login}')" class="text-fg-muted hover:text-red-400 text-xs transition-colors">Excluir</button>` : ''}</div></td></tr>`; }).join(''); } catch(e) { console.error(e); } }
 function showCreateUserForm() { document.getElementById('userFormPanel').classList.remove('hidden'); document.getElementById('userFormTitle').textContent = 'Novo Usuário'; document.getElementById('userFormId').value = ''; document.getElementById('userFormLogin').value = ''; document.getElementById('userFormPassword').value = ''; document.getElementById('userFormType').value = 'user'; document.getElementById('userFormName').value = ''; document.getElementById('userFormDesc').value = ''; document.getElementById('userFormLogin').disabled = false; document.getElementById('userFormPassword').placeholder = 'Obrigatório'; renderUserFormDatamarts([]); renderUserFormDiamondLayers([]); }
 async function editUser(userId) { const users = await (await fetch('/api/users')).json(); const u = users.find(x => x.id === userId); if (!u) return; document.getElementById('userFormPanel').classList.remove('hidden'); document.getElementById('userFormTitle').textContent = 'Editar — ' + u.login; document.getElementById('userFormId').value = u.id; document.getElementById('userFormLogin').value = u.login; document.getElementById('userFormPassword').value = ''; document.getElementById('userFormPassword').placeholder = 'Vazio = manter'; document.getElementById('userFormType').value = u.user_type; document.getElementById('userFormName').value = u.display_name || ''; document.getElementById('userFormDesc').value = u.profile_description || ''; renderUserFormDatamarts(u.datamart_ids || []); renderUserFormDiamondLayers(u.diamond_layer_ids || []); }
 function hideUserForm() { document.getElementById('userFormPanel').classList.add('hidden'); }
@@ -6296,7 +6326,7 @@ async function deleteSystemPrompt() {
 // ============================
 // Authentication & Current User
 // ============================
-async function loadCurrentUser() { try { const res = await fetch('/api/auth/me'); if (!res.ok) { window.location.href = '/login'; return; } currentUser = await res.json(); document.getElementById('userDisplayName').textContent = currentUser.display_name || currentUser.login; document.getElementById('dropdownUserName').textContent = currentUser.display_name || currentUser.login; const typeLabels = { root: 'Root', superuser: 'Super Usuário', admin: 'Administrador', user: 'Usuário' }; document.getElementById('dropdownUserType').textContent = typeLabels[currentUser.user_type] || currentUser.user_type; 
+async function loadCurrentUser() { try { const res = await fetch('/api/auth/me'); if (!res.ok) { window.location.href = '/login'; return; } currentUser = await res.json(); document.getElementById('userDisplayName').textContent = currentUser.display_name || currentUser.login; document.getElementById('dropdownUserName').textContent = currentUser.display_name || currentUser.login; const typeLabels = { root: 'Root', superuser: 'Super Usuário', admin: 'Administrador', analista: 'Analista', engenheiro_dados: 'Engenheiro de Dados', user: 'Usuário' }; document.getElementById('dropdownUserType').textContent = typeLabels[currentUser.user_type] || currentUser.user_type; 
 
     if (['root','superuser','admin'].includes(currentUser.user_type)) {
         document.getElementById('tab-users').classList.remove('hidden');
@@ -6318,6 +6348,18 @@ async function loadCurrentUser() { try { const res = await fetch('/api/auth/me')
     // Usuário comum: esconder dropdown Configurações inteiro
     if (currentUser.user_type === 'user') {
         document.getElementById('cfgDropdown').style.display = 'none';
+    }
+    // TDIA-CodeGen: link de nav para Root/Admin/Superuser/Engenheiro de Dados
+    if (['root','superuser','admin','engenheiro_dados'].includes(currentUser.user_type)) {
+        const cg = document.getElementById('nav-codegen');
+        if (cg) cg.classList.remove('hidden');
+    }
+    // Engenheiro de Dados: em Configurações, manter só Catálogo e Produtos de Dados
+    if (currentUser.user_type === 'engenheiro_dados') {
+        ['cfg-tab-tables','cfg-tab-api','cfg-tab-users','cfg-sep-users','cfg-sep-tables'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
     }
     // Analista: forçar DataMart e esconder seções admin do painel Tables
     if (currentUser.user_type === 'analista') {

@@ -1,0 +1,46 @@
+{# Seção Ajuda — seed informativo. Será expandida na Parte 2 com exemplos. #}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+    <div class="lg:col-span-2 space-y-5">
+        <div class="bg-fg-800 border border-fg-border rounded-xl p-6">
+            <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider mb-3">O que é o TDIA-CodeGen</h2>
+            <p class="text-sm text-fg-text leading-relaxed">
+                Um ambiente dedicado à <strong>Engenharia de Dados</strong> para escrever, testar e versionar
+                queries SQL sobre os DataMarts e DiamondLayers da plataforma — e gerar, a partir delas,
+                código Python pronto para os seus pipelines.
+            </p>
+        </div>
+
+        <div class="bg-fg-800 border border-fg-border rounded-xl p-6">
+            <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider mb-3">Como vai funcionar</h2>
+            <ol class="text-sm text-fg-text leading-relaxed space-y-2 list-decimal list-inside">
+                <li><strong>Selecione</strong> o DataMart e a DiamondLayer de trabalho.</li>
+                <li><strong>Escreva</strong> a query no editor SQL (com autocomplete do catálogo).</li>
+                <li><strong>Execute</strong> e visualize os resultados na grade.</li>
+                <li><strong>Exporte</strong> em CSV, Excel ou JSON.</li>
+                <li><strong>Gere</strong> código Python (pandas / pyspark / SQLAlchemy) para rodar em dataflow ou VM.</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="space-y-5">
+        <div class="bg-fg-800 border border-fg-border rounded-xl p-6">
+            <h2 class="text-sm font-bold text-fg-blue uppercase tracking-wider mb-3">Quem acessa</h2>
+            <ul class="text-sm text-fg-text space-y-1.5">
+                <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-fg-green"></span> Root</li>
+                <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-fg-green"></span> Administrador</li>
+                <li class="flex items-center gap-2"><span class="w-1.5 h-1.5 rounded-full bg-fg-green"></span> Engenheiro de Dados</li>
+            </ul>
+        </div>
+
+        <div class="bg-fg-800 border border-fg-border rounded-xl p-6">
+            <h2 class="text-sm font-bold text-fg-green uppercase tracking-wider mb-3">Boas práticas</h2>
+            <ul class="text-sm text-fg-muted space-y-1.5 list-disc list-inside">
+                <li>Use <code>LIMIT</code> ao explorar dados.</li>
+                <li>Qualifique nomes com aspas quando houver maiúsculas/espaços.</li>
+                <li>Prefira <code>ILIKE</code> para texto sem distinção de caixa.</li>
+            </ul>
+        </div>
+    </div>
+
+</div>

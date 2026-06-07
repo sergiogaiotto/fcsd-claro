@@ -1,0 +1,10 @@
+{# Placeholder reutilizável das seções ainda não implementadas.
+   Recebe via {% with %}: soon_part (título) e soon_desc (descrição). #}
+<div class="bg-fg-800 border border-fg-border rounded-xl p-10 text-center max-w-2xl mx-auto">
+    <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-fg-accent/10 text-fg-accent mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </div>
+    <h3 class="text-base font-bold text-fg-bright">{{ soon_part }}</h3>
+    <p class="text-sm text-fg-muted mt-2 leading-relaxed">{{ soon_desc }}</p>
+    <span class="inline-block mt-4 text-[10px] uppercase tracking-widest text-fg-muted border border-fg-border rounded px-2 py-1">Em construção</span>
+</div>
