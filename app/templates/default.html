@@ -344,6 +344,10 @@
         html.light .inline-chip { color:#57606a; border-color:#d0d7de; }
         html.light .inline-chip:hover { color:#1f2328; border-color:#b8000b; }
         html.light .inline-chip-active { color:#fff !important; background:#e30613 !important; border-color:#e30613 !important; }
+
+        /* Card do gráfico inline — fundo limpo por tema (evita tinta escura no claro) */
+        .inline-chart-card { background:#0d1117; border:1px solid #30363d; }
+        html.light .inline-chart-card { background:#ffffff; border:1px solid #e6e9ee; box-shadow:0 1px 3px rgba(0,0,0,0.04); }
     </style>
 </head>
 <body class="bg-fg-900 text-fg-text min-h-screen">
@@ -3312,7 +3316,7 @@ function _renderInlineChartCard(id, activeType) {
             class="inline-chip text-[10px] px-2 py-1 rounded transition ${ct.type === activeType ? 'inline-chip-active' : ''}"
             title="${ct.label}">${ct.icon} ${ct.label}</button>`).join('');
     return `
-    <div class="mt-3 border border-fg-border rounded-xl p-3 bg-fg-700/30" id="${id}_card">
+    <div class="mt-3 rounded-xl p-3 inline-chart-card" id="${id}_card">
         <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
             <span class="text-[10px] uppercase tracking-wider font-mono text-fg-muted">Gráfico automático</span>
             <div class="flex gap-1.5">
@@ -3334,28 +3338,43 @@ function _renderInlineChart(id, data, type, x, y, agg) {
     if (_inlineCharts[id]) { try { _inlineCharts[id].destroy(); } catch(e) {} }
 
     const light  = document.getElementById('html-root').classList.contains('light');
-    const grid   = light ? '#e1e8f0' : '#21262d';
+    const grid   = light ? '#eef1f5' : '#21262d';
     const txt    = light ? '#57606a' : '#8b949e';
     const accent = light ? '#e30613' : '#ff6347';
-    const accentBg = light ? 'rgba(227,6,19,.28)' : 'rgba(255,99,71,.35)';
+    // Paleta categórica vibrante e harmônica (Claro red em destaque).
     const pal = light
-        ? ['rgba(227,6,19,.75)','rgba(9,105,218,.75)','rgba(26,127,55,.75)','rgba(240,136,62,.75)','rgba(163,113,247,.75)','rgba(63,185,80,.75)','rgba(210,168,255,.75)','rgba(121,192,255,.75)']
-        : PAL_COCKPIT;
+        ? ['#e30613','#0969da','#1a7f37','#bf8700','#8250df','#0a7ea4','#cf6e00','#6e7781']
+        : ['#ff6347','#58a6ff','#3fb950','#d29922','#a371f7','#39d353','#db61a2','#79c0ff'];
 
     const typeMap = { area: 'line', scatter: 'scatter' };
     const chartType = typeMap[type] || type;
     const circ = ['pie', 'doughnut', 'polarArea'].includes(type);
-    const fill = type === 'area';
+    const isArea = type === 'area';
+
+    // Preenchimento por tipo: barras sólidas, área translúcida, linha/dispersão pontual.
+    let fillColor;
+    if (type === 'bar')      fillColor = light ? 'rgba(227,6,19,0.88)' : 'rgba(255,99,71,0.82)';
+    else if (isArea)         fillColor = light ? 'rgba(227,6,19,0.12)' : 'rgba(255,99,71,0.15)';
+    else                     fillColor = accent;
 
     const dataset = circ ? {
         label: y, data: values,
         backgroundColor: labels.map((_, i) => pal[i % pal.length]),
-        borderColor: light ? '#ffffff' : '#0d1117', borderWidth: 2,
+        borderColor: light ? '#ffffff' : '#0d1117', borderWidth: 2, hoverOffset: 6,
     } : {
         label: y + (agg && agg !== 'none' ? ` (${agg})` : ''),
         data: type === 'scatter' ? labels.map((l, i) => ({ x: Number(l) || i, y: values[i] })) : values,
-        backgroundColor: accentBg, borderColor: accent, borderWidth: 2, fill, tension: 0.3,
-        borderRadius: type === 'bar' ? 4 : 0, pointRadius: type === 'scatter' ? 4 : 2,
+        backgroundColor: fillColor,
+        borderColor: accent,
+        borderWidth: (type === 'line' || isArea) ? 2.5 : (type === 'bar' ? 0 : 2),
+        fill: isArea,
+        tension: 0.35,
+        borderRadius: type === 'bar' ? 6 : 0,
+        maxBarThickness: 80,
+        pointRadius: type === 'scatter' ? 4 : ((type === 'line' || isArea) ? 3 : 0),
+        pointHoverRadius: 5,
+        pointBackgroundColor: accent,
+        pointBorderColor: light ? '#ffffff' : '#0d1117',
     };
 
     const scales = {};
