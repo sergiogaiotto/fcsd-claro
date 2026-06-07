@@ -1859,6 +1859,34 @@ def update_vision_label(vision_id: int, user_id: int, label: str) -> bool:
         conn.close()
 
 
+def update_vision_meta(vision_id: int, user_id: int, label: str, question: str | None = None) -> bool:
+    """Update a saved vision's label (always) and question (only when provided).
+
+    ``user_id == 0`` bypasses the ownership filter (admin/root), mirroring
+    ``delete_vision``.
+    """
+    conn = get_sync_connection()
+    try:
+        sets = ["label = ?"]
+        params: list = [label]
+        if question is not None:
+            sets.append("question = ?")
+            params.append(question)
+        where = "id = ?"
+        params.append(vision_id)
+        if user_id != 0:
+            where += " AND user_id = ?"
+            params.append(user_id)
+        conn.execute(
+            f"UPDATE saved_visions SET {', '.join(sets)} WHERE {where}",
+            tuple(params),
+        )
+        conn.commit()
+        return True
+    finally:
+        conn.close()
+
+
 def import_visions(user_id: int, rows: list[dict]) -> dict:
     conn = get_sync_connection()
     created, skipped, errors = [], [], []

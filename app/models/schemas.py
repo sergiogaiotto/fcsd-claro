@@ -286,6 +286,7 @@ class VisionCreate(BaseModel):
 
 class VisionUpdate(BaseModel):
     label: str = Field("", description="Novo rótulo")
+    question: Optional[str] = Field(None, description="Nova pergunta (None = não altera)")
 
 # --- Cockpit ---
 
