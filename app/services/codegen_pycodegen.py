@@ -76,6 +76,12 @@ def resolve_schema(sql: str) -> list[dict]:
             cols.append({"name": name, "ident": _pyident(name), **types})
         return cols
     except Exception:
+        # Tabela inexistente / consulta inválida → degrada para schema vazio.
+        # Faz rollback p/ não deixar a transação abortada na conexão.
+        try:
+            conn.rollback()
+        except Exception:
+            pass
         return []
     finally:
         conn.close()
@@ -134,10 +140,32 @@ def list_inventory() -> dict:
 # ---------------------------------------------------------------------------
 
 def _env() -> SandboxedEnvironment:
-    return SandboxedEnvironment(autoescape=False, trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True)
+    env = SandboxedEnvironment(autoescape=False, trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True)
+    # `pyrepr` emite um literal Python seguro (aspas/escapes corretos) — usado
+    # pelos padrões tipados p/ nomes de coluna arbitrários (ex.: 'tot$al', 'qt"d').
+    env.filters["pyrepr"] = repr
+    return env
 
 
-def render_spec(sql: str, technique_key: str, pattern_key: str, options: dict | None) -> dict:
+def _compose(tech: dict, pat: dict, schema: list, sql: str, options: dict | None) -> str:
+    """Render em 2 passes: fragmentos da técnica → `t`, depois o template do
+    padrão com `t` + `schema` + `options`. SEM banco (recebe o schema pronto) —
+    é o ponto de entrada determinístico usado pelos golden-tests. Levanta em
+    erro de template."""
+    env = _env()
+    ctx = {
+        "schema": schema,
+        "query": sql,
+        "options": options or {},
+        "sql_literal": _embed_sql((sql or "").strip().rstrip(";").strip()),
+    }
+    t = {f: env.from_string(tech.get("frag_" + f) or "").render(**ctx) for f in _FRAGS}
+    return env.from_string(pat["template"]).render(t=t, **ctx)
+
+
+def _render_resolved(sql: str, technique_key: str, pattern_key: str, options: dict | None, schema: list) -> dict:
+    """Carrega técnica+padrão do inventário, valida compatibilidade e compõe.
+    Recebe o `schema` já resolvido (injetável nos testes)."""
     tech = load_technique((technique_key or "pandas").lower())
     if not tech:
         return {"error": f"Técnica '{technique_key}' não encontrada."}
@@ -154,15 +182,16 @@ def render_spec(sql: str, technique_key: str, pattern_key: str, options: dict | 
         if allowed and tech["key"] not in allowed:
             return {"error": f"Padrão '{pat['key']}' não é compatível com a técnica '{tech['key']}'."}
 
-    schema = resolve_schema(sql)
-    env = _env()
-    ctx = {"schema": schema, "query": sql, "options": options or {}, "sql_literal": _embed_sql((sql or "").strip().rstrip(";").strip())}
     try:
-        t = {f: env.from_string(tech.get("frag_" + f) or "").render(**ctx) for f in _FRAGS}
-        code = env.from_string(pat["template"]).render(t=t, **ctx)
+        code = _compose(tech, pat, schema, sql, options)
     except Exception as e:
         return {"error": f"Erro ao renderizar o template: {str(e).splitlines()[0] if str(e) else e}"}
     return {"code": code.strip() + "\n", "schema": schema, "technique": tech["key"], "pattern": pat["key"]}
+
+
+def render_spec(sql: str, technique_key: str, pattern_key: str, options: dict | None) -> dict:
+    """Resolve o schema (dry-run, Schema-Driven) e compõe a Spec → código Python."""
+    return _render_resolved(sql, technique_key, pattern_key, options, resolve_schema(sql))
 
 
 # ---------------------------------------------------------------------------
@@ -228,11 +257,189 @@ if __name__ == "__main__":
     main()
 '''
 
+# --- Padrões TIPADOS (M2.3) — usam o `schema` resolvido p/ emitir código ------
+# ciente do schema (Schema-Driven). Convenções comuns:
+#   * cada coluna do schema expõe `name` (cru), `ident` (identificador Python),
+#     `py`/`pd`/`spark` (tipos por ecossistema);
+#   * `pyrepr` emite literais de string seguros p/ nomes de coluna arbitrários;
+#   * GOTCHA — `decimal.Decimal`/`datetime.*` exigem `import decimal`/`datetime`
+#     CONDICIONAL (senão o código tipado não roda); resolvido com `{% if %}`;
+#   * DEGRADAÇÃO — schema vazio (tabela inexistente) ainda gera Python válido.
+
+_DATACLASS_TEMPLATE = '''{{ t.imports }}
+from dataclasses import dataclass
+{% set _pytypes = schema | map(attribute='py') | list %}
+{% if 'decimal.Decimal' in _pytypes %}import decimal
+{% endif %}
+{% if 'datetime.date' in _pytypes or 'datetime.datetime' in _pytypes %}import datetime
+{% endif %}
+
+SQL = """{{ sql_literal }}"""
+
+
+@dataclass
+class ResultRow:
+{% if schema %}
+{% for c in schema %}
+    {{ c.ident }}: {{ c.py }}
+{% endfor %}
+{% else %}
+    pass  # schema indisponível — não foi possível resolver as colunas da consulta
+{% endif %}
+
+
+def fetch() -> list:
+{{ t.setup | indent(4, true) }}
+{{ t.read | indent(4, true) }}
+{% if schema %}
+    rows = [ResultRow(**_rec) for _rec in result.to_dict("records")]
+{% else %}
+    rows = result.to_dict("records")  # degradação: sem schema, devolve dicts crus
+{% endif %}
+{% if t.teardown %}
+{{ t.teardown | indent(4, true) }}
+{% endif %}
+    return rows
+
+
+if __name__ == "__main__":
+    for _row in fetch()[:50]:
+        print(_row)
+'''
+
+_PYDANTIC_TEMPLATE = '''{{ t.imports }}
+from pydantic import BaseModel
+{% set _pytypes = schema | map(attribute='py') | list %}
+{% if 'decimal.Decimal' in _pytypes %}import decimal
+{% endif %}
+{% if 'datetime.date' in _pytypes or 'datetime.datetime' in _pytypes %}import datetime
+{% endif %}
+
+SQL = """{{ sql_literal }}"""
+
+
+class ResultRow(BaseModel):
+{% if schema %}
+{% for c in schema %}
+    {{ c.ident }}: {{ c.py }}
+{% endfor %}
+{% else %}
+    model_config = {"extra": "allow"}  # schema indisponível — aceita campos livres
+{% endif %}
+
+
+class ResultRepository:
+    """Acesso tipado ao resultado da consulta (Repository pattern)."""
+
+    def fetch(self) -> list[ResultRow]:
+{{ t.setup | indent(8, true) }}
+{{ t.read | indent(8, true) }}
+        rows = [ResultRow(**_rec) for _rec in result.to_dict("records")]
+{% if t.teardown %}
+{{ t.teardown | indent(8, true) }}
+{% endif %}
+        return rows
+
+
+if __name__ == "__main__":
+    for _row in ResultRepository().fetch()[:50]:
+        print(_row)
+'''
+
+_TYPED_DF_TEMPLATE = '''{{ t.imports }}
+
+SQL = """{{ sql_literal }}"""
+
+{% if schema %}
+# dtypes detectados a partir do schema da consulta (Schema-Driven):
+DTYPES = {
+{% for c in schema %}
+    {{ c.name | pyrepr }}: {{ c.pd | pyrepr }},
+{% endfor %}
+}
+{% else %}
+DTYPES = {}  # schema indisponível
+{% endif %}
+
+
+def main():
+{{ t.setup | indent(4, true) }}
+{{ t.read | indent(4, true) }}
+{% if schema %}
+    result = result.astype(DTYPES, errors="ignore")
+{% endif %}
+{{ t.show | indent(4, true) }}
+{% if t.teardown %}
+{{ t.teardown | indent(4, true) }}
+{% endif %}
+    return result
+
+
+if __name__ == "__main__":
+    main()
+'''
+
+_SPARK_SCHEMA_TEMPLATE = '''{{ t.imports }}
+{% if schema %}
+from pyspark.sql.types import StructType, StructField, {{ schema | map(attribute='spark') | unique | join(', ') }}
+{% else %}
+from pyspark.sql.types import StructType, StructField
+{% endif %}
+
+SQL = """{{ sql_literal }}"""
+
+{% if schema %}
+RESULT_SCHEMA = StructType([
+{% for c in schema %}
+    StructField({{ c.name | pyrepr }}, {{ c.spark }}(), True),
+{% endfor %}
+])
+{% else %}
+RESULT_SCHEMA = StructType([])  # schema indisponível
+{% endif %}
+
+
+def main():
+{{ t.setup | indent(4, true) }}
+{{ t.read | indent(4, true) }}
+    print(RESULT_SCHEMA)
+    result.printSchema()
+{{ t.show | indent(4, true) }}
+{% if t.teardown %}
+{{ t.teardown | indent(4, true) }}
+{% endif %}
+    return result
+
+
+if __name__ == "__main__":
+    main()
+'''
+
 _SEED_PATTERNS = [
     {
         "key": "script", "label": "Script simples", "compatible": "*",
         "description": "Script top-to-bottom com função main() — equivalente ao gerador original.",
         "template": _SCRIPT_TEMPLATE,
+    },
+    {
+        "key": "dataclass", "label": "Dataclass tipada (pandas)", "compatible": ["pandas"],
+        "description": "Gera um @dataclass tipado a partir do schema e materializa as linhas como list[ResultRow].",
+        "template": _DATACLASS_TEMPLATE,
+    },
+    {
+        "key": "pydantic", "label": "Repositório Pydantic (pandas)", "compatible": ["pandas"],
+        "description": "Gera um BaseModel Pydantic tipado + um Repository.fetch() -> list[ResultRow].",
+        "template": _PYDANTIC_TEMPLATE,
+    },
+    {
+        "key": "typed_dataframe", "label": "DataFrame tipado (pandas)", "compatible": ["pandas"],
+        "description": "Aplica os dtypes do schema via DataFrame.astype() (pandas/Schema-Driven).",
+        "template": _TYPED_DF_TEMPLATE,
+    },
+    {
+        "key": "spark_schema", "label": "StructType tipado (PySpark)", "compatible": ["pyspark"],
+        "description": "Monta um StructType explícito a partir do schema (PySpark/Schema-Driven).",
+        "template": _SPARK_SCHEMA_TEMPLATE,
     },
 ]
 
@@ -240,30 +447,30 @@ _seeded = False
 
 
 def ensure_seeded():
-    """Popula os inventários na primeira utilização, se vazios (idempotente)."""
+    """Garante que os inventários de fábrica existam (idempotente).
+
+    Faz UPSERT (`ON CONFLICT (key) DO NOTHING`) das técnicas/padrões de fábrica
+    uma vez por processo. Como NÃO depende mais de a tabela estar vazia, DBs já
+    existentes recebem padrões novos (ex.: os tipados da M2.3) sem migração
+    manual — e edições/exclusões do admin sobre as outras chaves são preservadas
+    (DO NOTHING nunca sobrescreve)."""
     global _seeded
     if _seeded:
         return
     conn = get_sync_connection()
     try:
-        n = conn.execute("SELECT COUNT(*) AS n FROM codegen_techniques").fetchone()
-        count = n["n"] if isinstance(n, dict) else n[0]
-        if count == 0:
-            for t in _SEED_TECHNIQUES:
-                conn.execute(
-                    "INSERT INTO codegen_techniques (key, label, runtime, description, frag_imports, frag_setup, frag_read, frag_show, frag_teardown, created_by) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (key) DO NOTHING",
-                    (t["key"], t["label"], t["runtime"], t["description"], t["frag_imports"], t["frag_setup"], t["frag_read"], t["frag_show"], t["frag_teardown"], "seed"),
-                )
-        m = conn.execute("SELECT COUNT(*) AS n FROM codegen_patterns").fetchone()
-        pcount = m["n"] if isinstance(m, dict) else m[0]
-        if pcount == 0:
-            for p in _SEED_PATTERNS:
-                conn.execute(
-                    "INSERT INTO codegen_patterns (key, label, description, template, compatible, created_by) "
-                    "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (key) DO NOTHING",
-                    (p["key"], p["label"], p["description"], p["template"], p["compatible"], "seed"),
-                )
+        for t in _SEED_TECHNIQUES:
+            conn.execute(
+                "INSERT INTO codegen_techniques (key, label, runtime, description, frag_imports, frag_setup, frag_read, frag_show, frag_teardown, created_by) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (key) DO NOTHING",
+                (t["key"], t["label"], t["runtime"], t["description"], t["frag_imports"], t["frag_setup"], t["frag_read"], t["frag_show"], t["frag_teardown"], "seed"),
+            )
+        for p in _SEED_PATTERNS:
+            conn.execute(
+                "INSERT INTO codegen_patterns (key, label, description, template, compatible, created_by) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (key) DO NOTHING",
+                (p["key"], p["label"], p["description"], p["template"], _norm_compatible(p["compatible"]), "seed"),
+            )
         conn.commit()
         _seeded = True
     except Exception:
@@ -390,9 +597,15 @@ def validate_pattern(data: dict) -> str | None:
     template = data.get("template") or ""
     if not template.strip():
         return "O template do padrão é obrigatório."
+    # Schema de referência rico (int + decimal + datetime) p/ exercitar também
+    # os ramos de import condicional dos padrões tipados ao validar uma edição.
+    ref_schema = [
+        {"name": "id", "ident": "id", "py": "int", "pd": "Int64", "spark": "IntegerType"},
+        {"name": "valor", "ident": "valor", "py": "decimal.Decimal", "pd": "object", "spark": "DecimalType"},
+        {"name": "criado_em", "ident": "criado_em", "py": "datetime.datetime", "pd": "datetime64[ns]", "spark": "TimestampType"},
+    ]
     env = _env()
-    ctx = {"schema": [{"name": "id", "ident": "id", "py": "int", "pd": "Int64", "spark": "IntegerType"}],
-           "query": "SELECT 1", "options": {}, "sql_literal": "SELECT 1"}
+    ctx = {"schema": ref_schema, "query": "SELECT 1", "options": {}, "sql_literal": "SELECT 1"}
     tech = load_technique("pandas")  # técnica de referência p/ validar a composição
     try:
         t = {f: env.from_string((tech.get("frag_" + f) if tech else "") or "").render(**ctx) for f in _FRAGS}
