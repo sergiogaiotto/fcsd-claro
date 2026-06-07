@@ -172,10 +172,12 @@ async function cgRun(confirmed) {
             return;
         }
         if (!res.ok || data.error) {
+            window.cgLastError = data.error || 'Erro ao executar.';   // o Copiloto usa p/ "corrigir erro"
             resultBox.innerHTML = '<div class="text-red-400 text-sm py-4 font-mono">' + _cgEscape(data.error || 'Erro ao executar.') + '</div>';
             status.textContent = 'Erro • ' + ms + ' ms';
             return;
         }
+        window.cgLastError = '';            // execução ok → limpa o último erro
         if (data.columns) {                 // resultado de leitura (ou SELECT final de um script)
             cgLastResult = data;
             cgRenderTable(data);
@@ -572,4 +574,258 @@ document.addEventListener('DOMContentLoaded', () => {
     cgLoadSchema();
     cgLoadSnippets();
     cgShowSection('editor');
+    cgCopInit();
 });
+
+
+/* ===========================================================================
+ * Copiloto de Dados (programação em linguagem natural) — painel lateral
+ * onipresente. O backend (/api/codegen/assist) PROPÕE; a execução de SQL
+ * continua via cgRun()/api/codegen/run (autorizador). As "actions" devolvidas
+ * pilotam o módulo: inserir no editor, executar, gerar Python tipado, salvar
+ * snippet. Memória de conversa em /api/codegen/chats.
+ * ========================================================================= */
+let cgCopOpen = false;
+let cgCopHistory = [];   // [{role:'user'|'assistant', content, sql?, actions?, _pending?}]
+let cgCopChatId = null;
+let cgCopBusy = false;
+
+function cgCopInit() {
+    cgCopRefreshChats();
+    cgCopRenderThread();
+    const inp = document.getElementById('cgCopInput');
+    if (inp) inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); cgCopSend(); }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.altKey && (e.key === 'c' || e.key === 'C')) { e.preventDefault(); cgCopToggle(); }
+    });
+}
+
+function cgCopToggle(force) {
+    cgCopOpen = (typeof force === 'boolean') ? force : !cgCopOpen;
+    const panel = document.getElementById('cgCopilotPanel');
+    const fab = document.getElementById('cgCopilotFab');
+    if (panel) { panel.classList.toggle('cg-copilot-open', cgCopOpen); panel.setAttribute('aria-hidden', cgCopOpen ? 'false' : 'true'); }
+    if (fab) fab.classList.toggle('cg-fab-hidden', cgCopOpen);
+    if (cgCopOpen) { cgCopRenderChips(); setTimeout(() => { const i = document.getElementById('cgCopInput'); if (i) i.focus(); }, 60); }
+}
+
+// Contexto vivo da IDE que viaja em cada mensagem (grounding do copiloto).
+function cgCopContext() {
+    const dm = document.getElementById('cgDatamart');
+    const dl = document.getElementById('cgLayer');
+    return {
+        sql: cgEditor ? cgEditor.getValue().trim() : '',
+        last_error: window.cgLastError || '',
+        datamart: (dm && dm.value) ? dm.options[dm.selectedIndex].text : '',
+        diamond: (dl && dl.value) ? dl.options[dl.selectedIndex].text : '',
+    };
+}
+
+function cgCopRenderChips() {
+    const box = document.getElementById('cgCopChips');
+    if (!box) return;
+    const ctx = cgCopContext();
+    const chips = [];
+    const nTables = Object.keys(cgSchemaTables || {}).length;
+    chips.push('<span class="cg-chip" title="Tabelas no seu escopo">⛁ ' + nTables + ' tabela(s)</span>');
+    if (ctx.datamart) chips.push('<span class="cg-chip">DataMart: ' + _cgEscape(ctx.datamart) + '</span>');
+    if (ctx.diamond) chips.push('<span class="cg-chip">Layer: ' + _cgEscape(ctx.diamond) + '</span>');
+    if (ctx.sql) chips.push('<span class="cg-chip" title="O copiloto vê o SQL atual do editor">✎ SQL atual (' + ctx.sql.length + ' ch)</span>');
+    if (ctx.last_error) chips.push('<span class="cg-chip cg-chip-err" title="' + _cgEscape(ctx.last_error) + '">⚠ último erro</span>');
+    box.innerHTML = chips.join('');
+}
+
+// Markdown mínimo e SEGURO (escapa antes; protege blocos de código do <br>).
+function cgCopMd(t) {
+    let s = _cgEscape(t || '');
+    const blocks = [];
+    s = s.replace(/```(?:[a-zA-Z]*)\n?([\s\S]*?)```/g, (m, code) => {
+        blocks.push(code.replace(/\n+$/, ''));
+        return ' B' + (blocks.length - 1) + ' ';
+    });
+    s = s.replace(/`([^`]+)`/g, '<code class="cg-cop-ic">$1</code>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\n/g, '<br>');
+    s = s.replace(/ B(\d+) /g, (m, i) => '<pre class="cg-cop-code">' + blocks[+i] + '</pre>');
+    return s;
+}
+
+function cgCopRenderThread() {
+    const thread = document.getElementById('cgCopThread');
+    if (!thread) return;
+    if (!cgCopHistory.length) {
+        thread.innerHTML = '<div class="cg-cop-empty">'
+            + '<div class="cg-cop-empty-title">✦ Copiloto de Dados</div>'
+            + '<p>Peça em linguagem natural — eu vejo seu escopo, esquema e o SQL atual.</p>'
+            + '<button class="cg-cop-suggest" onclick="cgCopQuick(this)">Gere um SELECT dos 10 maiores registros</button>'
+            + '<button class="cg-cop-suggest" onclick="cgCopQuick(this)">Explique o SQL atual do editor</button>'
+            + '<button class="cg-cop-suggest" onclick="cgCopQuick(this)">Por que minha última consulta deu erro?</button>'
+            + '<button class="cg-cop-suggest" onclick="cgCopQuick(this)">Transforme isso num job PySpark tipado</button>'
+            + '</div>';
+        return;
+    }
+    thread.innerHTML = cgCopHistory.map((m, i) => cgCopMsgHtml(m, i)).join('');
+    thread.scrollTop = thread.scrollHeight;
+}
+
+function cgCopMsgHtml(m, idx) {
+    if (m.role === 'user') {
+        return '<div class="cg-msg cg-msg-user"><div class="cg-bubble">' + _cgEscape(m.content) + '</div></div>';
+    }
+    let html = '<div class="cg-msg cg-msg-bot"><div class="cg-bubble">' + cgCopMd(m.content || '');
+    if (m.actions && m.actions.length) {
+        html += '<div class="cg-cop-acts">';
+        m.actions.forEach((a, ai) => {
+            html += '<button class="cg-cop-act" onclick="cgCopAct(' + idx + ',' + ai + ')">' + _cgEscape(a.label || a.type) + '</button>';
+        });
+        html += '</div>';
+    }
+    return html + '</div></div>';
+}
+
+function cgCopQuick(btn) { const inp = document.getElementById('cgCopInput'); if (inp) { inp.value = btn.textContent; inp.focus(); } }
+
+async function cgCopAct(mi, ai) {
+    const m = cgCopHistory[mi]; if (!m || !m.actions) return;
+    const a = m.actions[ai]; if (!a) return;
+    if (a.type === 'insert_sql') {
+        if (cgEditor) cgEditor.setValue(a.sql);
+        cgShowSection('editor'); cgCopToast('SQL inserido no editor.');
+    } else if (a.type === 'run_sql') {
+        if (cgEditor) cgEditor.setValue(a.sql);
+        cgShowSection('editor'); cgCopToast('Executando…'); cgRun();
+    } else if (a.type === 'python') {
+        cgCopShowPython(a);
+    } else if (a.type === 'save_snippet') {
+        try {
+            const res = await fetch('/api/codegen/snippets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: a.name, sql: a.sql }) });
+            if (res.ok) { cgLoadSnippets(); cgCopToast('Snippet salvo.'); } else cgCopToast('Erro ao salvar snippet.');
+        } catch (e) { cgCopToast('Falha: ' + e.message); }
+    } else if (a.type === 'copy_python') {
+        if (navigator.clipboard) navigator.clipboard.writeText(a.code || '').catch(() => {});
+        cgCopToast('Código copiado.');
+    } else if (a.type === 'download_python') {
+        const blob = new Blob([a.code || ''], { type: 'text/x-python' });
+        const url = URL.createObjectURL(blob);
+        const el = document.createElement('a'); el.href = url; el.download = a.filename || 'consulta.py';
+        document.body.appendChild(el); el.click(); el.remove(); URL.revokeObjectURL(url);
+    } else if (a.type === 'open_python_tab') {
+        const pre = document.getElementById('cgPyCode'); if (pre) pre.textContent = cgPyCode;
+        const bar = document.getElementById('cgPyBar'); if (bar) { bar.style.display = 'flex'; const nm = document.getElementById('cgPyName'); if (nm) nm.textContent = cgPyName; }
+        cgShowSection('python'); cgCopToast('Aberto na aba Gerar Python.');
+    }
+}
+
+// Mostra o Python gerado (já veio pronto do servidor) como uma mensagem com
+// copiar / baixar / abrir na aba dedicada.
+function cgCopShowPython(a) {
+    cgPyCode = a.code || ''; cgPyName = a.filename || 'consulta.py';
+    cgCopHistory.push({
+        role: 'assistant',
+        content: 'Código **' + (a.technique || '') + '·' + (a.pattern || '') + '** gerado:\n```python\n' + (a.code || '') + '\n```',
+        actions: [
+            { type: 'copy_python', label: '⧉ Copiar', code: a.code },
+            { type: 'download_python', label: '⤓ Baixar .py', code: a.code, filename: cgPyName },
+            { type: 'open_python_tab', label: 'Abrir na aba Gerar Python' },
+        ],
+    });
+    cgCopRenderThread();
+}
+
+function cgCopSetBusy(b) {
+    cgCopBusy = b;
+    const btn = document.getElementById('cgCopSend');
+    if (btn) { btn.disabled = b; btn.textContent = b ? '…' : 'Enviar'; }
+}
+
+async function cgCopSend() {
+    if (cgCopBusy) return;
+    const inp = document.getElementById('cgCopInput');
+    const msg = (inp ? inp.value : '').trim();
+    if (!msg) return;
+    inp.value = '';
+    cgCopHistory.push({ role: 'user', content: msg });
+    cgCopHistory.push({ role: 'assistant', content: '…', _pending: true });
+    cgCopRenderThread();
+    cgCopSetBusy(true);
+    try {
+        const prior = cgCopHistory.filter(m => !m._pending);
+        const histForApi = prior.slice(0, -1).map(m => ({ role: m.role, content: m.content }));
+        const res = await fetch('/api/codegen/assist', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg, history: histForApi, context: cgCopContext() }),
+        });
+        const data = await res.json().catch(() => ({ error: 'resposta inválida' }));
+        cgCopHistory = cgCopHistory.filter(m => !m._pending);
+        if (!res.ok || data.error) {
+            cgCopHistory.push({ role: 'assistant', content: '⚠ ' + (data.error || 'Erro ao falar com o copiloto.') });
+        } else {
+            cgCopHistory.push({ role: 'assistant', content: data.reply || 'Ok.', sql: data.sql || '', actions: data.actions || [] });
+        }
+    } catch (e) {
+        cgCopHistory = cgCopHistory.filter(m => !m._pending);
+        cgCopHistory.push({ role: 'assistant', content: '⚠ Falha de rede: ' + e.message });
+    } finally {
+        cgCopSetBusy(false);
+        cgCopRenderThread();
+        cgCopRenderChips();
+    }
+}
+
+function cgCopToast(msg) {
+    let t = document.getElementById('cgCopToast');
+    if (!t) { t = document.createElement('div'); t.id = 'cgCopToast'; t.className = 'cg-cop-toast'; document.body.appendChild(t); }
+    t.textContent = msg; t.classList.add('cg-cop-toast-on');
+    clearTimeout(window._cgCopToastT); window._cgCopToastT = setTimeout(() => t.classList.remove('cg-cop-toast-on'), 2200);
+}
+
+// ---- Memória de conversa (codegen_chats) --------------------------------
+async function cgCopRefreshChats() {
+    const sel = document.getElementById('cgCopChatSel'); if (!sel) return;
+    try {
+        const res = await fetch('/api/codegen/chats');
+        const rows = res.ok ? await res.json() : [];
+        sel.innerHTML = '<option value="">— conversas —</option>'
+            + rows.map(r => '<option value="' + r.id + '">' + _cgEscape(r.title) + '</option>').join('');
+        if (cgCopChatId) sel.value = String(cgCopChatId);
+    } catch (e) { /* opcional */ }
+}
+
+async function cgCopLoadChat(id) {
+    if (!id) return;
+    try {
+        const res = await fetch('/api/codegen/chats/' + id);
+        if (!res.ok) return;
+        const c = await res.json();
+        cgCopChatId = c.id;
+        cgCopHistory = (c.messages || []).map(m => ({ role: m.role, content: m.content, sql: m.sql, actions: m.actions }));
+        cgCopRenderThread();
+    } catch (e) { /* opcional */ }
+}
+
+function cgCopNewChat() {
+    cgCopChatId = null; cgCopHistory = [];
+    const s = document.getElementById('cgCopChatSel'); if (s) s.value = '';
+    cgCopRenderThread();
+}
+
+async function cgCopSaveChat() {
+    const msgs = cgCopHistory.filter(m => !m._pending).map(m => ({ role: m.role, content: m.content, sql: m.sql || '', actions: m.actions || [] }));
+    if (!msgs.length) { cgCopToast('Nada para salvar.'); return; }
+    const firstUser = cgCopHistory.find(m => m.role === 'user');
+    const title = (firstUser ? firstUser.content : 'Conversa').slice(0, 60);
+    try {
+        const res = await fetch('/api/codegen/chats', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: cgCopChatId, title, messages: msgs }) });
+        const data = await res.json();
+        if (data.id) { cgCopChatId = data.id; cgCopRefreshChats(); cgCopToast('Conversa salva.'); } else cgCopToast('Erro ao salvar.');
+    } catch (e) { cgCopToast('Falha: ' + e.message); }
+}
+
+async function cgCopDeleteChat() {
+    if (!cgCopChatId) { cgCopToast('Nenhuma conversa carregada.'); return; }
+    if (!confirm('Excluir esta conversa?')) return;
+    try { await fetch('/api/codegen/chats/' + cgCopChatId, { method: 'DELETE' }); } catch (e) {}
+    cgCopNewChat(); cgCopRefreshChats(); cgCopToast('Conversa excluída.');
+}
