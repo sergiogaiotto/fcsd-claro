@@ -37,6 +37,10 @@ COPY requirements.txt ./
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
+# TDIA-CodeGen: parser SQL para o autorizador por-statement. Em camada própria,
+# após o requirements.txt, para NÃO invalidar o cache pesado das deps acima.
+RUN pip install "sqlglot>=25,<31"
+
 # Copy the rest of the source after deps so a code-only change does not bust
 # the requirements layer.
 COPY . .

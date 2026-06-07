@@ -143,6 +143,14 @@ async def require_upload_access(user: dict = Depends(get_current_user)) -> dict:
         raise HTTPException(status_code=403, detail="Acesso restrito a administradores e analistas")
     return user
 
+
+async def require_codegen(user: dict = Depends(get_current_user)) -> dict:
+    """Acesso ao módulo TDIA-CodeGen: Root, Admin/Superuser e Engenheiro de Dados."""
+    from app.core.security import can_codegen
+    if not can_codegen(user):
+        raise HTTPException(status_code=403, detail="Acesso restrito ao TDIA-CodeGen")
+    return user
+
 # ---------------------------------------------------------------------------
 # Auth routes (public)
 # ---------------------------------------------------------------------------
@@ -3074,3 +3082,111 @@ def _safe_table_name(name: str) -> str:
     if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
         raise HTTPException(400, "Nome de tabela inválido")
     return name
+
+
+# ---------------------------------------------------------------------------
+# TDIA-CodeGen — módulo de Engenharia de Dados (Root/Admin/Engenheiro de Dados)
+# P1a: leitura (SELECT/WITH) + export. Escrita/DDL e autorizador ficam na P1b.
+# ---------------------------------------------------------------------------
+
+@router.get("/codegen/scope")
+async def codegen_scope(user: dict = Depends(require_codegen)):
+    """DataMarts e DiamondLayers autorizados ao usuário (contexto do editor)."""
+    if is_root(user):
+        return {"datamarts": get_all_datamarts(), "diamond_layers": get_all_diamond_layers()}
+    return {
+        "datamarts": get_user_datamarts(user["id"]),
+        "diamond_layers": get_user_diamond_layers(user["id"]),
+    }
+
+
+@router.post("/codegen/run")
+async def codegen_run(req: dict, user: dict = Depends(require_codegen)):
+    """Executa um script SQL do editor através do autorizador do módulo (P1b):
+    leitura e escrita escopadas aos DataMarts/DiamondLayers do usuário; DROP/ALTER
+    só em tabelas de posse; CREATE associa ao DataMart escolhido. Execução atômica;
+    operações destrutivas exigem `confirm: true`."""
+    from app.services.codegen_service import execute_script
+    sql = (req.get("sql") or "").strip()
+    if not sql:
+        raise HTTPException(400, "Consulta vazia.")
+    try:
+        limit = int(req.get("result_limit") or 100)
+    except (TypeError, ValueError):
+        limit = 100
+    dm = req.get("target_datamart_id") or req.get("datamart_id")
+    try:
+        dm = int(dm) if dm not in (None, "", []) else None
+    except (TypeError, ValueError):
+        dm = None
+
+    result = execute_script(
+        sql, user, target_datamart_id=dm,
+        confirm=bool(req.get("confirm")), result_limit=limit,
+    )
+    if "error" in result:
+        return JSONResponse(status_code=400, content={"error": result["error"]})
+    return result
+
+
+@router.post("/codegen/export")
+async def codegen_export(req: dict, user: dict = Depends(require_codegen)):
+    """Exporta o resultado atual (linhas enviadas pelo cliente) em CSV/Excel/JSON."""
+    import csv as _csv
+    fmt = (req.get("format") or "csv").lower()
+    columns = req.get("columns") or []
+    rows = req.get("rows") or []
+    fname = re.sub(r"[^A-Za-z0-9_.-]", "_", str(req.get("filename") or "tdia_codegen"))[:60] or "tdia_codegen"
+
+    if fmt == "xlsx":
+        content = export_to_excel_bytes({"rows": rows})
+        media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        ext = "xlsx"
+    elif fmt == "json":
+        content = json.dumps(rows, ensure_ascii=False, default=str, indent=2).encode("utf-8")
+        media, ext = "application/json", "json"
+    else:
+        buf = io.StringIO()
+        writer = _csv.DictWriter(
+            buf,
+            fieldnames=columns or (list(rows[0].keys()) if rows else []),
+            extrasaction="ignore",
+        )
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(r)
+        content = buf.getvalue().encode("utf-8-sig")  # BOM → Excel abre acentos corretamente
+        media, ext = "text/csv", "csv"
+
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type=media,
+        headers={"Content-Disposition": f'attachment; filename="{fname}.{ext}"'},
+    )
+
+
+@router.get("/codegen/tables")
+async def codegen_tables(user: dict = Depends(require_codegen)):
+    """Tabelas criadas pelo usuário no módulo (lista 'Minhas Tabelas'). Root vê
+    todas, com o login do dono."""
+    conn = get_sync_connection()
+    try:
+        if is_root(user):
+            cur = conn.execute(
+                "SELECT ct.table_name, ct.datamart_id, d.name AS datamart_name, "
+                "ct.created_at, u.login AS owner_login "
+                "FROM codegen_tables ct "
+                "LEFT JOIN datamarts d ON d.id = ct.datamart_id "
+                "LEFT JOIN users u ON u.id = ct.owner_id "
+                "ORDER BY ct.created_at DESC"
+            )
+        else:
+            cur = conn.execute(
+                "SELECT ct.table_name, ct.datamart_id, d.name AS datamart_name, ct.created_at "
+                "FROM codegen_tables ct LEFT JOIN datamarts d ON d.id = ct.datamart_id "
+                "WHERE ct.owner_id = ? ORDER BY ct.created_at DESC",
+                (user["id"],),
+            )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
