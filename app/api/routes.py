@@ -3190,3 +3190,88 @@ async def codegen_tables(user: dict = Depends(require_codegen)):
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+
+# --- P2: Snippets (salvar/carregar) ---
+@router.get("/codegen/snippets")
+async def codegen_snippets_list(user: dict = Depends(require_codegen)):
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, name, sql, updated_at FROM codegen_snippets WHERE user_id = ? ORDER BY name",
+            (user["id"],),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+@router.post("/codegen/snippets")
+async def codegen_snippets_save(req: dict, user: dict = Depends(require_codegen)):
+    name = (req.get("name") or "").strip()
+    sql = (req.get("sql") or "").strip()
+    if not name or not sql:
+        raise HTTPException(400, "Nome e SQL são obrigatórios.")
+    conn = get_sync_connection()
+    try:
+        conn.execute(
+            "INSERT INTO codegen_snippets (user_id, name, sql) VALUES (?, ?, ?) "
+            "ON CONFLICT (user_id, name) DO UPDATE SET sql = EXCLUDED.sql, updated_at = CURRENT_TIMESTAMP",
+            (user["id"], name[:120], sql),
+        )
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+@router.delete("/codegen/snippets/{snippet_id}")
+async def codegen_snippets_delete(snippet_id: int, user: dict = Depends(require_codegen)):
+    conn = get_sync_connection()
+    try:
+        conn.execute("DELETE FROM codegen_snippets WHERE id = ? AND user_id = ?", (snippet_id, user["id"]))
+        conn.commit()
+        return {"ok": True}
+    finally:
+        conn.close()
+
+
+# --- P2: Histórico de execuções (isolado do módulo) ---
+@router.get("/codegen/runs")
+async def codegen_runs_list(user: dict = Depends(require_codegen)):
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute(
+            "SELECT id, sql, kind, row_count, created_at FROM codegen_runs "
+            "WHERE user_id = ? ORDER BY created_at DESC LIMIT 50",
+            (user["id"],),
+        )
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+# --- P2: Schema para autocomplete (tabelas+colunas no escopo do usuário) ---
+@router.get("/codegen/schema")
+async def codegen_schema(user: dict = Depends(require_codegen)):
+    from app.services.codegen_service import get_user_scope
+    scope = get_user_scope(user)
+    allowed = scope["allowed"]
+    out: dict = {}
+    for t in get_all_tables():
+        if scope["root"] or (allowed is not None and t["name"].lower() in allowed):
+            out[t["name"]] = [c["name"] for c in (t.get("columns") or [])]
+    return {"tables": out}
+
+
+# --- P3: Gerar código Python a partir do SQL ---
+@router.post("/codegen/pycode")
+async def codegen_pycode(req: dict, user: dict = Depends(require_codegen)):
+    from app.services.codegen_service import generate_pycode
+    sql = (req.get("sql") or "").strip()
+    if not sql:
+        raise HTTPException(400, "Escreva uma consulta no editor antes de gerar o código.")
+    lib = (req.get("lib") or "pandas").lower()
+    if lib not in ("pandas", "sqlalchemy", "pyspark"):
+        lib = "pandas"
+    return {"code": generate_pycode(sql, lib), "filename": f"tdia_codegen_{lib}.py", "lib": lib}

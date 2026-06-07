@@ -12,6 +12,11 @@ const _CG_SUN  = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2
 
 let cgEditor = null;       // instância do CodeMirror
 let cgLastResult = null;   // último {columns, rows, row_count} para export
+let cgSchemaTables = {};   // {tabela: [colunas]} p/ autocomplete (escopo do usuário)
+let cgSnippets = {};       // id -> snippet salvo
+let cgHistoryRows = [];    // últimas execuções (codegen_runs)
+let cgPyCode = '';         // último código Python gerado
+let cgPyName = 'tdia_codegen.py';
 
 function _cgIsDark() { return document.getElementById('html-root').classList.contains('dark'); }
 
@@ -50,6 +55,7 @@ function cgShowSection(name) {
     // CodeMirror não calcula altura quando inicia escondido — refresca ao exibir.
     if (name === 'editor' && cgEditor) setTimeout(() => cgEditor.refresh(), 0);
     if (name === 'tables') loadCgTables();
+    if (name === 'historico') loadCgHistory();
 }
 
 // ---- Editor SQL (P1a) ----------------------------------------------------
@@ -61,10 +67,18 @@ function cgInitEditor() {
         lineNumbers: true,
         lineWrapping: true,
         theme: _cgIsDark() ? 'material-darker' : 'default',
+        hintOptions: { tables: {}, completeSingle: false },
         extraKeys: {
             'Ctrl-Enter': () => cgRun(),
             'Cmd-Enter': () => cgRun(),
+            'Ctrl-Space': 'autocomplete',
         },
+    });
+    // Autocomplete automático ao digitar uma palavra/coluna.
+    cgEditor.on('inputRead', function (cm, change) {
+        if (!cm.state.completionActive && change.text && /^[\w.]$/.test(change.text.join(''))) {
+            cm.execCommand('autocomplete');
+        }
     });
 }
 
@@ -226,10 +240,134 @@ async function loadCgTables() {
     }
 }
 
+// ---- P2: autocomplete / snippets / histórico / exemplos -----------------
+async function cgLoadSchema() {
+    try {
+        const res = await fetch('/api/codegen/schema');
+        if (!res.ok) return;
+        const data = await res.json();
+        cgSchemaTables = data.tables || {};
+        if (cgEditor) cgEditor.setOption('hintOptions', { tables: cgSchemaTables, completeSingle: false });
+    } catch (e) { /* autocomplete é opcional */ }
+}
+function cgAutocomplete() { if (cgEditor) cgEditor.execCommand('autocomplete'); }
+
+async function cgLoadSnippets() {
+    const sel = document.getElementById('cgSnippetSel');
+    if (!sel) return;
+    try {
+        const res = await fetch('/api/codegen/snippets');
+        const rows = res.ok ? await res.json() : [];
+        cgSnippets = {};
+        sel.innerHTML = '<option value="">— salvos —</option>' + rows.map(r => {
+            cgSnippets[r.id] = r;
+            return '<option value="' + r.id + '">' + _cgEscape(r.name) + '</option>';
+        }).join('');
+    } catch (e) { /* ignore */ }
+}
+function cgLoadSnippet() {
+    const sel = document.getElementById('cgSnippetSel');
+    const r = sel && cgSnippets[sel.value];
+    if (r && cgEditor) cgEditor.setValue(r.sql);
+}
+async function cgSaveSnippet() {
+    if (!cgEditor) return;
+    const sql = cgEditor.getValue().trim();
+    if (!sql) { alert('Editor vazio.'); return; }
+    const name = prompt('Nome do snippet:');
+    if (!name || !name.trim()) return;
+    const res = await fetch('/api/codegen/snippets', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), sql }),
+    });
+    if (res.ok) cgLoadSnippets(); else alert('Erro ao salvar o snippet.');
+}
+async function cgDeleteSnippet() {
+    const sel = document.getElementById('cgSnippetSel');
+    if (!sel || !sel.value) { alert('Selecione um snippet salvo.'); return; }
+    const r = cgSnippets[sel.value];
+    if (!confirm('Excluir o snippet "' + (r ? r.name : '') + '"?')) return;
+    const res = await fetch('/api/codegen/snippets/' + sel.value, { method: 'DELETE' });
+    if (res.ok) cgLoadSnippets();
+}
+
+async function loadCgHistory() {
+    const box = document.getElementById('cgHistoryList');
+    if (!box) return;
+    box.innerHTML = '<div class="text-fg-muted text-sm py-4 text-center">Carregando…</div>';
+    try {
+        const res = await fetch('/api/codegen/runs');
+        cgHistoryRows = res.ok ? await res.json() : [];
+        if (!cgHistoryRows.length) {
+            box.innerHTML = '<div class="text-fg-muted text-sm py-6 text-center">Sem execuções ainda.</div>';
+            return;
+        }
+        box.innerHTML = cgHistoryRows.map((r, i) => {
+            const when = r.created_at ? String(r.created_at).slice(0, 16).replace('T', ' ') : '';
+            const kind = r.kind === 'write'
+                ? '<span class="text-[9px] bg-fg-accent/15 text-fg-accent px-1.5 py-0.5 rounded uppercase">write</span>'
+                : '<span class="text-[9px] bg-fg-blue/15 text-fg-blue px-1.5 py-0.5 rounded uppercase">read</span>';
+            const sql1 = (r.sql || '').replace(/\s+/g, ' ').slice(0, 100);
+            return '<div class="bg-fg-900 rounded-lg px-3 py-2 border border-fg-border hover:border-fg-accent/30 cursor-pointer transition" onclick="cgUseHistoryItem(' + i + ')">'
+                + '<div class="flex items-center justify-between gap-2"><div class="font-mono text-xs text-fg-text truncate flex-1">' + _cgEscape(sql1) + '</div>' + kind + '</div>'
+                + '<div class="text-[10px] text-fg-muted mt-1">' + when + ' · ' + r.row_count + ' linha(s)</div></div>';
+        }).join('');
+    } catch (e) {
+        box.innerHTML = '<div class="text-red-400 text-sm py-4">Falha ao carregar o histórico.</div>';
+    }
+}
+function cgUseHistoryItem(i) {
+    const r = cgHistoryRows[i];
+    if (r && cgEditor) { cgEditor.setValue(r.sql); cgShowSection('editor'); }
+}
+
+function cgUseExampleEl(btn) {
+    const code = btn.parentElement.querySelector('code');
+    if (code && cgEditor) { cgEditor.setValue(code.textContent.trim()); cgShowSection('editor'); }
+}
+
+// ---- P3: gerar código Python --------------------------------------------
+async function cgGenPython() {
+    const sql = cgEditor ? cgEditor.getValue().trim() : '';
+    const pre = document.getElementById('cgPyCode');
+    const bar = document.getElementById('cgPyBar');
+    if (!sql) { pre.textContent = 'Escreva um SQL na aba "Editor SQL" primeiro.'; return; }
+    const lib = (document.getElementById('cgPyLib') || {}).value || 'pandas';
+    pre.textContent = 'Gerando…';
+    if (bar) bar.style.display = 'none';
+    try {
+        const res = await fetch('/api/codegen/pycode', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql, lib }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) { pre.textContent = data.error || 'Erro ao gerar.'; return; }
+        cgPyCode = data.code || '';
+        cgPyName = data.filename || 'tdia_codegen.py';
+        pre.textContent = cgPyCode;        // textContent → sem risco de injeção
+        if (bar) { bar.style.display = 'flex'; document.getElementById('cgPyName').textContent = cgPyName; }
+    } catch (e) { pre.textContent = 'Falha: ' + e.message; }
+}
+function cgCopyPython() {
+    if (!cgPyCode) return;
+    if (navigator.clipboard) navigator.clipboard.writeText(cgPyCode).catch(() => {});
+}
+function cgDownloadPython() {
+    if (!cgPyCode) return;
+    const blob = new Blob([cgPyCode], { type: 'text/x-python' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = cgPyName;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+}
+
 // ---- Init ---------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {
     _cgApplyTheme(_cgIsDark());   // sincroniza ícone/rótulo do botão
     cgInitEditor();
     cgLoadScope();
+    cgLoadSchema();
+    cgLoadSnippets();
     cgShowSection('editor');
 });

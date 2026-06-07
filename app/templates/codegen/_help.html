@@ -43,4 +43,32 @@
         </div>
     </div>
 
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-6 mt-5">
+        <h2 class="text-sm font-bold text-fg-accent uppercase tracking-wider mb-3">Exemplos</h2>
+        <p class="text-xs text-fg-muted mb-4">Clique em "Usar no editor" e ajuste para as suas tabelas (o autocomplete sugere as tabelas/colunas do seu escopo).</p>
+        <div class="space-y-3">
+            <div class="bg-fg-900 border border-fg-border rounded-lg p-3">
+                <pre class="text-xs text-fg-text font-mono overflow-x-auto"><code>SELECT *
+FROM sua_tabela
+LIMIT 20;</code></pre>
+                <button class="cg-btn-mini mt-2" onclick="cgUseExampleEl(this)">Usar no editor</button>
+            </div>
+            <div class="bg-fg-900 border border-fg-border rounded-lg p-3">
+                <pre class="text-xs text-fg-text font-mono overflow-x-auto"><code>SELECT categoria, COUNT(*) AS qtd, SUM(valor) AS total
+FROM sua_tabela
+GROUP BY categoria
+ORDER BY total DESC
+LIMIT 20;</code></pre>
+                <button class="cg-btn-mini mt-2" onclick="cgUseExampleEl(this)">Usar no editor</button>
+            </div>
+            <div class="bg-fg-900 border border-fg-border rounded-lg p-3">
+                <pre class="text-xs text-fg-text font-mono overflow-x-auto"><code>CREATE TABLE minha_tabela_tech AS
+SELECT a.id, a.nome, b.valor
+FROM tabela_a a
+JOIN tabela_b b ON b.a_id = a.id;</code></pre>
+                <button class="cg-btn-mini mt-2" onclick="cgUseExampleEl(this)">Usar no editor</button>
+            </div>
+        </div>
+    </div>
+
 </div>
