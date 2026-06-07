@@ -1,0 +1,27 @@
+<!-- Copiloto de Dados — painel lateral onipresente (programação em linguagem
+     natural). Markup estático (sem expressões Jinja); todo o comportamento e o
+     conteúdo dinâmico vêm de static/codegen/codegen.js. -->
+<button id="cgCopilotFab" type="button" onclick="cgCopToggle()" title="Copiloto de Dados (Alt+C)">
+    <span aria-hidden="true">✦</span><span>Copiloto</span>
+</button>
+
+<aside id="cgCopilotPanel" class="cg-copilot" aria-hidden="true" aria-label="Copiloto de Dados">
+    <div class="cg-cop-head">
+        <div class="cg-cop-title">✦ Copiloto de Dados</div>
+        <div class="cg-cop-actions">
+            <select id="cgCopChatSel" onchange="cgCopLoadChat(this.value)" title="Conversas salvas">
+                <option value="">— conversas —</option>
+            </select>
+            <button class="cg-cop-ibtn" type="button" onclick="cgCopNewChat()" title="Nova conversa">＋</button>
+            <button class="cg-cop-ibtn" type="button" onclick="cgCopSaveChat()" title="Salvar conversa">⭳</button>
+            <button class="cg-cop-ibtn" type="button" onclick="cgCopDeleteChat()" title="Excluir conversa">🗑</button>
+            <button class="cg-cop-ibtn" type="button" onclick="cgCopToggle(false)" title="Fechar (Alt+C)">✕</button>
+        </div>
+    </div>
+    <div class="cg-cop-chips" id="cgCopChips"></div>
+    <div class="cg-cop-thread" id="cgCopThread"></div>
+    <div class="cg-cop-input">
+        <textarea id="cgCopInput" rows="2" placeholder="Peça SQL, explique, corrija um erro, gere Python tipado…"></textarea>
+        <button id="cgCopSend" class="cg-cop-send" type="button" onclick="cgCopSend()">Enviar</button>
+    </div>
+</aside>
