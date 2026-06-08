@@ -471,6 +471,9 @@ def ensure_seeded():
                 "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (key) DO NOTHING",
                 (p["key"], p["label"], p["description"], p["template"], _norm_compatible(p["compatible"]), "seed"),
             )
+        # O padrão base 'script' (default/fallback do render_spec, compat '*') nunca
+        # pode ficar inativo — reativa sempre (auto-cura se foi desativado por engano).
+        conn.execute("UPDATE codegen_patterns SET is_active = 1 WHERE key = 'script'")
         conn.commit()
         _seeded = True
     except Exception:
@@ -663,11 +666,15 @@ def update_pattern(pid: int, data: dict) -> dict:
         return {"error": err}
     conn = get_sync_connection()
     try:
+        # O padrão base 'script' não pode ser desativado (é o default/fallback).
+        r = conn.execute("SELECT key FROM codegen_patterns WHERE id = ?", (pid,)).fetchone()
+        is_script = bool(r) and (r["key"] if isinstance(r, dict) else r[0]) == "script"
+        active = 1 if is_script else int(data.get("is_active", 1) or 0)
         conn.execute(
             "UPDATE codegen_patterns SET label=?, description=?, template=?, compatible=?, is_active=?, "
             "updated_at=CURRENT_TIMESTAMP WHERE id=?",
             (data.get("label", ""), data.get("description", ""), data.get("template", ""),
-             _norm_compatible(data.get("compatible")), int(data.get("is_active", 1) or 0), pid),
+             _norm_compatible(data.get("compatible")), active, pid),
         )
         conn.commit()
         return {"ok": True}
