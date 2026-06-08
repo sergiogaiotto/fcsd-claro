@@ -89,11 +89,11 @@
     <!-- Sub-navegação interna do módulo -->
     <nav class="flex items-center gap-6 border-b border-fg-border mb-6 text-sm">
         <button id="cg-subtab-editor"    class="cg-subtab cg-subtab-active" onclick="cgShowSection('editor')">Editor SQL</button>
-        <button id="cg-subtab-tables"    class="cg-subtab" onclick="cgShowSection('tables')">Minhas Tabelas</button>
-        <button id="cg-subtab-ajuda"     class="cg-subtab" onclick="cgShowSection('ajuda')">Ajuda</button>
-        <button id="cg-subtab-historico" class="cg-subtab" onclick="cgShowSection('historico')">Histórico</button>
         <button id="cg-subtab-python"    class="cg-subtab" onclick="cgShowSection('python')">Gerar Python</button>
+        <button id="cg-subtab-tables"    class="cg-subtab" onclick="cgShowSection('tables')">Minhas Tabelas</button>
+        <button id="cg-subtab-historico" class="cg-subtab" onclick="cgShowSection('historico')">Histórico</button>
         {% if is_admin %}<button id="cg-subtab-techniques" class="cg-subtab" onclick="cgShowSection('techniques')">Técnicas ⚙</button><button id="cg-subtab-patterns" class="cg-subtab" onclick="cgShowSection('patterns')">Padrões ⚙</button>{% endif %}
+        <button id="cg-subtab-ajuda"     class="cg-subtab" onclick="cgShowSection('ajuda')">Ajuda</button>
     </nav>
 
     <!-- Editor SQL (Parte 1a) -->

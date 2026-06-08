@@ -350,16 +350,6 @@ async function cgLoadInventory() {
     cgFilterPatterns();
 }
 
-// Um padrão é compatível com a técnica se `compatible` for '*' ou contiver a chave.
-function _cgPatCompatible(pat, techKey) {
-    const c = pat.compatible;
-    if (!c || c === '*') return true;
-    let allowed;
-    try { allowed = JSON.parse(c); } catch (e) { allowed = String(c).split(',').map(s => s.trim()).filter(Boolean); }
-    if (!Array.isArray(allowed) || !allowed.length) return true;
-    return allowed.indexOf(techKey) >= 0;
-}
-
 function cgFilterPatterns() {
     const tsel = document.getElementById('cgPyTechnique');
     const psel = document.getElementById('cgPyPattern');
@@ -563,6 +553,19 @@ function cgRenderMatrix() {
     box.innerHTML = h;
 }
 
+// Abre/recolhe o painel da matriz de compatibilidade (recolhido por padrão).
+function cgToggleMatrix() {
+    const wrap = document.getElementById('cgMatrixWrap');
+    const btn = document.getElementById('cgMatrixToggleBtn');
+    if (!wrap) return;
+    const open = wrap.style.display === 'none';   // estava recolhido → abre
+    wrap.style.display = open ? 'block' : 'none';
+    if (btn) {
+        btn.textContent = open ? 'Recolher ▴' : 'Expandir ▾';
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+}
+
 function _cgRenderCompatBoxes(selected, all) {
     const wrap = document.getElementById('cgPatCompat');
     wrap.innerHTML = cgPatTechKeys.map(k =>
@@ -701,12 +704,12 @@ function cgCopMd(t) {
     const blocks = [];
     s = s.replace(/```(?:[a-zA-Z]*)\n?([\s\S]*?)```/g, (m, code) => {
         blocks.push(code.replace(/\n+$/, ''));
-        return ' B' + (blocks.length - 1) + ' ';
+        return '\uE000B' + (blocks.length - 1) + '\uE000';
     });
     s = s.replace(/`([^`]+)`/g, '<code class="cg-cop-ic">$1</code>');
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/\n/g, '<br>');
-    s = s.replace(/ B(\d+) /g, (m, i) => '<pre class="cg-cop-code">' + blocks[+i] + '</pre>');
+    s = s.replace(/\uE000B(\d+)\uE000/g, (m, i) => '<pre class="cg-cop-code">' + blocks[+i] + '</pre>');
     return s;
 }
 
