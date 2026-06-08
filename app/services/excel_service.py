@@ -1,17 +1,50 @@
 import pandas as pd
 import re
+import unicodedata
 from pathlib import Path
 
 from app.core.database import engine, get_sync_connection, invalidate_tables_cache
 from app.core.db_engine import DialectConnection, table_exists
 
 
+def _deburr(s: str) -> str:
+    """Remove acentos/diacríticos: NFKD decompõe (ó -> o + ´) e descartamos as
+    marcas combinantes. `histórico` -> `historico`, `tipo_dívida` -> `tipo_divida`."""
+    s = unicodedata.normalize("NFKD", str(s))
+    return "".join(ch for ch in s if not unicodedata.combining(ch))
+
+
+def _snake(s: str) -> str:
+    """Deburr + snake_case ASCII (minúsculo). Sem o deburr, o `\\w` do regex —
+    que em Python é Unicode-aware — preservaria os acentos (a causa do bug)."""
+    return re.sub(r"[^A-Za-z0-9]+", "_", _deburr(s).strip()).strip("_").lower()
+
+
 def sanitize_table_name(name: str) -> str:
-    name = re.sub(r"[^\w]", "_", name.strip())
-    name = re.sub(r"_+", "_", name).strip("_").lower()
+    name = _snake(name)
     if name and name[0].isdigit():
         name = f"t_{name}"
     return name or "unnamed_table"
+
+
+def sanitize_columns(columns) -> list[str]:
+    """Normaliza cabeçalhos importados para identificadores Postgres "simples"
+    (que não precisam de aspas): deburr + snake_case + minúsculas, garantindo
+    unicidade (dois cabeçalhos que colapsam no mesmo nome viram x, x_2, ...)."""
+    out: list[str] = []
+    seen: dict[str, int] = {}
+    for c in columns:
+        s = _snake(c)
+        if s and s[0].isdigit():
+            s = f"c_{s}"
+        s = s or "col"
+        if s in seen:
+            seen[s] += 1
+            s = f"{s}_{seen[s]}"
+        else:
+            seen[s] = 1
+        out.append(s)
+    return out
 
 
 def _table_exists(conn: DialectConnection, table_name: str) -> bool:
@@ -49,10 +82,7 @@ def import_excel(
                 })
                 continue
 
-            df.columns = [
-                re.sub(r"[^\w]", "_", str(c).strip()).strip("_").lower()
-                for c in df.columns
-            ]
+            df.columns = sanitize_columns(df.columns)
 
             sheet_part = sanitize_table_name(sheet_name)
             tbl = f"{dm_part}_{sheet_part}"
@@ -97,10 +127,7 @@ def import_csv(file_path: Path, table_name: str | None = None) -> list[dict]:
     if df.empty:
         return [{"sheet": file_path.name, "table": None, "action": "skipped", "reason": "CSV vazio", "rows": 0}]
 
-    df.columns = [
-        re.sub(r"[^\w]", "_", str(c).strip()).strip("_").lower()
-        for c in df.columns
-    ]
+    df.columns = sanitize_columns(df.columns)
 
     tbl = table_name or sanitize_table_name(file_path.stem)
     conn = get_sync_connection()
