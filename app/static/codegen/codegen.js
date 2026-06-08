@@ -56,6 +56,7 @@ function cgShowSection(name) {
     if (name === 'editor' && cgEditor) setTimeout(() => cgEditor.refresh(), 0);
     if (name === 'tables') loadCgTables();
     if (name === 'historico') loadCgHistory();
+    if (name === 'python') cgLoadInventory();
     if (name === 'techniques') loadCgTechniques();
     if (name === 'patterns') loadCgPatterns();
 }
@@ -330,19 +331,75 @@ function cgUseExampleEl(btn) {
     if (code && cgEditor) { cgEditor.setValue(code.textContent.trim()); cgShowSection('editor'); }
 }
 
-// ---- P3: gerar código Python --------------------------------------------
+// ---- P3 / M2.4: gerar código Python (Técnica × Padrão, schema-aware) ------
+let cgInventory = { techniques: [], patterns: [] };
+
+async function cgLoadInventory() {
+    try {
+        const res = await fetch('/api/codegen/techniques');
+        if (!res.ok) return;
+        cgInventory = await res.json();
+    } catch (e) { return; }
+    const tsel = document.getElementById('cgPyTechnique');
+    if (tsel) {
+        const cur = tsel.value;
+        tsel.innerHTML = (cgInventory.techniques || []).map(t =>
+            '<option value="' + _cgEscape(t.key) + '">' + _cgEscape(t.label || t.key) + '</option>').join('');
+        if (cur && (cgInventory.techniques || []).some(t => t.key === cur)) tsel.value = cur;
+    }
+    cgFilterPatterns();
+}
+
+// Um padrão é compatível com a técnica se `compatible` for '*' ou contiver a chave.
+function _cgPatCompatible(pat, techKey) {
+    const c = pat.compatible;
+    if (!c || c === '*') return true;
+    let allowed;
+    try { allowed = JSON.parse(c); } catch (e) { allowed = String(c).split(',').map(s => s.trim()).filter(Boolean); }
+    if (!Array.isArray(allowed) || !allowed.length) return true;
+    return allowed.indexOf(techKey) >= 0;
+}
+
+function cgFilterPatterns() {
+    const tsel = document.getElementById('cgPyTechnique');
+    const psel = document.getElementById('cgPyPattern');
+    if (!psel) return;
+    const tech = tsel ? tsel.value : 'pandas';
+    const cur = psel.value;
+    const compat = (cgInventory.patterns || []).filter(p => _cgPatCompatible(p, tech));
+    psel.innerHTML = compat.map(p =>
+        '<option value="' + _cgEscape(p.key) + '">' + _cgEscape(p.label || p.key) + '</option>').join('');
+    if (cur && compat.some(p => p.key === cur)) psel.value = cur;
+    else if (!compat.length) psel.innerHTML = '<option value="script">script</option>';
+}
+
+// Mostra o schema resolvido (dry-run) como chips name: <tipo py> (P3 já vinha no /pycode).
+function cgRenderPySchema(schema) {
+    const box = document.getElementById('cgPySchemaBox');
+    const list = document.getElementById('cgPySchema');
+    if (!box || !list) return;
+    if (!schema || !schema.length) { box.style.display = 'none'; return; }
+    list.innerHTML = schema.map(c =>
+        '<span class="cg-chip" title="pandas: ' + _cgEscape(c.pd) + ' · spark: ' + _cgEscape(c.spark) + '">'
+        + _cgEscape(c.name) + ': <strong>' + _cgEscape(c.py) + '</strong></span>').join('');
+    box.style.display = 'block';
+}
+
 async function cgGenPython() {
     const sql = cgEditor ? cgEditor.getValue().trim() : '';
     const pre = document.getElementById('cgPyCode');
     const bar = document.getElementById('cgPyBar');
+    const schemaBox = document.getElementById('cgPySchemaBox');
     if (!sql) { pre.textContent = 'Escreva um SQL na aba "Editor SQL" primeiro.'; return; }
-    const lib = (document.getElementById('cgPyLib') || {}).value || 'pandas';
+    const technique = (document.getElementById('cgPyTechnique') || {}).value || 'pandas';
+    const pattern = (document.getElementById('cgPyPattern') || {}).value || 'script';
     pre.textContent = 'Gerando…';
     if (bar) bar.style.display = 'none';
+    if (schemaBox) schemaBox.style.display = 'none';
     try {
         const res = await fetch('/api/codegen/pycode', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sql, lib }),
+            body: JSON.stringify({ sql, technique, pattern }),
         });
         const data = await res.json();
         if (!res.ok || data.error) { pre.textContent = data.error || 'Erro ao gerar.'; return; }
@@ -350,6 +407,7 @@ async function cgGenPython() {
         cgPyName = data.filename || 'tdia_codegen.py';
         pre.textContent = cgPyCode;        // textContent → sem risco de injeção
         if (bar) { bar.style.display = 'flex'; document.getElementById('cgPyName').textContent = cgPyName; }
+        cgRenderPySchema(data.schema || []);
     } catch (e) { pre.textContent = 'Falha: ' + e.message; }
 }
 function cgCopyPython() {
