@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from app.core.config import settings
 from app.core.database import init_metadata_tables
@@ -66,14 +66,14 @@ async def security_headers_middleware(request: Request, call_next):
             "default-src 'self'; "
             "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; "
-            "font-src 'self' https://fonts.gstatic.com https://r2cdn.perplexity.ai; "
+            "font-src 'self' https://fonts.gstatic.com https://*.perplexity.ai; "
             "img-src 'self' data:; "
-            "connect-src 'self'"
+            "connect-src 'self' https://cdn.jsdelivr.net"
         )
     return response
 
 
-PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/check", "/api/health"}
+PUBLIC_PATHS = {"/login", "/api/auth/login", "/api/auth/logout", "/api/auth/check", "/api/health", "/favicon.ico"}
 PUBLIC_PREFIXES = ("/static/", "/api/gallery/", "/api/v1/")
 
 
@@ -195,6 +195,21 @@ async def health():
         "db_ready": _DB_READY,
         "db_last_error": _DB_LAST_ERROR or None,
     })
+
+
+# Favicon SVG inline — evita o 404 de /favicon.ico (todo navegador o requisita).
+# Quadrado vermelho Claro com o ícone </> (codegen/copiloto).
+_FAVICON_SVG = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+    "<rect width='32' height='32' rx='7' fill='#e30613'/>"
+    "<path d='M13 11l-4 5 4 5M19 11l4 5-4 5' fill='none' stroke='#fff' "
+    "stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/></svg>"
+)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(content=_FAVICON_SVG, media_type="image/svg+xml")
 
 
 @app.get("/login", response_class=HTMLResponse)
