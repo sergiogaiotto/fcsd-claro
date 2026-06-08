@@ -1,5 +1,16 @@
-{# Padrões (M2.2) — CRUD + matriz de compatibilidade, só Root/Admin. #}
+{# Padrões (M2.2) — matriz (recolhível) + CRUD, só Root/Admin. #}
 <div class="space-y-4">
+    <!-- Matriz de compatibilidade — acima dos Padrões, recolhível (recolhida por padrão) -->
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+        <div class="flex items-center justify-between cursor-pointer select-none" onclick="cgToggleMatrix()">
+            <h2 class="text-sm font-bold text-fg-blue uppercase tracking-wider">Matriz de compatibilidade</h2>
+            <button id="cgMatrixToggleBtn" type="button" class="cg-btn-mini" aria-expanded="false" tabindex="-1">Expandir ▾</button>
+        </div>
+        <div id="cgMatrixWrap" class="overflow-x-auto mt-3" style="display:none">
+            <div id="cgMatrix"></div>
+        </div>
+    </div>
+
     <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
         <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div>
@@ -13,11 +24,6 @@
             <button class="cg-btn-primary" style="padding:7px 12px;font-size:12px" onclick="cgNewPattern()">+ Novo padrão</button>
         </div>
         <div id="cgPatList" class="space-y-2"><div class="text-fg-muted text-sm py-4 text-center">Carregando…</div></div>
-    </div>
-
-    <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
-        <h2 class="text-sm font-bold text-fg-blue uppercase tracking-wider mb-3">Matriz de compatibilidade</h2>
-        <div id="cgMatrix" class="overflow-x-auto"></div>
     </div>
 
     <div id="cgPatForm" class="bg-fg-800 border border-fg-accent/30 rounded-xl p-5" style="display:none">
