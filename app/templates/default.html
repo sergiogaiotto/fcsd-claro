@@ -990,7 +990,82 @@
         </div>
     </div>
 </div>
- 
+
+<!-- ===================== IMPORTAR CSV VIA TERMINAL (gerador de comando) ===================== -->
+<div class="mt-6" id="csvCliPanel">
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                </div>
+                <div>
+                    <h2 class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Importar CSV via Terminal</h2>
+                    <p class="text-[10px] text-fg-muted mt-0.5">Monte o comando pronto para carregar um CSV (inclusive arquivos grandes) direto no banco — Tabela Diamante ou DataMart</p>
+                </div>
+            </div>
+            <button onclick="document.getElementById('csvCliBody').classList.toggle('hidden')" class="text-[10px] text-fg-muted hover:text-indigo-400 border border-fg-border px-2 py-1 rounded transition">Mostrar / ocultar</button>
+        </div>
+
+        <div id="csvCliBody">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                <div class="lg:col-span-3">
+                    <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Caminho do arquivo CSV (no seu computador)</label>
+                    <input id="cli_csv" oninput="_cliRender()" type="text" placeholder="C:\Users\voce\Downloads\dados.csv" class="w-full bg-fg-900 border border-fg-border rounded px-3 py-2 text-xs text-fg-text font-mono focus:border-indigo-400 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Destino</label>
+                    <select id="cli_dest" onchange="_cliRender()" class="w-full bg-fg-900 border border-fg-border rounded px-3 py-2 text-xs text-fg-text focus:border-indigo-400 focus:outline-none">
+                        <option value="diamond">Tabela Diamante</option>
+                        <option value="datamart">DataMart</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Nome do destino</label>
+                    <input id="cli_target" oninput="_cliRender()" type="text" placeholder="CuboPrePagoPF" class="w-full bg-fg-900 border border-fg-border rounded px-3 py-2 text-xs text-fg-text font-mono focus:border-indigo-400 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Tabela (opcional)</label>
+                    <input id="cli_table" oninput="_cliRender()" type="text" placeholder="auto (nome do arquivo)" class="w-full bg-fg-900 border border-fg-border rounded px-3 py-2 text-xs text-fg-text font-mono focus:border-indigo-400 focus:outline-none">
+                </div>
+                <div>
+                    <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Modo</label>
+                    <select id="cli_mode" onchange="_cliRender()" class="w-full bg-fg-900 border border-fg-border rounded px-3 py-2 text-xs text-fg-text focus:border-indigo-400 focus:outline-none">
+                        <option value="replace">replace (recria)</option>
+                        <option value="append">append (acrescenta)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">Separador</label>
+                    <select id="cli_sep" onchange="_cliRender()" class="w-full bg-fg-900 border border-fg-border rounded px-3 py-2 text-xs text-fg-text focus:border-indigo-400 focus:outline-none">
+                        <option value="auto">auto (detecta)</option>
+                        <option value=";">; (ponto e vírgula)</option>
+                        <option value=",">, (vírgula)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex gap-1.5 mb-2 flex-wrap">
+                <button onclick="_cliTab('powershell', this)" class="cli-tab text-[10px] px-2.5 py-1 rounded border border-fg-border text-fg-muted transition">PowerShell</button>
+                <button onclick="_cliTab('cmd', this)" class="cli-tab text-[10px] px-2.5 py-1 rounded border border-fg-border text-fg-muted transition">CMD (Windows)</button>
+                <button onclick="_cliTab('bash', this)" class="cli-tab text-[10px] px-2.5 py-1 rounded border border-fg-border text-fg-muted transition">Bash (Git Bash)</button>
+                <button onclick="_cliTab('linux', this)" class="cli-tab text-[10px] px-2.5 py-1 rounded border border-fg-border text-fg-muted transition">Linux / macOS</button>
+            </div>
+
+            <div class="relative">
+                <pre id="cliCommand" class="bg-fg-900 border border-fg-border rounded-lg p-3 pr-20 text-[11px] font-mono text-fg-green overflow-x-auto whitespace-pre leading-relaxed"></pre>
+                <button onclick="_cliCopy(this)" class="absolute top-2 right-2 text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2.5 py-1 rounded hover:bg-indigo-500/30 transition">Copiar</button>
+            </div>
+
+            <p class="text-[10px] text-fg-muted mt-2 leading-relaxed">
+                Pré-requisitos: Docker em execução e o container <code class="text-fg-blue">fcsd-app</code> no ar.
+                Arquivos grandes (&gt; 80 MB) usam <strong>streaming</strong> automático (baixa memória).
+                Os 3 comandos: copiam o arquivo para o container → importam → limpam o temporário. A tabela aparece no app em ~30s.
+            </p>
+        </div>
+    </div>
+</div>
+
 <!-- ===================== MODAL: ADICIONAR / EDITAR FONTE JSON ===================== -->
 <div id="jsonSourceModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden items-center justify-center">
     <div class="bg-fg-800 border border-fg-border rounded-xl w-full max-w-2xl mx-4 fade-in shadow-2xl flex flex-col max-h-[92vh]">
@@ -3689,6 +3764,80 @@ function printInlineReport(id) {
     w.focus();
     setTimeout(() => { try { w.print(); } catch(e) {} }, 300);
 }
+
+// ============================
+// Gerador de comando — Importar CSV via Terminal (Configurações > Tabelas)
+// ============================
+let _cliOs = 'powershell';
+
+function _cliTab(os, btn) {
+    _cliOs = os;
+    document.querySelectorAll('.cli-tab').forEach(b => {
+        b.classList.remove('text-indigo-300', 'border-indigo-400', 'bg-indigo-500/10');
+        b.classList.add('text-fg-muted', 'border-fg-border');
+    });
+    if (btn) {
+        btn.classList.add('text-indigo-300', 'border-indigo-400', 'bg-indigo-500/10');
+        btn.classList.remove('text-fg-muted', 'border-fg-border');
+    }
+    _cliRender();
+}
+
+function _cliBasename(p) {
+    const parts = (p || '').split(/[\\/]/);
+    return (parts[parts.length - 1] || 'dados.csv').trim();
+}
+
+function _cliRender() {
+    const dest   = (document.getElementById('cli_dest') || {}).value || 'diamond';
+    const target = ((document.getElementById('cli_target') || {}).value || '').trim() || (dest === 'diamond' ? 'MinhaCamada' : 'default');
+    const table  = ((document.getElementById('cli_table') || {}).value || '').trim();
+    const mode   = (document.getElementById('cli_mode') || {}).value || 'replace';
+    const sep    = (document.getElementById('cli_sep') || {}).value || 'auto';
+    const rawCsv = ((document.getElementById('cli_csv') || {}).value || '').trim();
+    const csv    = rawCsv || (_cliOs === 'linux' ? '/home/voce/dados.csv' : 'C:\\Users\\voce\\Downloads\\dados.csv');
+
+    const C = 'fcsd-app';
+    const bn = _cliBasename(csv);
+    const tmp = '/tmp/' + bn;
+    const q = (s) => /\s/.test(s) ? '"' + s + '"' : s;
+    const tmpQ = q(tmp);
+    const destFlag = dest === 'diamond' ? '--diamond-layer' : '--datamart';
+    const prefix = (_cliOs === 'bash') ? 'MSYS_NO_PATHCONV=1 ' : '';
+
+    let pyArgs = `${tmpQ} ${destFlag} "${target}" --mode ${mode}`;
+    if (table) pyArgs += ` --table ${table}`;
+    if (sep !== 'auto') pyArgs += ` --sep "${sep}"`;
+
+    const lines = [
+        `${prefix}docker cp "${csv}" ${C}:${tmpQ}`,
+        `${prefix}docker exec ${C} python /app/scripts/import_csv.py ${pyArgs}`,
+        `${prefix}docker exec ${C} rm -f ${tmpQ}`,
+    ];
+    const el = document.getElementById('cliCommand');
+    if (el) el.textContent = lines.join('\n');
+}
+
+async function _cliCopy(btn) {
+    const txt = (document.getElementById('cliCommand') || {}).textContent || '';
+    const done = () => { const old = btn.textContent; btn.textContent = 'Copiado ✓'; setTimeout(() => { btn.textContent = old; }, 1500); };
+    try {
+        await navigator.clipboard.writeText(txt);
+        done();
+    } catch(e) {
+        const ta = document.createElement('textarea');
+        ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch(_) {}
+        ta.remove(); done();
+    }
+}
+
+// Init: marca a aba PowerShell e renderiza o comando inicial.
+try {
+    const _firstCliTab = document.querySelector('.cli-tab');
+    if (_firstCliTab) _cliTab('powershell', _firstCliTab);
+} catch(e) {}
 
 function appendMessage(role, content, isHtml = false) {
     const chat = document.getElementById('chatArea');
