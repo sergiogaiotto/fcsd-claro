@@ -2,3 +2,6 @@
 *.sh text eol=lf
 # Python: LF para consistência (Python tolera ambos, mas mantém limpo).
 *.py text eol=lf
+# Batch do Windows usa CRLF por convenção.
+*.cmd text eol=crlf
+*.bat text eol=crlf
