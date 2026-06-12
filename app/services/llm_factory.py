@@ -182,25 +182,43 @@ def make_general_llm(temperature: float = 0, **kwargs: Any):
 
 def bind_tools_with_fallback(llm, tools, fallback_llm=None):
     """
-    Tenta vincular tools ao LLM principal.
-    Se o principal falhar no bind ou no runtime, usa fallback.
+    Vincula as tools ao LLM principal e, quando há um provedor de fallback
+    DISTINTO configurado (LLM_FALLBACK_PROVIDER), encadeia um fallback que é
+    acionado em falhas de timeout/conexão/disponibilidade do principal.
 
     Objetivo:
     - GPT-OSS-120B como principal.
-    - Azure GPT-4o como fallback.
-    """
+    - Azure GPT-4o como fallback (failover em timeout do oss120b).
 
+    Resiliente: se o fallback estiver ausente/mal configurado, o agente segue
+    funcionando só com o principal (não quebra o build do agente).
+    """
+    # Constrói o fallback de forma defensiva — um provedor mal configurado
+    # (ex.: Azure sem credenciais) NÃO pode derrubar a construção do agente.
     if fallback_llm is None:
-        fallback_llm = make_sql_fallback_llm(temperature=0)
+        try:
+            fallback_llm = make_sql_fallback_llm(temperature=0)
+        except Exception:
+            fallback_llm = None
 
     try:
         primary_with_tools = llm.bind_tools(tools)
-    except Exception as exc:
+    except Exception:
+        # Principal falhou no bind — usa o fallback se houver, senão propaga.
+        if fallback_llm is None:
+            raise
         return fallback_llm.bind_tools(tools)
+
+    if fallback_llm is None:
+        return primary_with_tools
 
     try:
         fallback_with_tools = fallback_llm.bind_tools(tools)
-        return primary_with_tools.with_fallbacks([fallback_with_tools])
-
-    except Exception as exc:
+        # Failover apenas em timeout/conexão/rate-limit/5xx — erros genuínos
+        # (ex.: SQL inválido) continuam a aflorar em vez de mascarar com retry.
+        return primary_with_tools.with_fallbacks(
+            [fallback_with_tools],
+            exceptions_to_handle=_connection_exceptions(),
+        )
+    except Exception:
         return primary_with_tools
