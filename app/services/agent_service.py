@@ -244,8 +244,17 @@ def _get_analysis_config(analysis_type_id: int | None) -> dict:
 def build_agent():
     # llm = ChatOpenAI(model=settings.openai_model,api_key=settings.openai_api_key,temperature=0,)
     llm = make_sql_llm(temperature=0)
-    fallback_llm = make_sql_fallback_llm(temperature=0)
-    
+    # Fallback construído de forma defensiva: um provedor de failover mal
+    # configurado (ex.: Azure sem AZURE_OPENAI_API_KEY) NÃO pode derrubar a
+    # construção do agente. Sem fallback, o agente opera só com o primário.
+    try:
+        fallback_llm = make_sql_fallback_llm(temperature=0)
+    except Exception as exc:
+        print(f"[agent] fallback LLM indisponível ({type(exc).__name__}): "
+              f"agente seguirá só com o primário. Configure o provedor de "
+              f"fallback (LLM_FALLBACK_PROVIDER) para habilitar o failover.")
+        fallback_llm = None
+
     db = SQLDatabase(engine=engine, sample_rows_in_table_info=3)
     toolkit = SQLDatabaseToolkit(db=db, llm=llm)
     sql_tools = toolkit.get_tools()
