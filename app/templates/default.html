@@ -4292,6 +4292,7 @@ function renderActions() {
         <div class="relative inline-block"><button onclick="openChartMenu(this)" class="chart-menu-btn text-xs bg-fg-accent/15 text-fg-accent border border-fg-accent/25 px-3 py-1.5 rounded-lg hover:bg-fg-accent/25 transition font-medium">Gráfico ▾</button></div>
         <button onclick="openExplore()" class="text-xs bg-purple-500/15 text-purple-400 border border-purple-500/25 px-3 py-1.5 rounded-lg hover:bg-purple-500/25 transition font-medium">Explorar</button>
         <button onclick="openAnalytics()" class="text-xs bg-amber-500/15 text-amber-400 border border-amber-500/25 px-3 py-1.5 rounded-lg hover:bg-amber-500/25 transition font-medium">Análise Avançada</button>
+        <button onclick="sendToExecDeck()" title="Abre a Análise Executiva com esta pergunta para gerar um deck executivo" class="text-xs bg-fg-accent/15 text-fg-accent border border-fg-accent/30 px-3 py-1.5 rounded-lg hover:bg-fg-accent/25 transition font-semibold flex items-center gap-1.5">📊 Gerar Deck</button>
         <button onclick="exportExcel()" class="text-xs bg-fg-green/15 text-fg-green border border-fg-green/25 px-3 py-1.5 rounded-lg hover:bg-fg-green/25 transition font-medium">Exportar Excel</button>
         <button onclick="openShareCurtain()" class="text-xs bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 px-3 py-1.5 rounded-lg hover:bg-cyan-500/25 transition font-medium flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="11.49"/></svg>Compartilhar</button>
         <button onclick="saveCurrentQuestion()" class="text-xs bg-blue-500/15 text-blue-400 border border-blue-500/25 px-3 py-1.5 rounded-lg hover:bg-blue-500/25 transition font-medium flex items-center gap-1.5"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Salvar Pergunta</button>
@@ -4304,6 +4305,24 @@ function renderActions() {
     </div>`;
 }
     
+function sendToExecDeck() {
+    const q = (typeof lastQuestion === 'string' ? lastQuestion : '').trim();
+    if (typeof showReportsTab === 'function') showReportsTab('execanalysis');
+    else if (typeof showTab === 'function') showTab('execanalysis');
+    // herda a seleção de DataMarts/DiamondLayers da aba Consultar
+    try {
+        const dmIds = (typeof getSelectedDatamartIds === 'function') ? (getSelectedDatamartIds() || []) : [];
+        const dlIds = (typeof getSelectedDiamondLayerIds === 'function') ? (getSelectedDiamondLayerIds() || []) : [];
+        if (typeof _execSelectedDm !== 'undefined' && _execSelectedDm) { _execSelectedDm.clear(); dmIds.forEach(function (id) { _execSelectedDm.add(id); }); }
+        if (typeof _execSelectedDl !== 'undefined' && _execSelectedDl) { _execSelectedDl.clear(); dlIds.forEach(function (id) { _execSelectedDl.add(id); }); }
+        if (typeof _renderExecDatamarts === 'function') _renderExecDatamarts();
+        if (typeof _renderExecDiamondLayers === 'function') _renderExecDiamondLayers();
+    } catch (e) {}
+    setTimeout(function () {
+        const el = document.getElementById('execQuestion');
+        if (el) { el.value = q; el.focus(); try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} }
+    }, 60);
+}
 async function openTypedChart(type) {
     closeChartMenu();
     const data = await getFullData();
