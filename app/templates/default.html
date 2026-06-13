@@ -3261,21 +3261,24 @@ function _instantiateDeckCharts(deck, prefix, store) {
         const el = document.getElementById(prefix + 'Chart' + i);
         if (!el) return;
         try {
+            const type = s.chart.type || 'bar';
+            const isPie = (type === 'pie' || type === 'doughnut');
             const ch = new Chart(el.getContext('2d'), {
-                type: s.chart.type === 'line' ? 'line' : 'bar',
+                type: type === 'area' ? 'line' : type,
                 data: {
                     labels: s.chart.labels || [],
                     datasets: [{
                         label: s.chart.y_field || 'valor',
                         data: s.chart.values || [],
-                        backgroundColor: '#e30613', borderColor: '#e30613',
-                        borderWidth: 2, tension: 0.3, fill: false,
+                        backgroundColor: isPie ? (s.chart.labels || []).map(function (_, j) { return _CHART_PALETTE[j % _CHART_PALETTE.length]; }) : '#e30613',
+                        borderColor: '#e30613',
+                        borderWidth: 2, tension: 0.3, fill: type === 'area',
                     }],
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
+                    plugins: { legend: { display: isPie, labels: { color: '#8b949e', font: { size: 10 } } } },
+                    scales: isPie ? {} : {
                         x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { display: false } },
                         y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(128,128,128,0.15)' } },
                     },

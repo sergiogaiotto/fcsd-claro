@@ -213,20 +213,28 @@ def _add_chart(slide, chart, l, t, w, h):
         values = [float(v) if v is not None else 0.0 for v in (chart.get("values") or [])]
         if len(labels) < 2 or len(values) < 2:
             return False
+        ctype_name = (chart.get("type") or "bar").lower()
+        is_pie = ctype_name in ("pie", "doughnut")
         cd = CategoryChartData()
         cd.categories = labels
         cd.add_series(chart.get("y_field", "valor"), values)
-        ctype = XL_CHART_TYPE.LINE_MARKERS if chart.get("type") == "line" else XL_CHART_TYPE.COLUMN_CLUSTERED
+        ctype = {
+            "line": XL_CHART_TYPE.LINE_MARKERS,
+            "area": XL_CHART_TYPE.AREA,
+            "pie": XL_CHART_TYPE.PIE,
+            "doughnut": XL_CHART_TYPE.DOUGHNUT,
+        }.get(ctype_name, XL_CHART_TYPE.COLUMN_CLUSTERED)
         gframe = slide.shapes.add_chart(ctype, Inches(l), Inches(t), Inches(w), Inches(h), cd)
         ch = gframe.chart
-        ch.has_legend = False
+        ch.has_legend = is_pie
         try:
             ch.has_title = False
             plot = ch.plots[0]
             plot.has_data_labels = False
-            ser = plot.series[0]
-            ser.format.fill.solid()
-            ser.format.fill.fore_color.rgb = RED
+            if not is_pie:
+                ser = plot.series[0]
+                ser.format.fill.solid()
+                ser.format.fill.fore_color.rgb = RED
         except Exception:
             pass
         return True
