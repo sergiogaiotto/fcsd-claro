@@ -1476,7 +1476,7 @@
                 Análise Executiva
                 <span class="text-[9px] font-semibold uppercase tracking-wider bg-fg-accent/15 text-fg-accent border border-fg-accent/30 rounded px-1.5 py-0.5">Beta</span>
             </h2>
-            <p class="text-[10px] text-fg-muted mt-0.5">Uma pergunta de negócio → o número-herói com lastro auditável (SQL, fonte, completude) e selo de confiança — sob a sua RLS.</p>
+            <p class="text-[10px] text-fg-muted mt-0.5">Uma pergunta de negócio → um deck executivo (ou um número-chave) com lastro auditável (SQL, fonte, completude) e selo de confiança — sob a sua RLS.</p>
         </div>
     </div>
 
@@ -1495,7 +1495,7 @@
                 class="flex-1 min-w-[260px] bg-fg-700 border border-fg-border rounded-xl px-4 py-3 text-sm focus:border-fg-accent focus:outline-none focus:ring-1 focus:ring-fg-accent/30 transition placeholder:text-fg-muted/50"
                 onkeydown="if(event.key==='Enter')runExecDeck()">
             <button onclick="runExecDeck()" id="execDeckBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Gerar deck executivo</button>
-            <button onclick="runExecHero()" id="execBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Só o número-herói</button>
+            <button onclick="runExecHero()" id="execBtn" title="Responde sua pergunta com UM número-chave já auditável (clique nele e veja o SQL exato, a tabela-fonte, a completude e o selo de confiança) — sem montar o deck inteiro. Ideal para uma decisão pontual e rápida." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Resposta rápida (1 número auditável)</button>
         </div>
     </div>
 
@@ -3036,6 +3036,84 @@ function _ensureChartJs() {
     });
 }
 
+let _deckProgTimer = null, _deckProgStart = 0, _deckProgManual = null, _deckProgDetail = '';
+const _DECK_STEPS = ['Planejando a storyline (decomposição MECE)', 'Consultando seus dados — várias perguntas encadeadas', 'Escrevendo a tese (Pirâmide de Minto)', 'Definindo governança, KPIs e roadmap', 'Montando e diagramando os slides'];
+function _renderDeckProgress() {
+    const box = document.getElementById('execProgressSteps');
+    if (!box) return;
+    const elapsed = (Date.now() - _deckProgStart) / 1000;
+    let cur;
+    if (_deckProgManual != null) { cur = _deckProgManual; }
+    else { const th = [0, 8, 50, 65, 85]; cur = 0; for (let i = 0; i < th.length; i++) { if (elapsed >= th[i]) cur = i; } }
+    box.innerHTML = _DECK_STEPS.map(function (s, i) {
+        const done = i < cur, active = i === cur;
+        const icon = done ? '<span class="text-fg-green">✓</span>' : (active ? '<span class="animate-spin inline-block h-3 w-3 border-2 border-fg-accent border-t-transparent rounded-full align-middle"></span>' : '<span class="text-fg-muted/40">○</span>');
+        const col = done ? 'text-fg-muted' : (active ? 'text-fg-bright font-semibold' : 'text-fg-muted/50');
+        return '<div class="flex items-center gap-2 ' + col + '"><span class="w-4 inline-flex justify-center">' + icon + '</span><span>' + s + '</span></div>';
+    }).join('');
+    const dt = document.getElementById('execProgressDetail'); if (dt) dt.textContent = _deckProgDetail || '';
+    const t = document.getElementById('execProgressElapsed');
+    if (t) { const e = Math.floor(elapsed); t.textContent = String(Math.floor(e / 60)).padStart(2, '0') + ':' + String(e % 60).padStart(2, '0'); }
+}
+function _showDeckProgress() {
+    _hideDeckProgress();
+    _deckProgStart = Date.now();
+    _deckProgManual = null; _deckProgDetail = '';
+    const ov = document.createElement('div');
+    ov.id = 'execProgressModal';
+    ov.className = 'fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center';
+    ov.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-2xl p-7 w-full max-w-md mx-4 shadow-2xl">'
+        + '<div class="flex items-center gap-3 mb-4"><div class="animate-spin h-6 w-6 border-2 border-fg-accent border-t-transparent rounded-full"></div>'
+        + '<div><div class="text-base font-bold text-fg-bright">Gerando deck executivo</div>'
+        + '<div class="text-[11px] text-fg-muted">A IA está decompondo sua pergunta e consultando seus dados…</div></div></div>'
+        + '<div id="execProgressDetail" class="text-[11px] text-fg-accent mt-1 min-h-[14px]"></div>'
+        + '<div id="execProgressSteps" class="space-y-2 text-xs my-3"></div>'
+        + '<div class="flex items-center justify-between text-[11px] text-fg-muted border-t border-fg-border pt-3">'
+        + '<span>⏱ <span id="execProgressElapsed">00:00</span> decorrido</span><span>costuma levar 1–2 min</span></div></div>';
+    document.body.appendChild(ov);
+    _renderDeckProgress();
+    _deckProgTimer = setInterval(_renderDeckProgress, 1000);
+}
+function _hideDeckProgress() { if (_deckProgTimer) { clearInterval(_deckProgTimer); _deckProgTimer = null; } const ov = document.getElementById('execProgressModal'); if (ov) ov.remove(); }
+function _updateDeckProgress(ev) {
+    if (!ev || !ev.phase) return;
+    const map = { plan: 1, resolve: 1, synthesis: 2, governance: 3, assemble: 4 };
+    if (ev.phase in map) _deckProgManual = map[ev.phase];
+    if (ev.phase === 'resolve') _deckProgDetail = 'Consultando ' + ev.i + '/' + ev.total + (ev.title ? ' — ' + ev.title : '');
+    else if (ev.phase === 'plan') _deckProgDetail = (ev.total ? ev.total + ' perguntas planejadas' : 'Storyline planejada');
+    else if (ev.phase === 'synthesis') _deckProgDetail = 'Escrevendo a tese (Minto)…';
+    else if (ev.phase === 'governance') _deckProgDetail = 'Definindo KPIs e roadmap…';
+    else if (ev.phase === 'assemble') _deckProgDetail = 'Montando os slides…';
+    _renderDeckProgress();
+}
+async function _streamDeck(payload, onEvent) {
+    const res = await fetch('/api/exec/deck/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok || !res.body) throw new Error('stream indisponível (HTTP ' + res.status + ')');
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', finalDeck = null, errObj = null;
+    while (true) {
+        const r = await reader.read();
+        if (r.done) break;
+        buf += dec.decode(r.value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+            const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+            let kind = 'message', data = '';
+            chunk.split('\n').forEach(function (line) {
+                if (line.indexOf('event:') === 0) kind = line.slice(6).trim();
+                else if (line.indexOf('data:') === 0) data += line.slice(5).trim();
+            });
+            let obj = {}; try { obj = JSON.parse(data); } catch (_) { }
+            if (kind === 'done') finalDeck = obj;
+            else if (kind === 'error') errObj = obj;
+            else if (onEvent) onEvent(obj);
+        }
+    }
+    if (errObj) throw new Error(errObj.error || 'erro no stream');
+    if (!finalDeck) throw new Error('stream sem resultado');
+    return finalDeck;
+}
 async function runExecDeck() {
     const input = document.getElementById('execQuestion');
     const q = (input.value || '').trim();
@@ -3044,20 +3122,18 @@ async function runExecDeck() {
     const out = document.getElementById('execResult');
     const old = btn.textContent;
     btn.disabled = true; btn.textContent = 'Compondo…';
-    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">🧠 Montando o deck executivo — planejando a história, consultando seus dados e escrevendo a tese.<br>Isso pode levar 1–2 min (várias consultas encadeadas).</div>';
+    out.innerHTML = ''; _showDeckProgress();
     try {
         const dmIds = getSelectedExecDatamartIds();
         const dlIds = getSelectedExecDiamondLayerIds();
-        const res = await fetch('/api/exec/deck', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                question: q,
-                datamart_ids: dmIds.length ? dmIds : null,
-                diamond_layer_ids: dlIds.length ? dlIds : null,
-            }),
-        });
-        const data = await res.json();
+        const payload = { question: q, datamart_ids: dmIds.length ? dmIds : null, diamond_layer_ids: dlIds.length ? dlIds : null };
+        let data;
+        try {
+            data = await _streamDeck(payload, _updateDeckProgress);
+        } catch (streamErr) {
+            const res = await fetch('/api/exec/deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            data = await res.json();
+        }
         if (data.detail) { out.innerHTML = _execErrorBox(data.detail); return; }
         if (data.error)  { out.innerHTML = _execErrorBox(data.error); return; }
         _execDeck = data;
@@ -3067,6 +3143,7 @@ async function runExecDeck() {
     } catch (e) {
         out.innerHTML = _execErrorBox(String(e));
     } finally {
+        _hideDeckProgress();
         btn.disabled = false; btn.textContent = old;
     }
 }
@@ -3091,7 +3168,7 @@ function _deckSlideHtml(s, i, prefix) {
     if (s.type === 'sintese') {
         const callouts = (s.callouts || []).map(c => `<div class="text-center px-3 flex-1 min-w-[110px]">
             <div class="text-fg-accent font-extrabold" style="font-size:30px;line-height:1">${escapeHtml(c.value)}</div>
-            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}</div></div>`).join('');
+            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}</div>${c.delta ? _deltaBadge(c.delta) : ''}</div>`).join('');
         return card(`${tag}${title}
             ${s.thesis ? `<div class="text-sm font-semibold text-fg-bright mt-2">${escapeHtml(s.thesis)}</div>` : ''}
             ${callouts ? `<div class="flex flex-wrap gap-2 my-4 py-3 border-y border-fg-border">${callouts}</div>` : ''}
@@ -3123,13 +3200,15 @@ function _deckSlideHtml(s, i, prefix) {
               <div class="min-w-[180px]">
                 <div class="text-fg-accent font-extrabold" style="font-size:48px;line-height:1">${escapeHtml(hero.value || '—')}</div>
                 <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}</div>
+                ${hero.delta ? _deltaBadge(hero.delta) : ''}
                 ${hero.caption ? `<div class="text-xs text-fg-muted mt-1 max-w-xs">${escapeHtml(hero.caption)}</div>` : ''}
               </div>
               ${chartHtml}
             </div>
             ${czHtml}
             ${s.narrative ? `<div class="text-xs text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3">${escapeHtml(s.narrative)}</div>` : ''}
-            ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}`);
+            ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}
+            ${(_execAudience === 'gerente' && s.sql) ? `<details class="mt-3"><summary class="text-[10px] text-fg-muted cursor-pointer uppercase tracking-wider font-mono">SQL (lastro)</summary><pre class="mt-2 bg-fg-900 rounded-lg p-2 text-[10px] text-fg-green overflow-x-auto border border-fg-border">${escapeHtml(s.sql)}</pre></details>` : ''}`);
     }
     if (s.type === 'estrategia') {
         const frentes = (s.frentes || []).map(f => `<div class="bg-fg-700/50 rounded-lg p-3 flex gap-3">
@@ -3192,24 +3271,84 @@ function _instantiateDeckCharts(deck, prefix, store) {
     });
 }
 function _destroyCharts(store) { while (store && store.length) { try { store.pop().destroy(); } catch (e) {} } }
+function _deltaBadge(d) { if (!d) return ''; var arrow = d.dir === 'up' ? '▲' : (d.dir === 'down' ? '▼' : '■'); return '<div class="text-[10px] text-fg-muted mt-1" title="comparado à versão anterior salva do deck">' + arrow + ' ' + escapeHtml(d.text) + '</div>'; }
+function _calcDelta(o, n) { if (!o || !n) return null; var a = Number(o.value_raw), b = Number(n.value_raw); if (!isFinite(a) || !isFinite(b)) return null; var diff = b - a; if (diff === 0) return { dir: 'flat', text: 'estável vs. anterior' }; var dir = diff > 0 ? 'up' : 'down'; if (a === 0) return { dir: dir, text: 'novo vs. anterior' }; var pct = Math.round(diff / Math.abs(a) * 100); return { dir: dir, text: (diff > 0 ? '+' : '') + pct + '% vs. anterior' }; }
+function _applyDeckDelta(oldDeck, newDeck) { if (!oldDeck || !newDeck) return; var m = {}; (oldDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) m['i:' + s.key] = s.hero; if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) m['c:' + c.key] = c; }); }); (newDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) { var d = _calcDelta(m['i:' + s.key], s.hero); if (d) s.hero.delta = d; } if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) { var d2 = _calcDelta(m['c:' + c.key], c); if (d2) c.delta = d2; } }); }); }
 
+let _execAudience = 'diretor';
+function _audienceVisible(deck) { var slides = (deck && deck.slides) || []; var all = slides.map(function (s, i) { return { s: s, i: i }; }); if (_execAudience === 'diretor' || _execAudience === 'gerente') return all; if (_execAudience === 'po') { var po = ['cover', 'sintese', 'insight', 'roadmap', 'kpis']; return all.filter(function (x) { return po.indexOf(x.s.type) >= 0; }); } if (_execAudience === 'ceo') { var out = []; var ins = 0; for (var k = 0; k < slides.length; k++) { var s = slides[k]; if (s.type === 'cover' || s.type === 'sintese' || s.type === 'kpis') out.push({ s: s, i: k }); else if (s.type === 'insight' && ins < 3) { out.push({ s: s, i: k }); ins++; } } return out; } return all; }
+function setExecAudience(a) { _execAudience = a; if (_execDeck) renderExecDeck(_execDeck); }
+
+// ---- Deck Designer: refino manual dos textos (números ficam imutáveis/auditáveis) ----
+function _ddField(id, label, val, rows) {
+    return '<div class="mb-2"><label class="block text-[10px] text-fg-muted uppercase tracking-wider mb-0.5">' + label + '</label>'
+        + '<textarea id="' + id + '" rows="' + (rows || 2) + '" class="w-full bg-fg-700 border border-fg-border rounded px-2 py-1 text-xs text-fg-text focus:border-fg-accent focus:outline-none">' + escapeHtml(val || '') + '</textarea></div>';
+}
+function openDeckDesigner() {
+    if (!_execDeck) return;
+    const body = (_execDeck.slides || []).map(function (s, i) {
+        const head = '<div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mt-3 mb-1">' + escapeHtml((s.section || s.type || '').toString()) + (s.title ? (' — ' + escapeHtml(s.title)) : '') + '</div>';
+        let f = '';
+        if (s.type === 'cover') { f = _ddField('dd-' + i + '-title', 'Título', s.title, 1) + _ddField('dd-' + i + '-subtitle', 'Subtítulo / tese', s.subtitle, 2); }
+        else if (s.type === 'sintese') { f = _ddField('dd-' + i + '-thesis', 'Tese', s.thesis, 2) + _ddField('dd-' + i + '-omostram', 'O que os dados mostram (1 por linha)', (s.o_que_mostram || []).join('\n'), 3) + _ddField('dd-' + i + '-implicacao', 'Implicação estratégica (1 por linha)', (s.implicacao || []).join('\n'), 3); }
+        else if (s.type === 'sowhat') { f = _ddField('dd-' + i + '-thesis', 'Tese', s.thesis, 2); }
+        else if (s.type === 'insight') { f = _ddField('dd-' + i + '-title', 'Título', s.title, 1) + _ddField('dd-' + i + '-subtitle', 'Subtítulo', s.subtitle, 1) + _ddField('dd-' + i + '-narrative', 'Narrativa', s.narrative, 3) + _ddField('dd-' + i + '-herolabel', 'Rótulo do número', (s.hero || {}).label, 1) + _ddField('dd-' + i + '-herocaption', 'Legenda do número', (s.hero || {}).caption, 1) + _ddField('dd-' + i + '-actions', 'Ações recomendadas (1 por linha)', (s.actions || []).join('\n'), 3); }
+        else if (s.type === 'kpis') { f = _ddField('dd-' + i + '-ritual', 'Ritual de gestão (1 por linha)', (s.ritual || []).join('\n'), 3); }
+        else { return ''; }
+        return '<div class="border-b border-fg-border pb-2">' + head + f + '</div>';
+    }).join('');
+    const ov = document.createElement('div');
+    ov.id = 'deckDesignerModal';
+    ov.className = 'fixed inset-0 z-[65] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+    ov.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">'
+        + '<div class="flex items-center justify-between px-5 py-3 border-b border-fg-border"><div class="text-sm font-bold text-fg-bright">✏️ Deck Designer — refine os textos</div><button onclick="closeDeckDesigner()" class="text-fg-muted hover:text-fg-accent">✕</button></div>'
+        + '<div class="overflow-auto px-5 py-3 flex-1">' + body + '</div>'
+        + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">A IA propõe; você refina. Os números são imutáveis (auditáveis). Lembre de 💾 Salvar para persistir.</span>'
+        + '<button onclick="closeDeckDesigner()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Cancelar</button>'
+        + '<button onclick="applyDeckDesigner()" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold">Aplicar edições</button></div></div>';
+    document.body.appendChild(ov);
+}
+function closeDeckDesigner() { const ov = document.getElementById('deckDesignerModal'); if (ov) ov.remove(); }
+function _ddLines(id) { const el = document.getElementById(id); if (!el) return null; return el.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); }
+function applyDeckDesigner() {
+    if (!_execDeck) { closeDeckDesigner(); return; }
+    (_execDeck.slides || []).forEach(function (s, i) {
+        function setIf(id, fn) { const el = document.getElementById(id); if (el) fn(el.value); }
+        if (s.type === 'cover') { setIf('dd-' + i + '-title', function (v) { s.title = v; }); setIf('dd-' + i + '-subtitle', function (v) { s.subtitle = v; }); }
+        else if (s.type === 'sintese') { setIf('dd-' + i + '-thesis', function (v) { s.thesis = v; }); const a = _ddLines('dd-' + i + '-omostram'); if (a) s.o_que_mostram = a; const b = _ddLines('dd-' + i + '-implicacao'); if (b) s.implicacao = b; }
+        else if (s.type === 'sowhat') { setIf('dd-' + i + '-thesis', function (v) { s.thesis = v; }); }
+        else if (s.type === 'insight') { setIf('dd-' + i + '-title', function (v) { s.title = v; }); setIf('dd-' + i + '-subtitle', function (v) { s.subtitle = v; }); setIf('dd-' + i + '-narrative', function (v) { s.narrative = v; }); s.hero = s.hero || {}; setIf('dd-' + i + '-herolabel', function (v) { s.hero.label = v; }); setIf('dd-' + i + '-herocaption', function (v) { s.hero.caption = v; }); const ac = _ddLines('dd-' + i + '-actions'); if (ac) s.actions = ac; }
+        else if (s.type === 'kpis') { const r = _ddLines('dd-' + i + '-ritual'); if (r) s.ritual = r; }
+    });
+    closeDeckDesigner();
+    renderExecDeck(_execDeck);
+}
 function renderExecDeck(deck) {
     const out = document.getElementById('execResult');
-    const slidesHtml = (deck.slides || []).map((s, i) => _deckSlideHtml(s, i, '')).join('');
+    const visible = _audienceVisible(deck);
+    const slidesHtml = visible.map(function (x) { return _deckSlideHtml(x.s, x.i, ''); }).join('');
     out.innerHTML = `
       <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
           <h3 class="text-base font-bold text-fg-bright">${escapeHtml(deck.title || 'Deck executivo')}</h3>
           <p class="text-[11px] text-fg-muted max-w-2xl">${escapeHtml(deck.thesis || '')}</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 items-center flex-wrap">
+          <div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5 mr-1" title="Mesma evidência, públicos diferentes — escolha a altitude da leitura">
+            <button onclick="setExecAudience('ceo')" title="CEO — Decisão em 1 minuto: tese, números-chave e metas. Capa + síntese + 3 principais insights + KPIs + TL;DR." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'ceo' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">CEO</button>
+            <button onclick="setExecAudience('diretor')" title="Diretor — Visão completa para decidir e direcionar: diagnóstico, evidências, estratégia e roadmap (todos os slides)." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'diretor' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Diretor</button>
+            <button onclick="setExecAudience('gerente')" title="Gerente — Visão operacional para executar e auditar: tudo + o SQL/lastro de cada número embutido em cada insight." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'gerente' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Gerente</button>
+            <button onclick="setExecAudience('po')" title="Product Owner — Visão de produto para priorizar o backlog: insights, ações recomendadas, roadmap por sprint e KPIs (sem o diagnóstico de board)." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'po' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">PO</button>
+          </div>
+          <button onclick="openDeckDesigner()" title="Deck Designer — refine os textos (tese, narrativas, rótulos, ações) que a IA propôs. Os números permanecem auditáveis." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">✏️ Editar</button>
           <button onclick="saveExecDeck()" id="execSaveBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">💾 Salvar</button>
           <button onclick="enterExecPresent()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">▶ Apresentar</button>
           <button onclick="exportExecPptx()" id="execPptxBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-2 rounded-lg text-xs font-semibold transition">⬇ Exportar PPTX</button>
         </div>
       </div>
+      ${_execAudience === 'ceo' ? `<div class="bg-fg-accent/10 border border-fg-accent/30 rounded-lg p-3 mb-3 text-sm font-semibold text-fg-bright">TL;DR — ${escapeHtml(deck.thesis || '')}</div>` : ''}
       <div class="space-y-3">${slidesHtml}</div>
-      <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${(deck.slides || []).length} slides</p>`;
+      <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${visible.length} de ${(deck.slides || []).length} slides${_execAudience !== 'diretor' ? ' · visão ' + _execAudience : ''}</p>`;
     _destroyCharts(_execCharts);
     _instantiateDeckCharts(deck, '', _execCharts);
 }
@@ -3220,11 +3359,12 @@ async function exportExecPptx() {
     const old = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Gerando…'; }
     try {
+        const _expDeck = Object.assign({}, _execDeck, { slides: _audienceVisible(_execDeck).map(function (x) { return x.s; }) });
         const res = await fetch('/api/exec/deck/pptx', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(_execDeck),
+            body: JSON.stringify(_expDeck),
         });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao exportar PPTX: ' + (e.detail || res.status)); return; }
+        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao exportar PPTX: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -3281,7 +3421,7 @@ async function saveExecDeck() {
                 deck_spec: _execDeck,
             }),
         });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao salvar: ' + (e.detail || res.status)); return; }
+        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao salvar: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
         const saved = await res.json();
         _execDeck._savedId = saved.id;
         loadExecDecks();
@@ -3316,28 +3456,25 @@ async function refreshExecDeck(id) {
     const rec = await r.json();
     if (!confirm('Atualizar "' + rec.name + '" recompondo com os dados de hoje? (pode levar 1–2 min)')) return;
     const out = document.getElementById('execResult');
-    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">↻ Recompondo o deck com os dados atuais…</div>';
+    out.innerHTML = ''; _showDeckProgress();
     try {
-        const res = await fetch('/api/exec/deck', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                question: rec.question,
-                datamart_ids: (rec.datamart_ids || []).length ? rec.datamart_ids : null,
-                diamond_layer_ids: (rec.diamond_layer_ids || []).length ? rec.diamond_layer_ids : null,
-            }),
-        });
-        const deck = await res.json();
+        const payload = { question: rec.question, datamart_ids: (rec.datamart_ids || []).length ? rec.datamart_ids : null, diamond_layer_ids: (rec.diamond_layer_ids || []).length ? rec.diamond_layer_ids : null };
+        let deck;
+        try { deck = await _streamDeck(payload, _updateDeckProgress); }
+        catch (streamErr) { const res = await fetch('/api/exec/deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); deck = await res.json(); }
         if (deck.detail || deck.error) { out.innerHTML = _execErrorBox(deck.detail || deck.error); return; }
         await fetch('/api/exec/decks/' + id, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ deck_spec: deck }),
         });
         deck._savedId = id; deck._dm = rec.datamart_ids || []; deck._dl = rec.diamond_layer_ids || [];
+        _applyDeckDelta(rec.deck_spec, deck);  // delta temporal: ▲/▼ vs. versão anterior
         _execDeck = deck;
         await _ensureChartJs().catch(() => {});
         renderExecDeck(deck);
         loadExecDecks();
     } catch (e) { out.innerHTML = _execErrorBox(String(e)); }
+    finally { _hideDeckProgress(); }
 }
 
 // ---- Modo Apresentação (fullscreen) ----
@@ -3419,7 +3556,7 @@ async function askSlide() {
             }),
         });
         const d = await res.json();
-        if (d.detail || d.error) { alert('Não foi possível: ' + (d.detail || d.error)); return; }
+        if (d.detail || d.error) { alert('Não foi possível: ' + _fmtApiError(d)); return; }
         const h = d.hero || {};
         const slide = {
             type: 'insight', section: 'APROFUNDAMENTO', title: q,
@@ -4223,7 +4360,7 @@ async function pinInlineChartToCockpit() {
             body: JSON.stringify({ question: lastQuestion, label: '', sql_generated: lastSqlGenerated || '' }),
         });
         const vdata = await vres.json().catch(() => ({}));
-        if (!vres.ok || !vdata.id) { alert('Erro ao criar visão: ' + (vdata.detail || 'desconhecido')); return; }
+        if (!vres.ok || !vdata.id) { alert('Erro ao criar visão: ' + _fmtApiError(vdata, 'desconhecido')); return; }
         const cres = await fetch('/api/cockpit', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4233,7 +4370,7 @@ async function pinInlineChartToCockpit() {
                 agg: st.agg === 'none' ? 'none' : (st.agg || 'sum'),
             }),
         });
-        if (!cres.ok) { const e = await cres.json().catch(() => ({})); alert(e.detail || 'Erro ao fixar (limite de 6 tiles?).'); return; }
+        if (!cres.ok) { const e = await cres.json().catch(() => ({})); alert(_fmtApiError(e, 'Erro ao fixar (limite de 6 tiles?).')); return; }
         appendMessage('assistant', '<div class="text-xs text-indigo-400 flex items-center gap-1.5">📌 <strong>Fixado no Cockpit.</strong></div>', true);
     } catch(e) { alert('Erro: ' + e.message); }
 }
@@ -4426,7 +4563,7 @@ async function saveInlineReport() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error || data.detail) {
-            alert('Erro ao salvar reporte: ' + (data.error || data.detail || ('HTTP ' + res.status)));
+            alert('Erro ao salvar reporte: ' + _fmtApiError(data, 'HTTP ' + res.status));
             return;
         }
         appendMessage('assistant', '<div class="text-xs text-indigo-400 flex items-center gap-1.5">💾 <strong>Reporte salvo</strong> — disponível na aba Reportes para refinar, publicar e agendar.</div>', true);
@@ -5187,7 +5324,7 @@ async function deleteVisionFromTab(id, preview) {
     try {
         const res = await fetch(`/api/visions/${id}`, { method: 'DELETE' });
         if (res.ok) loadVisionsTab();
-        else { const e = await res.json(); alert(e.detail || 'Erro.'); }
+        else { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); }
     } catch(e) { alert('Erro: ' + e.message); }
 }
 
@@ -5429,7 +5566,7 @@ function renderTablesList() {
         }
     }
 }
-async function dropTable(name) { if (!confirm(`Excluir "${name}"?`)) return; if (!confirm(`Confirme: DROP TABLE "${name}"`)) return; try { const res = await fetch(`/api/tables/${encodeURIComponent(name)}`, { method: 'DELETE' }); const data = await res.json(); if (!res.ok) { alert(data.detail || data.error || 'Erro.'); return; } document.getElementById('tablePreview').classList.add('hidden'); loadTables(); } catch(e) { alert('Erro: ' + e.message); } }
+async function dropTable(name) { if (!confirm(`Excluir "${name}"?`)) return; if (!confirm(`Confirme: DROP TABLE "${name}"`)) return; try { const res = await fetch(`/api/tables/${encodeURIComponent(name)}`, { method: 'DELETE' }); const data = await res.json(); if (!res.ok) { alert(_fmtApiError(data, 'Erro.')); return; } document.getElementById('tablePreview').classList.add('hidden'); loadTables(); } catch(e) { alert('Erro: ' + e.message); } }
 async function previewTable(name) { document.getElementById('previewTitle').textContent = `Preview: ${name}`; document.getElementById('tablePreview').classList.remove('hidden'); document.getElementById('previewContent').innerHTML = '<div class="shimmer h-32 rounded-lg"></div>'; const res = await fetch(`/api/tables/${encodeURIComponent(name)}/preview`); document.getElementById('previewContent').innerHTML = renderTable(await res.json()); }
 function handleDrop(e) { e.preventDefault(); e.currentTarget.classList.remove('drop-active'); if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]); }
 async function uploadFile(file) {
@@ -5506,8 +5643,8 @@ async function loadAnalysisTypes() { const el = document.getElementById('analysi
 async function loadAnalysisTypeSelector() { const sel = document.getElementById('analysisType'); try { const res = await fetch('/api/analysis-types'); const types = await res.json(); sel.innerHTML = '<option value="">— Selecione o Tipo de Análise —</option>' + types.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join(''); } catch(e) { sel.innerHTML = '<option value="">Erro</option>'; } }
 function newAnalysisType() { document.getElementById('editorTitle').textContent = 'Novo Tipo'; document.getElementById('analysisForm').classList.remove('hidden'); document.getElementById('editId').value = ''; document.getElementById('editName').value = ''; document.getElementById('editPrompt').value = ''; document.getElementById('editGuardIn').value = ''; document.getElementById('editGuardOut').value = ''; document.getElementById('btnDelete').classList.add('hidden'); _setAnalysisFormReadOnly(false); }
 async function editAnalysisType(id) { const res = await fetch(`/api/analysis-types/${id}`); const t = await res.json(); document.getElementById('editorTitle').textContent = 'Editar: ' + t.name; document.getElementById('analysisForm').classList.remove('hidden'); document.getElementById('editId').value = t.id; document.getElementById('editName').value = t.name; document.getElementById('editPrompt').value = t.system_prompt; document.getElementById('editGuardIn').value = t.guardrails_input; document.getElementById('editGuardOut').value = t.guardrails_output; const canEdit = _canEditAnalysisType(t); document.getElementById('btnDelete').classList.toggle('hidden', !canEdit); _setAnalysisFormReadOnly(!canEdit); }
-async function saveAnalysisType() { const id = document.getElementById('editId').value; const payload = { name: document.getElementById('editName').value, system_prompt: document.getElementById('editPrompt').value, guardrails_input: document.getElementById('editGuardIn').value, guardrails_output: document.getElementById('editGuardOut').value }; const res = await fetch(id ? `/api/analysis-types/${id}` : '/api/analysis-types', { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao salvar.'); return; } loadAnalysisTypes(); loadAnalysisTypeSelector(); alert('Salvo.'); }
-async function deleteAnalysisType() { const id = document.getElementById('editId').value; if (!id || !confirm('Excluir?')) return; const res = await fetch(`/api/analysis-types/${id}`, { method: 'DELETE' }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao excluir.'); return; } document.getElementById('analysisForm').classList.add('hidden'); loadAnalysisTypes(); loadAnalysisTypeSelector(); }
+async function saveAnalysisType() { const id = document.getElementById('editId').value; const payload = { name: document.getElementById('editName').value, system_prompt: document.getElementById('editPrompt').value, guardrails_input: document.getElementById('editGuardIn').value, guardrails_output: document.getElementById('editGuardOut').value }; const res = await fetch(id ? `/api/analysis-types/${id}` : '/api/analysis-types', { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao salvar.')); return; } loadAnalysisTypes(); loadAnalysisTypeSelector(); alert('Salvo.'); }
+async function deleteAnalysisType() { const id = document.getElementById('editId').value; if (!id || !confirm('Excluir?')) return; const res = await fetch(`/api/analysis-types/${id}`, { method: 'DELETE' }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao excluir.')); return; } document.getElementById('analysisForm').classList.add('hidden'); loadAnalysisTypes(); loadAnalysisTypeSelector(); }
 async function loadGallery() {
     const list = document.getElementById('galleryList');
     const empty = document.getElementById('galleryEmpty');
@@ -6518,12 +6655,12 @@ async function testReportQuery() {
                 result_limit: 0,
             }),
         });
-        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro na consulta.'); return; }
+        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro na consulta.')); return; }
         const data = await res.json();
         _designerSqlPreview = data.sql_generated || '';
         const out = data.data || {};
         if (out.error) {
-            alert('Falha ao executar: ' + out.error);
+            alert('Falha ao executar: ' + _fmtApiError(out));
             return;
         }
         const cols = out.columns || [];
@@ -6723,7 +6860,7 @@ async function saveReportDraft() {
             body: JSON.stringify(payload),
         });
     }
-    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao salvar.'); return; }
+    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao salvar.')); return; }
     _editingReport = await res.json();
     _designerDirty = false;
     document.getElementById('reportDesignerDirty').classList.add('hidden');
@@ -6745,7 +6882,7 @@ async function publishReport() {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ sql_generated: sql }),
     });
-    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao publicar.'); return; }
+    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao publicar.')); return; }
     _editingReport = await res.json();
     document.getElementById('reportDesignerSubtitle').textContent = `Publicado · v${_editingReport.version}`;
     appendMessage && appendMessage('assistant', `<div class="text-xs text-fg-green flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>Reporte <strong>${escapeHtml(_editingReport.name)}</strong> publicado.</div>`, true);
@@ -6990,7 +7127,7 @@ function _setSkillFormReadOnly(readOnly) {
 }
 function newSkill() { document.getElementById('skillEditId').value = ''; document.getElementById('skillName').value = ''; document.getElementById('skillDesc').value = ''; document.getElementById('skillTriggers').value = ''; document.getElementById('skillContent').value = ''; _setSkillFormReadOnly(false); }
 async function editSkill(id) { const s = await (await fetch(`/api/skills/${id}`)).json(); document.getElementById('skillEditId').value = s.id; document.getElementById('skillName').value = s.name; document.getElementById('skillDesc').value = s.description || ''; document.getElementById('skillTriggers').value = (s.triggers || []).join(', '); document.getElementById('skillContent').value = s.content || ''; _setSkillFormReadOnly(!_canEditSkill(s)); showTab('skills'); }
-async function saveSkill() { const id = document.getElementById('skillEditId').value; const name = document.getElementById('skillName').value.trim(); if (!name) { alert('Nome obrigatório.'); return; } const triggersRaw = document.getElementById('skillTriggers').value.trim(); const triggers = triggersRaw ? triggersRaw.split(',').map(t => t.trim()).filter(t => t.length > 0) : []; const body = { name, description: document.getElementById('skillDesc').value.trim(), content: document.getElementById('skillContent').value, triggers }; const res = id ? await fetch(`/api/skills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) : await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao salvar.'); return; } newSkill(); loadSkills(); }
+async function saveSkill() { const id = document.getElementById('skillEditId').value; const name = document.getElementById('skillName').value.trim(); if (!name) { alert('Nome obrigatório.'); return; } const triggersRaw = document.getElementById('skillTriggers').value.trim(); const triggers = triggersRaw ? triggersRaw.split(',').map(t => t.trim()).filter(t => t.length > 0) : []; const body = { name, description: document.getElementById('skillDesc').value.trim(), content: document.getElementById('skillContent').value, triggers }; const res = id ? await fetch(`/api/skills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) : await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao salvar.')); return; } newSkill(); loadSkills(); }
 async function toggleSkillActive(id) { await fetch(`/api/skills/${id}/toggle`, { method: 'PUT' }); loadSkills(); }
 async function removeSkill(id, name) { if (!confirm(`Excluir "${name}"?`)) return; await fetch(`/api/skills/${id}`, { method: 'DELETE' }); loadSkills(); }
 async function loadActiveSkillsBadge() { /* no-op — header skill entry point doesn't show a count badge */ }
@@ -7001,10 +7138,13 @@ async function loadActiveSkillsBadge() { /* no-op — header skill entry point d
 async function loadUsers() { try { const users = await (await fetch('/api/users')).json(); const tbody = document.getElementById('usersTableBody'); const typeLabels = { root: 'Root', superuser: 'Super Usuário', admin: 'Administrador', analista: 'Analista', engenheiro_dados: 'Engenheiro de Dados', user: 'Usuário' }; const typeColors = { root: 'text-red-400', superuser: 'text-fg-accent', admin: 'text-fg-blue', analista: 'text-fg-green', engenheiro_dados: 'text-fg-green', user: 'text-fg-muted' }; const dmMap = {}; allDatamarts.forEach(d => dmMap[d.id] = d.name); tbody.innerHTML = users.map(u => { const dmNames = (u.datamart_ids || []).map(id => dmMap[id] || id).join(', ') || '—'; return `<tr class="hover:bg-fg-700/50 transition-colors"><td class="px-4 py-2.5 font-mono text-fg-bright">${u.login}</td><td class="px-4 py-2.5 text-fg-text">${u.display_name || '—'}</td><td class="px-4 py-2.5"><span class="${typeColors[u.user_type] || 'text-fg-muted'} text-xs font-semibold">${typeLabels[u.user_type] || u.user_type}</span></td><td class="px-4 py-2.5 text-fg-muted text-xs max-w-[150px] truncate font-mono" title="${dmNames}">${dmNames}</td><td class="px-4 py-2.5 text-center">${u.is_active ? '<span class="text-fg-green text-xs">Ativo</span>' : '<span class="text-red-400 text-xs">Inativo</span>'}</td><td class="px-4 py-2.5 text-fg-muted text-xs font-mono">${u.created_at ? u.created_at.slice(0,16).replace('T',' ') : '—'}</td><td class="px-4 py-2.5 text-center"><div class="flex items-center justify-center gap-1"><button onclick="editUser(${u.id})" class="text-fg-muted hover:text-fg-blue text-xs transition-colors">Editar</button><span class="text-fg-border">·</span><button onclick="resetUserPassword(${u.id}, '${u.login}')" class="text-fg-muted hover:text-fg-accent text-xs transition-colors">Senha</button>${u.user_type !== 'root' ? `<span class="text-fg-border">·</span><button onclick="removeUser(${u.id}, '${u.login}')" class="text-fg-muted hover:text-red-400 text-xs transition-colors">Excluir</button>` : ''}</div></td></tr>`; }).join(''); } catch(e) { console.error(e); } }
 function showCreateUserForm() { document.getElementById('userFormPanel').classList.remove('hidden'); document.getElementById('userFormTitle').textContent = 'Novo Usuário'; document.getElementById('userFormId').value = ''; document.getElementById('userFormLogin').value = ''; document.getElementById('userFormPassword').value = ''; document.getElementById('userFormType').value = 'user'; document.getElementById('userFormName').value = ''; document.getElementById('userFormDesc').value = ''; document.getElementById('userFormLogin').disabled = false; document.getElementById('userFormPassword').placeholder = 'Obrigatório'; renderUserFormDatamarts([]); renderUserFormDiamondLayers([]); }
 async function editUser(userId) { const users = await (await fetch('/api/users')).json(); const u = users.find(x => x.id === userId); if (!u) return; document.getElementById('userFormPanel').classList.remove('hidden'); document.getElementById('userFormTitle').textContent = 'Editar — ' + u.login; document.getElementById('userFormId').value = u.id; document.getElementById('userFormLogin').value = u.login; document.getElementById('userFormPassword').value = ''; document.getElementById('userFormPassword').placeholder = 'Vazio = manter'; document.getElementById('userFormType').value = u.user_type; document.getElementById('userFormName').value = u.display_name || ''; document.getElementById('userFormDesc').value = u.profile_description || ''; renderUserFormDatamarts(u.datamart_ids || []); renderUserFormDiamondLayers(u.diamond_layer_ids || []); }
+function _trField(f) { var m = { login: 'login', password: 'senha', new_password: 'nova senha', name: 'nome', display_name: 'nome de exibição', user_type: 'tipo de usuário', question: 'pergunta', description: 'descrição', email: 'e-mail', to_email: 'e-mail', label: 'rótulo', content: 'conteúdo' }; return m[f] || f; }
+function _trMsg(s) { if (!s) return s; var t = String(s); var r = [[/String should have at least (\d+) characters?/i, 'deve ter ao menos $1 caracteres'], [/String should have at most (\d+) characters?/i, 'deve ter no máximo $1 caracteres'], [/ensure this value has at least (\d+) characters?/i, 'deve ter ao menos $1 caracteres'], [/Field required/i, 'campo obrigatório'], [/none is not an allowed value/i, 'valor não pode ser nulo'], [/Input should be a valid integer.*/i, 'deve ser um número inteiro'], [/Input should be a valid number.*/i, 'deve ser um número'], [/Input should be greater than or equal to (\S+)/i, 'deve ser maior ou igual a $1'], [/Input should be less than or equal to (\S+)/i, 'deve ser menor ou igual a $1'], [/Input should be a valid (.+)/i, 'deve ser $1 válido'], [/value is not a valid (.+)/i, 'não é $1 válido'], [/String should match pattern.*/i, 'formato inválido']]; for (var i = 0; i < r.length; i++) { if (r[i][0].test(t)) return t.replace(r[i][0], r[i][1]); } return t; }
+function _fmtApiError(e, f) { f = f || 'Erro.'; var d = (e && e.detail != null) ? e.detail : ((e && e.error != null) ? e.error : e); if (d == null) return f; if (typeof d === 'string') return _trMsg(d); if (Array.isArray(d)) return d.map(function (x) { if (x && typeof x === 'object') { var loc = Array.isArray(x.loc) ? x.loc.filter(function (p) { return p !== 'body'; }) : []; var fld = loc.length ? _trField(loc[loc.length - 1]) : ''; return (fld ? fld + ': ' : '') + _trMsg(x.msg || JSON.stringify(x)); } return String(x); }).join('; ') || f; if (typeof d === 'object') return _trMsg(d.msg || d.message) || JSON.stringify(d); return String(d) || f; }
 function hideUserForm() { document.getElementById('userFormPanel').classList.add('hidden'); }
-async function saveUser() { const id = document.getElementById('userFormId').value; const login = document.getElementById('userFormLogin').value.trim(); const password = document.getElementById('userFormPassword').value; const userType = document.getElementById('userFormType').value; const displayName = document.getElementById('userFormName').value.trim(); const profileDesc = document.getElementById('userFormDesc').value.trim(); if (!login) { alert('Login obrigatório.'); return; } const dlIds = (typeof getUserFormDiamondLayerIds === 'function') ? getUserFormDiamondLayerIds() : []; try { if (id) { await fetch(`/api/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, user_type: userType, display_name: displayName, profile_description: profileDesc, datamart_ids: getUserFormDatamartIds(), diamond_layer_ids: dlIds }) }); if (password) await fetch(`/api/users/${id}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_password: password }) }); } else { if (!password) { alert('Senha obrigatória.'); return; } const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password, user_type: userType, display_name: displayName, profile_description: profileDesc, datamart_ids: getUserFormDatamartIds(), diamond_layer_ids: dlIds }) }); if (!res.ok) { const e = await res.json(); alert(e.detail || 'Erro.'); return; } } hideUserForm(); loadUsers(); } catch(e) { alert('Erro: ' + e.message); } }
-async function resetUserPassword(userId, login) { const pwd = prompt(`Nova senha para "${login}":`); if (!pwd || pwd.length < 3) return; const res = await fetch(`/api/users/${userId}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_password: pwd }) }); if (res.ok) alert('Senha alterada.'); else { const e = await res.json(); alert(e.detail || 'Erro.'); } }
-async function removeUser(userId, login) { if (!confirm(`Excluir "${login}"?`)) return; const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' }); if (res.ok) loadUsers(); else { const e = await res.json(); alert(e.detail || 'Erro.'); } }
+async function saveUser() { const id = document.getElementById('userFormId').value; const login = document.getElementById('userFormLogin').value.trim(); const password = document.getElementById('userFormPassword').value; const userType = document.getElementById('userFormType').value; const displayName = document.getElementById('userFormName').value.trim(); const profileDesc = document.getElementById('userFormDesc').value.trim(); if (!login) { alert('Login obrigatório.'); return; } const dlIds = (typeof getUserFormDiamondLayerIds === 'function') ? getUserFormDiamondLayerIds() : []; try { if (id) { await fetch(`/api/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, user_type: userType, display_name: displayName, profile_description: profileDesc, datamart_ids: getUserFormDatamartIds(), diamond_layer_ids: dlIds }) }); if (password) await fetch(`/api/users/${id}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_password: password }) }); } else { if (!password) { alert('Senha obrigatória.'); return; } const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password, user_type: userType, display_name: displayName, profile_description: profileDesc, datamart_ids: getUserFormDatamartIds(), diamond_layer_ids: dlIds }) }); if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; } } hideUserForm(); loadUsers(); } catch(e) { alert('Erro: ' + e.message); } }
+async function resetUserPassword(userId, login) { const pwd = prompt(`Nova senha para "${login}":`); if (!pwd || pwd.length < 3) return; const res = await fetch(`/api/users/${userId}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_password: pwd }) }); if (res.ok) alert('Senha alterada.'); else { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); } }
+async function removeUser(userId, login) { if (!confirm(`Excluir "${login}"?`)) return; const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' }); if (res.ok) loadUsers(); else { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); } }
 
 // ============================
 // System Prompts (SKILL.md / AGENTS.md) — root only
@@ -7077,7 +7217,7 @@ async function selectSystemPrompt(promptId) {
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
             if (ed) ed.value = '';
-            alert(e.detail || 'Erro ao ler arquivo.');
+            alert(_fmtApiError(e, 'Erro ao ler arquivo.'));
             return;
         }
         const data = await res.json();
@@ -7104,7 +7244,7 @@ async function saveSystemPrompt() {
         });
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
-            alert(e.detail || 'Erro ao salvar.');
+            alert(_fmtApiError(e, 'Erro ao salvar.'));
             return;
         }
         const cur = document.getElementById('sysPromptCurrent');
@@ -7129,7 +7269,7 @@ async function newSystemPrompt() {
         });
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
-            alert(e.detail || 'Erro ao criar skill.');
+            alert(_fmtApiError(e, 'Erro ao criar skill.'));
             return;
         }
         const created = await res.json();
@@ -7147,7 +7287,7 @@ async function deleteSystemPrompt() {
         const res = await fetch('/api/system-prompts/' + encodeURIComponent(_sysPromptCurrent.id), { method: 'DELETE' });
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
-            alert(e.detail || 'Erro ao excluir.');
+            alert(_fmtApiError(e, 'Erro ao excluir.'));
             return;
         }
         _sysPromptCurrent = null;
@@ -8169,7 +8309,7 @@ async function enrichCatalogTable() {
         const res = await fetch(`/api/catalog/enrich/${_catalogSelectedTable}`, { method: 'POST' });
         const data = await res.json();
         if (data.error) {
-            alert(data.error);
+            alert(_fmtApiError(data));
         } else {
             // Reload catalog and re-show detail
             await loadCatalog();
@@ -8358,7 +8498,7 @@ async function _persistCatalogJoins() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error || data.detail) {
-            alert('Erro ao salvar joins: ' + (data.error || data.detail || `HTTP ${res.status}`));
+            alert('Erro ao salvar joins: ' + _fmtApiError(data, 'HTTP ' + res.status));
             return false;
         }
         // Atualiza cache local
@@ -9040,7 +9180,7 @@ async function confirmAddTile() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ vision_id: visionId, chart_type: chartType, x_field: xField, y_field: yField, agg }),
             });
-            if (!res.ok) { const e = await res.json(); alert(e.detail || 'Erro.'); btn.disabled = false; btn.textContent = editId ? 'Salvar' : 'Adicionar'; return; }
+            if (!res.ok) { const e = await res.json(); alert(_fmtApiError(e)); btn.disabled = false; btn.textContent = editId ? 'Salvar' : 'Adicionar'; return; }
         }
         closeAddTileModal();
         await loadCockpit();
@@ -9384,7 +9524,7 @@ async function saveCockpitAnalysis() {
         });
         const out = await res.json().catch(() => ({}));
         if (!res.ok || out.error || out.detail) {
-            alert('Erro ao salvar: ' + (out.error || out.detail || ('HTTP ' + res.status)));
+            alert('Erro ao salvar: ' + _fmtApiError(out, 'HTTP ' + res.status));
         } else {
             alert('Análise salva na Galeria, seção "Análises Cockpit".');
         }
@@ -10910,7 +11050,7 @@ async function deleteJsonSource(id, name) {
     try {
         const res = await fetch(`/api/json-sources/${id}`, { method: 'DELETE' });
         if (res.ok) await loadJsonSources();
-        else { const e = await res.json(); alert(e.detail || 'Erro.'); }
+        else { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); }
     } catch(e) { alert('Erro: ' + e.message); }
 }
  

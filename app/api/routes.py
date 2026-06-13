@@ -78,6 +78,7 @@ from app.services.analytics_service import generate_analytics_html, run_predicti
 from app.services.catalog_service import (
     run_catalog_scan, get_catalog_summary, enrich_table_with_llm, search_catalog,
     tables_in_sql, build_cockpit_catalog_context,
+    recompute_dataset_quality,
 )
 from app.core.database import (
     get_cockpit_tiles, add_cockpit_tile, update_cockpit_tile,
@@ -971,6 +972,53 @@ async def exec_deck(req: ExecDeckRequest, user: dict = Depends(get_current_user)
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao compor o deck: {e}")
+
+
+@router.post("/exec/deck/stream")
+async def exec_deck_stream(req: ExecDeckRequest, user: dict = Depends(get_current_user)):
+    """Variante streaming (SSE) de /exec/deck: emite eventos de progresso
+    (plano → resolução de cada slide → síntese → governança) e, por fim, o deck
+    completo. O frontend mostra progresso REAL; cai no /exec/deck síncrono se o
+    stream falhar."""
+    import asyncio
+    from app.services.exec_deck_service import compose_deck
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    apply_login_filter = not is_root(user)
+    queue: "asyncio.Queue" = asyncio.Queue()
+
+    def on_progress(ev):
+        try:
+            queue.put_nowait(("progress", ev))
+        except Exception:
+            pass
+
+    async def _runner():
+        try:
+            deck = await compose_deck(
+                req.question, user, accessible, apply_login_filter,
+                n_insights=req.n_insights or 4, on_progress=on_progress,
+            )
+            await queue.put(("done", deck))
+        except Exception as e:
+            await queue.put(("error", {"error": str(e)[:300]}))
+
+    async def _gen():
+        task = asyncio.create_task(_runner())
+        try:
+            while True:
+                kind, payload = await queue.get()
+                yield f"event: {kind}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                if kind in ("done", "error"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
 
 
 @router.post("/exec/deck/pptx")
@@ -1933,9 +1981,18 @@ async def catalog_update_column(
             tuple(params),
         )
         conn.commit()
-        return {"success": True, "updated": [s.split("=")[0] for s in sets]}
+        updated = [s.split("=")[0] for s in sets]
     finally:
         conn.close()
+
+    # Recomputa qualidade/entidades do dataset para refletir a edição em QUALIDADE
+    # e ENTIDADES (ex.: desmarcar um PII remove o "PII detectado"; definir tipo
+    # semântico atualiza a validade). Não pode derrubar o salvamento da coluna.
+    try:
+        recompute_dataset_quality(table_name)
+    except Exception:
+        pass
+    return {"success": True, "updated": updated}
 
 
 @router.put("/catalog/{table_name}/joins")
