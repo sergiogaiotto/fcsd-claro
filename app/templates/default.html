@@ -1476,7 +1476,7 @@
                 Análise Executiva
                 <span class="text-[9px] font-semibold uppercase tracking-wider bg-fg-accent/15 text-fg-accent border border-fg-accent/30 rounded px-1.5 py-0.5">Beta</span>
             </h2>
-            <p class="text-[10px] text-fg-muted mt-0.5">Uma pergunta de negócio → o número-herói com lastro auditável (SQL, fonte, completude) e selo de confiança — sob a sua RLS.</p>
+            <p class="text-[10px] text-fg-muted mt-0.5">Uma pergunta de negócio → um deck executivo (ou um número-chave) com lastro auditável (SQL, fonte, completude) e selo de confiança — sob a sua RLS.</p>
         </div>
     </div>
 
@@ -1495,7 +1495,7 @@
                 class="flex-1 min-w-[260px] bg-fg-700 border border-fg-border rounded-xl px-4 py-3 text-sm focus:border-fg-accent focus:outline-none focus:ring-1 focus:ring-fg-accent/30 transition placeholder:text-fg-muted/50"
                 onkeydown="if(event.key==='Enter')runExecDeck()">
             <button onclick="runExecDeck()" id="execDeckBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Gerar deck executivo</button>
-            <button onclick="runExecHero()" id="execBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Só o número-herói</button>
+            <button onclick="runExecHero()" id="execBtn" title="Responde sua pergunta com UM número-chave já auditável (clique nele e veja o SQL exato, a tabela-fonte, a completude e o selo de confiança) — sem montar o deck inteiro. Ideal para uma decisão pontual e rápida." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Resposta rápida (1 número auditável)</button>
         </div>
     </div>
 
@@ -3036,6 +3036,41 @@ function _ensureChartJs() {
     });
 }
 
+let _deckProgTimer = null, _deckProgStart = 0;
+const _DECK_STEPS = ['Planejando a storyline (decomposição MECE)', 'Consultando seus dados — várias perguntas encadeadas', 'Escrevendo a tese (Pirâmide de Minto)', 'Definindo governança, KPIs e roadmap', 'Montando e diagramando os slides'];
+function _renderDeckProgress() {
+    const box = document.getElementById('execProgressSteps');
+    if (!box) return;
+    const elapsed = (Date.now() - _deckProgStart) / 1000;
+    const th = [0, 8, 50, 65, 85];
+    let cur = 0; for (let i = 0; i < th.length; i++) { if (elapsed >= th[i]) cur = i; }
+    box.innerHTML = _DECK_STEPS.map(function (s, i) {
+        const done = i < cur, active = i === cur;
+        const icon = done ? '<span class="text-fg-green">✓</span>' : (active ? '<span class="animate-spin inline-block h-3 w-3 border-2 border-fg-accent border-t-transparent rounded-full align-middle"></span>' : '<span class="text-fg-muted/40">○</span>');
+        const col = done ? 'text-fg-muted' : (active ? 'text-fg-bright font-semibold' : 'text-fg-muted/50');
+        return '<div class="flex items-center gap-2 ' + col + '"><span class="w-4 inline-flex justify-center">' + icon + '</span><span>' + s + '</span></div>';
+    }).join('');
+    const t = document.getElementById('execProgressElapsed');
+    if (t) { const e = Math.floor(elapsed); t.textContent = String(Math.floor(e / 60)).padStart(2, '0') + ':' + String(e % 60).padStart(2, '0'); }
+}
+function _showDeckProgress() {
+    _hideDeckProgress();
+    _deckProgStart = Date.now();
+    const ov = document.createElement('div');
+    ov.id = 'execProgressModal';
+    ov.className = 'fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center';
+    ov.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-2xl p-7 w-full max-w-md mx-4 shadow-2xl">'
+        + '<div class="flex items-center gap-3 mb-4"><div class="animate-spin h-6 w-6 border-2 border-fg-accent border-t-transparent rounded-full"></div>'
+        + '<div><div class="text-base font-bold text-fg-bright">Gerando deck executivo</div>'
+        + '<div class="text-[11px] text-fg-muted">A IA está decompondo sua pergunta e consultando seus dados…</div></div></div>'
+        + '<div id="execProgressSteps" class="space-y-2 text-xs my-4"></div>'
+        + '<div class="flex items-center justify-between text-[11px] text-fg-muted border-t border-fg-border pt-3">'
+        + '<span>⏱ <span id="execProgressElapsed">00:00</span> decorrido</span><span>costuma levar 1–2 min</span></div></div>';
+    document.body.appendChild(ov);
+    _renderDeckProgress();
+    _deckProgTimer = setInterval(_renderDeckProgress, 1000);
+}
+function _hideDeckProgress() { if (_deckProgTimer) { clearInterval(_deckProgTimer); _deckProgTimer = null; } const ov = document.getElementById('execProgressModal'); if (ov) ov.remove(); }
 async function runExecDeck() {
     const input = document.getElementById('execQuestion');
     const q = (input.value || '').trim();
@@ -3044,7 +3079,7 @@ async function runExecDeck() {
     const out = document.getElementById('execResult');
     const old = btn.textContent;
     btn.disabled = true; btn.textContent = 'Compondo…';
-    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">🧠 Montando o deck executivo — planejando a história, consultando seus dados e escrevendo a tese.<br>Isso pode levar 1–2 min (várias consultas encadeadas).</div>';
+    out.innerHTML = ''; _showDeckProgress();
     try {
         const dmIds = getSelectedExecDatamartIds();
         const dlIds = getSelectedExecDiamondLayerIds();
@@ -3067,6 +3102,7 @@ async function runExecDeck() {
     } catch (e) {
         out.innerHTML = _execErrorBox(String(e));
     } finally {
+        _hideDeckProgress();
         btn.disabled = false; btn.textContent = old;
     }
 }
@@ -3199,8 +3235,53 @@ function _calcDelta(o, n) { if (!o || !n) return null; var a = Number(o.value_ra
 function _applyDeckDelta(oldDeck, newDeck) { if (!oldDeck || !newDeck) return; var m = {}; (oldDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) m['i:' + s.key] = s.hero; if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) m['c:' + c.key] = c; }); }); (newDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) { var d = _calcDelta(m['i:' + s.key], s.hero); if (d) s.hero.delta = d; } if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) { var d2 = _calcDelta(m['c:' + c.key], c); if (d2) c.delta = d2; } }); }); }
 
 let _execAudience = 'diretor';
-function _audienceVisible(deck) { var slides = (deck && deck.slides) || []; if (_execAudience !== 'ceo') return slides.map(function (s, i) { return { s: s, i: i }; }); var out = []; var ins = 0; for (var i = 0; i < slides.length; i++) { var s = slides[i]; if (s.type === 'cover' || s.type === 'sintese' || s.type === 'kpis') out.push({ s: s, i: i }); else if (s.type === 'insight' && ins < 3) { out.push({ s: s, i: i }); ins++; } } return out; }
+function _audienceVisible(deck) { var slides = (deck && deck.slides) || []; var all = slides.map(function (s, i) { return { s: s, i: i }; }); if (_execAudience === 'diretor' || _execAudience === 'gerente') return all; if (_execAudience === 'po') { var po = ['cover', 'sintese', 'insight', 'roadmap', 'kpis']; return all.filter(function (x) { return po.indexOf(x.s.type) >= 0; }); } if (_execAudience === 'ceo') { var out = []; var ins = 0; for (var k = 0; k < slides.length; k++) { var s = slides[k]; if (s.type === 'cover' || s.type === 'sintese' || s.type === 'kpis') out.push({ s: s, i: k }); else if (s.type === 'insight' && ins < 3) { out.push({ s: s, i: k }); ins++; } } return out; } return all; }
 function setExecAudience(a) { _execAudience = a; if (_execDeck) renderExecDeck(_execDeck); }
+
+// ---- Deck Designer: refino manual dos textos (números ficam imutáveis/auditáveis) ----
+function _ddField(id, label, val, rows) {
+    return '<div class="mb-2"><label class="block text-[10px] text-fg-muted uppercase tracking-wider mb-0.5">' + label + '</label>'
+        + '<textarea id="' + id + '" rows="' + (rows || 2) + '" class="w-full bg-fg-700 border border-fg-border rounded px-2 py-1 text-xs text-fg-text focus:border-fg-accent focus:outline-none">' + escapeHtml(val || '') + '</textarea></div>';
+}
+function openDeckDesigner() {
+    if (!_execDeck) return;
+    const body = (_execDeck.slides || []).map(function (s, i) {
+        const head = '<div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mt-3 mb-1">' + escapeHtml((s.section || s.type || '').toString()) + (s.title ? (' — ' + escapeHtml(s.title)) : '') + '</div>';
+        let f = '';
+        if (s.type === 'cover') { f = _ddField('dd-' + i + '-title', 'Título', s.title, 1) + _ddField('dd-' + i + '-subtitle', 'Subtítulo / tese', s.subtitle, 2); }
+        else if (s.type === 'sintese') { f = _ddField('dd-' + i + '-thesis', 'Tese', s.thesis, 2) + _ddField('dd-' + i + '-omostram', 'O que os dados mostram (1 por linha)', (s.o_que_mostram || []).join('\n'), 3) + _ddField('dd-' + i + '-implicacao', 'Implicação estratégica (1 por linha)', (s.implicacao || []).join('\n'), 3); }
+        else if (s.type === 'sowhat') { f = _ddField('dd-' + i + '-thesis', 'Tese', s.thesis, 2); }
+        else if (s.type === 'insight') { f = _ddField('dd-' + i + '-title', 'Título', s.title, 1) + _ddField('dd-' + i + '-subtitle', 'Subtítulo', s.subtitle, 1) + _ddField('dd-' + i + '-narrative', 'Narrativa', s.narrative, 3) + _ddField('dd-' + i + '-herolabel', 'Rótulo do número', (s.hero || {}).label, 1) + _ddField('dd-' + i + '-herocaption', 'Legenda do número', (s.hero || {}).caption, 1) + _ddField('dd-' + i + '-actions', 'Ações recomendadas (1 por linha)', (s.actions || []).join('\n'), 3); }
+        else if (s.type === 'kpis') { f = _ddField('dd-' + i + '-ritual', 'Ritual de gestão (1 por linha)', (s.ritual || []).join('\n'), 3); }
+        else { return ''; }
+        return '<div class="border-b border-fg-border pb-2">' + head + f + '</div>';
+    }).join('');
+    const ov = document.createElement('div');
+    ov.id = 'deckDesignerModal';
+    ov.className = 'fixed inset-0 z-[65] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+    ov.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">'
+        + '<div class="flex items-center justify-between px-5 py-3 border-b border-fg-border"><div class="text-sm font-bold text-fg-bright">✏️ Deck Designer — refine os textos</div><button onclick="closeDeckDesigner()" class="text-fg-muted hover:text-fg-accent">✕</button></div>'
+        + '<div class="overflow-auto px-5 py-3 flex-1">' + body + '</div>'
+        + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">A IA propõe; você refina. Os números são imutáveis (auditáveis). Lembre de 💾 Salvar para persistir.</span>'
+        + '<button onclick="closeDeckDesigner()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Cancelar</button>'
+        + '<button onclick="applyDeckDesigner()" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold">Aplicar edições</button></div></div>';
+    document.body.appendChild(ov);
+}
+function closeDeckDesigner() { const ov = document.getElementById('deckDesignerModal'); if (ov) ov.remove(); }
+function _ddLines(id) { const el = document.getElementById(id); if (!el) return null; return el.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); }
+function applyDeckDesigner() {
+    if (!_execDeck) { closeDeckDesigner(); return; }
+    (_execDeck.slides || []).forEach(function (s, i) {
+        function setIf(id, fn) { const el = document.getElementById(id); if (el) fn(el.value); }
+        if (s.type === 'cover') { setIf('dd-' + i + '-title', function (v) { s.title = v; }); setIf('dd-' + i + '-subtitle', function (v) { s.subtitle = v; }); }
+        else if (s.type === 'sintese') { setIf('dd-' + i + '-thesis', function (v) { s.thesis = v; }); const a = _ddLines('dd-' + i + '-omostram'); if (a) s.o_que_mostram = a; const b = _ddLines('dd-' + i + '-implicacao'); if (b) s.implicacao = b; }
+        else if (s.type === 'sowhat') { setIf('dd-' + i + '-thesis', function (v) { s.thesis = v; }); }
+        else if (s.type === 'insight') { setIf('dd-' + i + '-title', function (v) { s.title = v; }); setIf('dd-' + i + '-subtitle', function (v) { s.subtitle = v; }); setIf('dd-' + i + '-narrative', function (v) { s.narrative = v; }); s.hero = s.hero || {}; setIf('dd-' + i + '-herolabel', function (v) { s.hero.label = v; }); setIf('dd-' + i + '-herocaption', function (v) { s.hero.caption = v; }); const ac = _ddLines('dd-' + i + '-actions'); if (ac) s.actions = ac; }
+        else if (s.type === 'kpis') { const r = _ddLines('dd-' + i + '-ritual'); if (r) s.ritual = r; }
+    });
+    closeDeckDesigner();
+    renderExecDeck(_execDeck);
+}
 function renderExecDeck(deck) {
     const out = document.getElementById('execResult');
     const visible = _audienceVisible(deck);
@@ -3212,11 +3293,13 @@ function renderExecDeck(deck) {
           <p class="text-[11px] text-fg-muted max-w-2xl">${escapeHtml(deck.thesis || '')}</p>
         </div>
         <div class="flex gap-2 items-center flex-wrap">
-          <div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5 mr-1" title="Mesma evidência, três altitudes">
-            <button onclick="setExecAudience('ceo')" class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'ceo' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">CEO</button>
-            <button onclick="setExecAudience('diretor')" class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'diretor' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Diretor</button>
-            <button onclick="setExecAudience('gerente')" class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'gerente' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Gerente</button>
+          <div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5 mr-1" title="Mesma evidência, públicos diferentes — escolha a altitude da leitura">
+            <button onclick="setExecAudience('ceo')" title="CEO — Decisão em 1 minuto: tese, números-chave e metas. Capa + síntese + 3 principais insights + KPIs + TL;DR." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'ceo' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">CEO</button>
+            <button onclick="setExecAudience('diretor')" title="Diretor — Visão completa para decidir e direcionar: diagnóstico, evidências, estratégia e roadmap (todos os slides)." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'diretor' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Diretor</button>
+            <button onclick="setExecAudience('gerente')" title="Gerente — Visão operacional para executar e auditar: tudo + o SQL/lastro de cada número embutido em cada insight." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'gerente' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Gerente</button>
+            <button onclick="setExecAudience('po')" title="Product Owner — Visão de produto para priorizar o backlog: insights, ações recomendadas, roadmap por sprint e KPIs (sem o diagnóstico de board)." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'po' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">PO</button>
           </div>
+          <button onclick="openDeckDesigner()" title="Deck Designer — refine os textos (tese, narrativas, rótulos, ações) que a IA propôs. Os números permanecem auditáveis." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">✏️ Editar</button>
           <button onclick="saveExecDeck()" id="execSaveBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">💾 Salvar</button>
           <button onclick="enterExecPresent()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">▶ Apresentar</button>
           <button onclick="exportExecPptx()" id="execPptxBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-2 rounded-lg text-xs font-semibold transition">⬇ Exportar PPTX</button>
@@ -3332,7 +3415,7 @@ async function refreshExecDeck(id) {
     const rec = await r.json();
     if (!confirm('Atualizar "' + rec.name + '" recompondo com os dados de hoje? (pode levar 1–2 min)')) return;
     const out = document.getElementById('execResult');
-    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">↻ Recompondo o deck com os dados atuais…</div>';
+    out.innerHTML = ''; _showDeckProgress();
     try {
         const res = await fetch('/api/exec/deck', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -3355,6 +3438,7 @@ async function refreshExecDeck(id) {
         renderExecDeck(deck);
         loadExecDecks();
     } catch (e) { out.innerHTML = _execErrorBox(String(e)); }
+    finally { _hideDeckProgress(); }
 }
 
 // ---- Modo Apresentação (fullscreen) ----
