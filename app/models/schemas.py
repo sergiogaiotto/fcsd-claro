@@ -31,6 +31,35 @@ class QueryResponse(BaseModel):
     insights: Optional[str] = None
 
 
+class ExecHeroRequest(BaseModel):
+    """Análise Executiva (P0) — uma pergunta de negócio → número-herói auditável."""
+    question: str = Field(..., min_length=3, description="Pergunta de negócio em linguagem natural")
+    datamart_ids: Optional[list[int]] = Field(None, description="IDs dos DataMarts para focar a análise")
+    diamond_layer_ids: Optional[list[int]] = Field(None, description="IDs das DiamondLayers para focar a análise")
+
+
+class ExecDeckRequest(BaseModel):
+    """Análise Executiva (P1) — uma pergunta de negócio → deck executivo completo."""
+    question: str = Field(..., min_length=3, description="Pergunta de negócio em linguagem natural")
+    datamart_ids: Optional[list[int]] = Field(None, description="IDs dos DataMarts para focar a análise")
+    diamond_layer_ids: Optional[list[int]] = Field(None, description="IDs das DiamondLayers para focar a análise")
+    n_insights: Optional[int] = Field(4, ge=2, le=5, description="Quantidade de slides de insight (2 a 5)")
+
+
+class ExecDeckSaveRequest(BaseModel):
+    """Salva um deck executivo gerado (Deck vivo)."""
+    name: str = Field(..., min_length=2, max_length=140)
+    question: str = Field("", description="Pergunta de negócio que gerou o deck")
+    datamart_ids: Optional[list[int]] = None
+    diamond_layer_ids: Optional[list[int]] = None
+    deck_spec: dict = Field(..., description="Deck completo gerado por /exec/deck")
+
+
+class ExecDeckUpdateRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=140)
+    deck_spec: Optional[dict] = None
+
+
 class AnalysisTypeCreate(BaseModel):
     name: str = Field(..., min_length=2)
     system_prompt: str = ""

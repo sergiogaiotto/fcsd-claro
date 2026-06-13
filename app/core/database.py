@@ -98,7 +98,7 @@ INTERNAL_TABLES = {
     "diamond_layers", "diamond_layer_tables", "user_diamond_layers",
     "saved_visions", "cockpit_tiles",
     "saved_questions","catalog_datasets", "catalog_columns", "catalog_relationships",
-    "json_sources", "data_products", "shared_results", "reports",
+    "json_sources", "data_products", "shared_results", "reports", "exec_decks",
     "codegen_tables", "codegen_snippets", "codegen_runs",
     "codegen_techniques", "codegen_patterns", "codegen_chats",
 }
@@ -283,6 +283,21 @@ _DDL_STATEMENTS: list[str] = [
         datamart_ids TEXT NOT NULL DEFAULT '[]',
         definition TEXT NOT NULL DEFAULT '{}',
         version INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS exec_decks (
+        id BIGSERIAL PRIMARY KEY,
+        owner_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        question TEXT NOT NULL DEFAULT '',
+        datamart_ids TEXT NOT NULL DEFAULT '[]',
+        diamond_layer_ids TEXT NOT NULL DEFAULT '[]',
+        deck_spec TEXT NOT NULL DEFAULT '{}',
+        n_slides INTEGER NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
@@ -2609,6 +2624,108 @@ def delete_report(report_id: int, owner_id: int | None = None) -> bool:
             )
         else:
             cur = conn.execute("DELETE FROM reports WHERE id = ?", (report_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Análise Executiva — decks salvos (P2: Deck vivo)
+# ---------------------------------------------------------------------------
+
+def _row_to_exec_deck(row, include_spec: bool = True) -> dict | None:
+    if row is None:
+        return None
+    d = dict(row)
+    for k in ("datamart_ids", "diamond_layer_ids"):
+        try:
+            d[k] = json.loads(d.get(k) or "[]")
+        except Exception:
+            d[k] = []
+    if include_spec:
+        try:
+            d["deck_spec"] = json.loads(d.get("deck_spec") or "{}")
+        except Exception:
+            d["deck_spec"] = {}
+    else:
+        d.pop("deck_spec", None)
+    return d
+
+
+def create_exec_deck(owner_id: int, name: str, question: str,
+                     datamart_ids: list[int] | None,
+                     diamond_layer_ids: list[int] | None,
+                     deck_spec: dict | None) -> dict:
+    n_slides = len((deck_spec or {}).get("slides") or [])
+    conn = get_sync_connection()
+    try:
+        did = _exec_returning_id(
+            conn,
+            "INSERT INTO exec_decks (owner_id, name, question, datamart_ids, "
+            "diamond_layer_ids, deck_spec, n_slides) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (owner_id, name, question or "", json.dumps(datamart_ids or []),
+             json.dumps(diamond_layer_ids or []), json.dumps(deck_spec or {}), n_slides),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM exec_decks WHERE id = ?", (did,)).fetchone()
+        return _row_to_exec_deck(row)
+    finally:
+        conn.close()
+
+
+def get_exec_deck(deck_id: int) -> dict | None:
+    conn = get_sync_connection()
+    try:
+        row = conn.execute("SELECT * FROM exec_decks WHERE id = ?", (deck_id,)).fetchone()
+        return _row_to_exec_deck(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_exec_decks(owner_id: int) -> list[dict]:
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, owner_id, name, question, datamart_ids, diamond_layer_ids, "
+            "n_slides, created_at, updated_at FROM exec_decks "
+            "WHERE owner_id = ? ORDER BY updated_at DESC",
+            (owner_id,),
+        ).fetchall()
+        return [_row_to_exec_deck(r, include_spec=False) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_exec_deck(deck_id: int, deck_spec: dict | None = None,
+                     name: str | None = None) -> dict | None:
+    sets: list[str] = []
+    params: list = []
+    if name is not None:
+        sets.append("name = ?"); params.append(name)
+    if deck_spec is not None:
+        sets.append("deck_spec = ?"); params.append(json.dumps(deck_spec or {}))
+        sets.append("n_slides = ?"); params.append(len((deck_spec or {}).get("slides") or []))
+    if not sets:
+        return get_exec_deck(deck_id)
+    sets.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(deck_id)
+    conn = get_sync_connection()
+    try:
+        conn.execute(f"UPDATE exec_decks SET {', '.join(sets)} WHERE id = ?", params)
+        conn.commit()
+        return get_exec_deck(deck_id)
+    finally:
+        conn.close()
+
+
+def delete_exec_deck(deck_id: int, owner_id: int | None = None) -> bool:
+    conn = get_sync_connection()
+    try:
+        if owner_id is not None:
+            cur = conn.execute("DELETE FROM exec_decks WHERE id = ? AND owner_id = ?", (deck_id, owner_id))
+        else:
+            cur = conn.execute("DELETE FROM exec_decks WHERE id = ?", (deck_id,))
         conn.commit()
         return cur.rowcount > 0
     finally:
