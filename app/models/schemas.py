@@ -60,6 +60,34 @@ class ExecDeckUpdateRequest(BaseModel):
     deck_spec: Optional[dict] = None
 
 
+class PlaybookCreate(BaseModel):
+    """Cria um playbook (jogada curada) — coleção de perguntas de negócio."""
+    title: str = Field(..., min_length=2, max_length=140)
+    category: str = Field("", max_length=60)
+    description: str = Field("", max_length=400)
+    emoji: str = Field("📊", max_length=8)
+    questions: list[str] = Field(default_factory=list)
+    datamart_ids: Optional[list[int]] = None
+    diamond_layer_ids: Optional[list[int]] = None
+    visibility: str = Field("private", pattern="^(private|shared)$")
+
+
+class PlaybookUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=2, max_length=140)
+    category: Optional[str] = Field(None, max_length=60)
+    description: Optional[str] = Field(None, max_length=400)
+    emoji: Optional[str] = Field(None, max_length=8)
+    questions: Optional[list[str]] = None
+    datamart_ids: Optional[list[int]] = None
+    diamond_layer_ids: Optional[list[int]] = None
+    visibility: Optional[str] = Field(None, pattern="^(private|shared)$")
+
+
+class PlaybookCopyRequest(BaseModel):
+    """Admin copia um playbook para um ou mais usuários (cópias privadas)."""
+    target_user_ids: list[int] = Field(..., min_length=1)
+
+
 class AnalysisTypeCreate(BaseModel):
     name: str = Field(..., min_length=2)
     system_prompt: str = ""

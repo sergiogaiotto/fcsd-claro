@@ -510,6 +510,25 @@ _DDL_STATEMENTS: list[str] = [
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS playbooks (
+        id BIGSERIAL PRIMARY KEY,
+        owner_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
+        description TEXT NOT NULL DEFAULT '',
+        emoji TEXT NOT NULL DEFAULT '📊',
+        questions TEXT NOT NULL DEFAULT '[]',
+        datamart_ids TEXT NOT NULL DEFAULT '[]',
+        diamond_layer_ids TEXT NOT NULL DEFAULT '[]',
+        visibility TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN ('private','shared')),
+        is_system INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+    """,
 ]
 
 # Indexes — created AFTER all CREATE TABLE statements have run, so an
@@ -544,6 +563,8 @@ _INDEX_STATEMENTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_codegen_snippets_user ON codegen_snippets(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_codegen_runs_user ON codegen_runs(user_id, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_codegen_chats_owner ON codegen_chats(owner_id, updated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_playbooks_owner ON playbooks(owner_id, updated_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_playbooks_visibility ON playbooks(visibility)",
 ]
 
 # Per-table list of (column_name, column_definition) tuples added in
@@ -2726,6 +2747,220 @@ def delete_exec_deck(deck_id: int, owner_id: int | None = None) -> bool:
             cur = conn.execute("DELETE FROM exec_decks WHERE id = ? AND owner_id = ?", (deck_id, owner_id))
         else:
             cur = conn.execute("DELETE FROM exec_decks WHERE id = ?", (deck_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Playbooks — jogadas curadas (coleções de perguntas) para a Análise Executiva
+# ---------------------------------------------------------------------------
+
+# Sementes do sistema: as perguntas que antes ficavam fixas no template, agora
+# agrupadas em jogadas temáticas e compartilhadas com toda a organização.
+_SYSTEM_PLAYBOOK_SEEDS: list[dict] = [
+    {
+        "title": "Captura de Banda Larga — Diagnóstico 60 dias",
+        "category": "Captura",
+        "emoji": "📡",
+        "description": "Por que a captura está baixa e como reagir no curto prazo.",
+        "questions": [
+            "Por que a captura de Banda Larga está baixa e o que fazer em 60 dias?",
+            "Como evoluiu a captura de BL por tempo de base (cohort 0–90 dias)?",
+        ],
+    },
+    {
+        "title": "Alocação de Orçamento & Canais",
+        "category": "Conversão",
+        "emoji": "💸",
+        "description": "Onde investir para converter mais — causa, não correlação.",
+        "questions": [
+            "Quais canais convertem melhor e onde realocar o orçamento?",
+            "Qual o efeito do App na conversão (causa, não correlação)?",
+        ],
+    },
+    {
+        "title": "Risco de Churn de Recarga",
+        "category": "Retenção",
+        "emoji": "🔻",
+        "description": "Quem está prestes a sair e quanto está em jogo.",
+        "questions": [
+            "Quem está em maior risco de churn de recarga e qual o valor em risco?",
+        ],
+    },
+    {
+        "title": "ARPU & Cross-sell",
+        "category": "Receita",
+        "emoji": "💰",
+        "description": "Decompor receita e achar a próxima oferta certa.",
+        "questions": [
+            "Como decompor o ARPU por faixa de recarga e canal?",
+            "Onde está a maior oportunidade de cross-sell na base?",
+        ],
+    },
+]
+
+
+def _row_to_playbook(row, include_questions: bool = True) -> dict | None:
+    if row is None:
+        return None
+    d = dict(row)
+    for k in ("questions", "datamart_ids", "diamond_layer_ids"):
+        try:
+            d[k] = json.loads(d.get(k) or "[]")
+        except Exception:
+            d[k] = []
+    if not include_questions:
+        d.pop("questions", None)
+    return d
+
+
+def ensure_system_playbooks() -> None:
+    """Idempotente: semeia as jogadas curadas do sistema na primeira vez que
+    houver um usuário dono disponível. As tabelas internas são criadas no boot,
+    mas o usuário root só nasce no 1º login — por isso a semente é preguiçosa,
+    disparada a partir das rotas de listagem."""
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute("SELECT COUNT(*) AS n FROM playbooks WHERE is_system = 1")
+        n = cur.fetchone()
+        if (n["n"] if isinstance(n, dict) else n[0]) > 0:
+            return
+        owner = conn.execute(
+            "SELECT id FROM users "
+            "ORDER BY (user_type = 'root') DESC, (user_type IN ('superuser','admin')) DESC, id ASC "
+            "LIMIT 1"
+        ).fetchone()
+        if owner is None:
+            return  # nenhum usuário ainda; tenta de novo na próxima listagem
+        owner_id = owner["id"] if isinstance(owner, dict) else owner[0]
+        for seed in _SYSTEM_PLAYBOOK_SEEDS:
+            conn.execute(
+                "INSERT INTO playbooks (owner_id, title, category, description, emoji, "
+                "questions, datamart_ids, diamond_layer_ids, visibility, is_system, created_by) "
+                "VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', 'shared', 1, 'Sistema')",
+                (owner_id, seed["title"], seed["category"], seed["description"],
+                 seed["emoji"], json.dumps(seed["questions"])),
+            )
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
+def create_playbook(owner_id: int, title: str, category: str = "",
+                    description: str = "", emoji: str = "📊",
+                    questions: list[str] | None = None,
+                    datamart_ids: list[int] | None = None,
+                    diamond_layer_ids: list[int] | None = None,
+                    visibility: str = "private", created_by: str = "",
+                    is_system: int = 0) -> dict:
+    conn = get_sync_connection()
+    try:
+        pid = _exec_returning_id(
+            conn,
+            "INSERT INTO playbooks (owner_id, title, category, description, emoji, "
+            "questions, datamart_ids, diamond_layer_ids, visibility, is_system, created_by) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (owner_id, title, category or "", description or "", emoji or "📊",
+             json.dumps(questions or []), json.dumps(datamart_ids or []),
+             json.dumps(diamond_layer_ids or []),
+             visibility if visibility in ("private", "shared") else "private",
+             1 if is_system else 0, created_by or ""),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM playbooks WHERE id = ?", (pid,)).fetchone()
+        return _row_to_playbook(row)
+    finally:
+        conn.close()
+
+
+def get_playbook(playbook_id: int) -> dict | None:
+    conn = get_sync_connection()
+    try:
+        row = conn.execute("SELECT * FROM playbooks WHERE id = ?", (playbook_id,)).fetchone()
+        return _row_to_playbook(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_playbooks_for_user(user_id: int) -> list[dict]:
+    """Os playbooks do usuário + todos os compartilhados (org). Alimenta os
+    chips da Análise Executiva e a visão padrão do modal Biblioteca."""
+    ensure_system_playbooks()
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM playbooks WHERE owner_id = ? OR visibility = 'shared' "
+            "ORDER BY is_system DESC, updated_at DESC",
+            (user_id,),
+        ).fetchall()
+        return [_row_to_playbook(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def list_all_playbooks() -> list[dict]:
+    """Visão admin: todos os playbooks, com login/nome do dono para curadoria."""
+    ensure_system_playbooks()
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT p.*, u.login AS owner_login, u.display_name AS owner_name "
+            "FROM playbooks p JOIN users u ON p.owner_id = u.id "
+            "ORDER BY p.is_system DESC, p.updated_at DESC"
+        ).fetchall()
+        return [_row_to_playbook(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_playbook(playbook_id: int, title: str | None = None,
+                    category: str | None = None, description: str | None = None,
+                    emoji: str | None = None, questions: list[str] | None = None,
+                    datamart_ids: list[int] | None = None,
+                    diamond_layer_ids: list[int] | None = None,
+                    visibility: str | None = None) -> dict | None:
+    sets: list[str] = []
+    params: list = []
+    if title is not None:
+        sets.append("title = ?"); params.append(title)
+    if category is not None:
+        sets.append("category = ?"); params.append(category)
+    if description is not None:
+        sets.append("description = ?"); params.append(description)
+    if emoji is not None:
+        sets.append("emoji = ?"); params.append(emoji)
+    if questions is not None:
+        sets.append("questions = ?"); params.append(json.dumps(questions))
+    if datamart_ids is not None:
+        sets.append("datamart_ids = ?"); params.append(json.dumps(datamart_ids))
+    if diamond_layer_ids is not None:
+        sets.append("diamond_layer_ids = ?"); params.append(json.dumps(diamond_layer_ids))
+    if visibility is not None and visibility in ("private", "shared"):
+        sets.append("visibility = ?"); params.append(visibility)
+    if not sets:
+        return get_playbook(playbook_id)
+    sets.append("updated_at = CURRENT_TIMESTAMP")
+    params.append(playbook_id)
+    conn = get_sync_connection()
+    try:
+        conn.execute(f"UPDATE playbooks SET {', '.join(sets)} WHERE id = ?", params)
+        conn.commit()
+        return get_playbook(playbook_id)
+    finally:
+        conn.close()
+
+
+def delete_playbook(playbook_id: int, owner_id: int | None = None) -> bool:
+    conn = get_sync_connection()
+    try:
+        if owner_id is not None:
+            cur = conn.execute("DELETE FROM playbooks WHERE id = ? AND owner_id = ?", (playbook_id, owner_id))
+        else:
+            cur = conn.execute("DELETE FROM playbooks WHERE id = ?", (playbook_id,))
         conn.commit()
         return cur.rowcount > 0
     finally:
