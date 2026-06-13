@@ -3091,7 +3091,7 @@ function _deckSlideHtml(s, i, prefix) {
     if (s.type === 'sintese') {
         const callouts = (s.callouts || []).map(c => `<div class="text-center px-3 flex-1 min-w-[110px]">
             <div class="text-fg-accent font-extrabold" style="font-size:30px;line-height:1">${escapeHtml(c.value)}</div>
-            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}</div></div>`).join('');
+            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}</div>${c.delta ? _deltaBadge(c.delta) : ''}</div>`).join('');
         return card(`${tag}${title}
             ${s.thesis ? `<div class="text-sm font-semibold text-fg-bright mt-2">${escapeHtml(s.thesis)}</div>` : ''}
             ${callouts ? `<div class="flex flex-wrap gap-2 my-4 py-3 border-y border-fg-border">${callouts}</div>` : ''}
@@ -3123,13 +3123,15 @@ function _deckSlideHtml(s, i, prefix) {
               <div class="min-w-[180px]">
                 <div class="text-fg-accent font-extrabold" style="font-size:48px;line-height:1">${escapeHtml(hero.value || '—')}</div>
                 <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}</div>
+                ${hero.delta ? _deltaBadge(hero.delta) : ''}
                 ${hero.caption ? `<div class="text-xs text-fg-muted mt-1 max-w-xs">${escapeHtml(hero.caption)}</div>` : ''}
               </div>
               ${chartHtml}
             </div>
             ${czHtml}
             ${s.narrative ? `<div class="text-xs text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3">${escapeHtml(s.narrative)}</div>` : ''}
-            ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}`);
+            ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}
+            ${(_execAudience === 'gerente' && s.sql) ? `<details class="mt-3"><summary class="text-[10px] text-fg-muted cursor-pointer uppercase tracking-wider font-mono">SQL (lastro)</summary><pre class="mt-2 bg-fg-900 rounded-lg p-2 text-[10px] text-fg-green overflow-x-auto border border-fg-border">${escapeHtml(s.sql)}</pre></details>` : ''}`);
     }
     if (s.type === 'estrategia') {
         const frentes = (s.frentes || []).map(f => `<div class="bg-fg-700/50 rounded-lg p-3 flex gap-3">
@@ -3192,24 +3194,37 @@ function _instantiateDeckCharts(deck, prefix, store) {
     });
 }
 function _destroyCharts(store) { while (store && store.length) { try { store.pop().destroy(); } catch (e) {} } }
+function _deltaBadge(d) { if (!d) return ''; var arrow = d.dir === 'up' ? '▲' : (d.dir === 'down' ? '▼' : '■'); return '<div class="text-[10px] text-fg-muted mt-1" title="comparado à versão anterior salva do deck">' + arrow + ' ' + escapeHtml(d.text) + '</div>'; }
+function _calcDelta(o, n) { if (!o || !n) return null; var a = Number(o.value_raw), b = Number(n.value_raw); if (!isFinite(a) || !isFinite(b)) return null; var diff = b - a; if (diff === 0) return { dir: 'flat', text: 'estável vs. anterior' }; var dir = diff > 0 ? 'up' : 'down'; if (a === 0) return { dir: dir, text: 'novo vs. anterior' }; var pct = Math.round(diff / Math.abs(a) * 100); return { dir: dir, text: (diff > 0 ? '+' : '') + pct + '% vs. anterior' }; }
+function _applyDeckDelta(oldDeck, newDeck) { if (!oldDeck || !newDeck) return; var m = {}; (oldDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) m['i:' + s.key] = s.hero; if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) m['c:' + c.key] = c; }); }); (newDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) { var d = _calcDelta(m['i:' + s.key], s.hero); if (d) s.hero.delta = d; } if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) { var d2 = _calcDelta(m['c:' + c.key], c); if (d2) c.delta = d2; } }); }); }
 
+let _execAudience = 'diretor';
+function _audienceVisible(deck) { var slides = (deck && deck.slides) || []; if (_execAudience !== 'ceo') return slides.map(function (s, i) { return { s: s, i: i }; }); var out = []; var ins = 0; for (var i = 0; i < slides.length; i++) { var s = slides[i]; if (s.type === 'cover' || s.type === 'sintese' || s.type === 'kpis') out.push({ s: s, i: i }); else if (s.type === 'insight' && ins < 3) { out.push({ s: s, i: i }); ins++; } } return out; }
+function setExecAudience(a) { _execAudience = a; if (_execDeck) renderExecDeck(_execDeck); }
 function renderExecDeck(deck) {
     const out = document.getElementById('execResult');
-    const slidesHtml = (deck.slides || []).map((s, i) => _deckSlideHtml(s, i, '')).join('');
+    const visible = _audienceVisible(deck);
+    const slidesHtml = visible.map(function (x) { return _deckSlideHtml(x.s, x.i, ''); }).join('');
     out.innerHTML = `
       <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div>
           <h3 class="text-base font-bold text-fg-bright">${escapeHtml(deck.title || 'Deck executivo')}</h3>
           <p class="text-[11px] text-fg-muted max-w-2xl">${escapeHtml(deck.thesis || '')}</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 items-center flex-wrap">
+          <div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5 mr-1" title="Mesma evidência, três altitudes">
+            <button onclick="setExecAudience('ceo')" class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'ceo' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">CEO</button>
+            <button onclick="setExecAudience('diretor')" class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'diretor' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Diretor</button>
+            <button onclick="setExecAudience('gerente')" class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'gerente' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">Gerente</button>
+          </div>
           <button onclick="saveExecDeck()" id="execSaveBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">💾 Salvar</button>
           <button onclick="enterExecPresent()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">▶ Apresentar</button>
           <button onclick="exportExecPptx()" id="execPptxBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-2 rounded-lg text-xs font-semibold transition">⬇ Exportar PPTX</button>
         </div>
       </div>
+      ${_execAudience === 'ceo' ? `<div class="bg-fg-accent/10 border border-fg-accent/30 rounded-lg p-3 mb-3 text-sm font-semibold text-fg-bright">TL;DR — ${escapeHtml(deck.thesis || '')}</div>` : ''}
       <div class="space-y-3">${slidesHtml}</div>
-      <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${(deck.slides || []).length} slides</p>`;
+      <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${visible.length} de ${(deck.slides || []).length} slides${_execAudience !== 'diretor' ? ' · visão ' + _execAudience : ''}</p>`;
     _destroyCharts(_execCharts);
     _instantiateDeckCharts(deck, '', _execCharts);
 }
@@ -3220,9 +3235,10 @@ async function exportExecPptx() {
     const old = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Gerando…'; }
     try {
+        const _expDeck = Object.assign({}, _execDeck, { slides: _audienceVisible(_execDeck).map(function (x) { return x.s; }) });
         const res = await fetch('/api/exec/deck/pptx', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(_execDeck),
+            body: JSON.stringify(_expDeck),
         });
         if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao exportar PPTX: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
         const blob = await res.blob();
@@ -3333,6 +3349,7 @@ async function refreshExecDeck(id) {
             body: JSON.stringify({ deck_spec: deck }),
         });
         deck._savedId = id; deck._dm = rec.datamart_ids || []; deck._dl = rec.diamond_layer_ids || [];
+        _applyDeckDelta(rec.deck_spec, deck);  // delta temporal: ▲/▼ vs. versão anterior
         _execDeck = deck;
         await _ensureChartJs().catch(() => {});
         renderExecDeck(deck);
