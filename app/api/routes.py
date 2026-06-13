@@ -974,6 +974,53 @@ async def exec_deck(req: ExecDeckRequest, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=500, detail=f"Erro ao compor o deck: {e}")
 
 
+@router.post("/exec/deck/stream")
+async def exec_deck_stream(req: ExecDeckRequest, user: dict = Depends(get_current_user)):
+    """Variante streaming (SSE) de /exec/deck: emite eventos de progresso
+    (plano → resolução de cada slide → síntese → governança) e, por fim, o deck
+    completo. O frontend mostra progresso REAL; cai no /exec/deck síncrono se o
+    stream falhar."""
+    import asyncio
+    from app.services.exec_deck_service import compose_deck
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    apply_login_filter = not is_root(user)
+    queue: "asyncio.Queue" = asyncio.Queue()
+
+    def on_progress(ev):
+        try:
+            queue.put_nowait(("progress", ev))
+        except Exception:
+            pass
+
+    async def _runner():
+        try:
+            deck = await compose_deck(
+                req.question, user, accessible, apply_login_filter,
+                n_insights=req.n_insights or 4, on_progress=on_progress,
+            )
+            await queue.put(("done", deck))
+        except Exception as e:
+            await queue.put(("error", {"error": str(e)[:300]}))
+
+    async def _gen():
+        task = asyncio.create_task(_runner())
+        try:
+            while True:
+                kind, payload = await queue.get()
+                yield f"event: {kind}\ndata: {json.dumps(payload, ensure_ascii=False, default=str)}\n\n"
+                if kind in ("done", "error"):
+                    break
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
 @router.post("/exec/deck/pptx")
 async def exec_deck_pptx(deck: dict, user: dict = Depends(get_current_user)):
     """Exporta um deck_spec (gerado por /exec/deck) para .pptx nativo."""

@@ -467,15 +467,26 @@ async def compose_deck(
     accessible_tables: list[str] | None,
     apply_login_filter: bool,
     n_insights: int = 4,
+    on_progress=None,
 ) -> dict:
     n_insights = max(2, min(5, int(n_insights or 4)))
     user_login = (user or {}).get("login", "") if user else ""
 
+    def _emit(ev):
+        if on_progress:
+            try:
+                on_progress(ev)
+            except Exception:
+                pass
+
     catalog_text = _catalog_text(accessible_tables)
     plan = _plan_storyline(question, catalog_text, n_insights)
+    _emit({"phase": "plan", "total": len(plan.get("questions") or [])})
 
     resolved: list[dict] = []
-    for q in plan["questions"]:
+    _total_q = len(plan["questions"])
+    for _qi, q in enumerate(plan["questions"]):
+        _emit({"phase": "resolve", "i": _qi + 1, "total": _total_q, "title": q.get("title", "")})
         try:
             resolved.append(await _resolve_slide(q, user_login, accessible_tables, apply_login_filter))
         except Exception as e:
@@ -505,7 +516,9 @@ async def compose_deck(
                 r["causal"] = c
                 causal_budget -= 1
 
+    _emit({"phase": "synthesis"})
     synthesis = _narrate_minto(question, ok, n_insights)
+    _emit({"phase": "governance"})
     governance = _governance(question, ok, synthesis)
 
     # Lastro global: une as tabelas-fonte de todos os slides resolvidos.
@@ -515,6 +528,7 @@ async def compose_deck(
     except Exception:
         source_global = {"tables": all_tables}
 
+    _emit({"phase": "assemble"})
     deck = _assemble(question, plan, ok, synthesis, governance, source_global)
     deck["generated_at"] = _dt.datetime.utcnow().isoformat() + "Z"
     return deck

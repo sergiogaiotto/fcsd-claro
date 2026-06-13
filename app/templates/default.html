@@ -3036,26 +3036,29 @@ function _ensureChartJs() {
     });
 }
 
-let _deckProgTimer = null, _deckProgStart = 0;
+let _deckProgTimer = null, _deckProgStart = 0, _deckProgManual = null, _deckProgDetail = '';
 const _DECK_STEPS = ['Planejando a storyline (decomposição MECE)', 'Consultando seus dados — várias perguntas encadeadas', 'Escrevendo a tese (Pirâmide de Minto)', 'Definindo governança, KPIs e roadmap', 'Montando e diagramando os slides'];
 function _renderDeckProgress() {
     const box = document.getElementById('execProgressSteps');
     if (!box) return;
     const elapsed = (Date.now() - _deckProgStart) / 1000;
-    const th = [0, 8, 50, 65, 85];
-    let cur = 0; for (let i = 0; i < th.length; i++) { if (elapsed >= th[i]) cur = i; }
+    let cur;
+    if (_deckProgManual != null) { cur = _deckProgManual; }
+    else { const th = [0, 8, 50, 65, 85]; cur = 0; for (let i = 0; i < th.length; i++) { if (elapsed >= th[i]) cur = i; } }
     box.innerHTML = _DECK_STEPS.map(function (s, i) {
         const done = i < cur, active = i === cur;
         const icon = done ? '<span class="text-fg-green">✓</span>' : (active ? '<span class="animate-spin inline-block h-3 w-3 border-2 border-fg-accent border-t-transparent rounded-full align-middle"></span>' : '<span class="text-fg-muted/40">○</span>');
         const col = done ? 'text-fg-muted' : (active ? 'text-fg-bright font-semibold' : 'text-fg-muted/50');
         return '<div class="flex items-center gap-2 ' + col + '"><span class="w-4 inline-flex justify-center">' + icon + '</span><span>' + s + '</span></div>';
     }).join('');
+    const dt = document.getElementById('execProgressDetail'); if (dt) dt.textContent = _deckProgDetail || '';
     const t = document.getElementById('execProgressElapsed');
     if (t) { const e = Math.floor(elapsed); t.textContent = String(Math.floor(e / 60)).padStart(2, '0') + ':' + String(e % 60).padStart(2, '0'); }
 }
 function _showDeckProgress() {
     _hideDeckProgress();
     _deckProgStart = Date.now();
+    _deckProgManual = null; _deckProgDetail = '';
     const ov = document.createElement('div');
     ov.id = 'execProgressModal';
     ov.className = 'fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center';
@@ -3063,7 +3066,8 @@ function _showDeckProgress() {
         + '<div class="flex items-center gap-3 mb-4"><div class="animate-spin h-6 w-6 border-2 border-fg-accent border-t-transparent rounded-full"></div>'
         + '<div><div class="text-base font-bold text-fg-bright">Gerando deck executivo</div>'
         + '<div class="text-[11px] text-fg-muted">A IA está decompondo sua pergunta e consultando seus dados…</div></div></div>'
-        + '<div id="execProgressSteps" class="space-y-2 text-xs my-4"></div>'
+        + '<div id="execProgressDetail" class="text-[11px] text-fg-accent mt-1 min-h-[14px]"></div>'
+        + '<div id="execProgressSteps" class="space-y-2 text-xs my-3"></div>'
         + '<div class="flex items-center justify-between text-[11px] text-fg-muted border-t border-fg-border pt-3">'
         + '<span>⏱ <span id="execProgressElapsed">00:00</span> decorrido</span><span>costuma levar 1–2 min</span></div></div>';
     document.body.appendChild(ov);
@@ -3071,6 +3075,45 @@ function _showDeckProgress() {
     _deckProgTimer = setInterval(_renderDeckProgress, 1000);
 }
 function _hideDeckProgress() { if (_deckProgTimer) { clearInterval(_deckProgTimer); _deckProgTimer = null; } const ov = document.getElementById('execProgressModal'); if (ov) ov.remove(); }
+function _updateDeckProgress(ev) {
+    if (!ev || !ev.phase) return;
+    const map = { plan: 1, resolve: 1, synthesis: 2, governance: 3, assemble: 4 };
+    if (ev.phase in map) _deckProgManual = map[ev.phase];
+    if (ev.phase === 'resolve') _deckProgDetail = 'Consultando ' + ev.i + '/' + ev.total + (ev.title ? ' — ' + ev.title : '');
+    else if (ev.phase === 'plan') _deckProgDetail = (ev.total ? ev.total + ' perguntas planejadas' : 'Storyline planejada');
+    else if (ev.phase === 'synthesis') _deckProgDetail = 'Escrevendo a tese (Minto)…';
+    else if (ev.phase === 'governance') _deckProgDetail = 'Definindo KPIs e roadmap…';
+    else if (ev.phase === 'assemble') _deckProgDetail = 'Montando os slides…';
+    _renderDeckProgress();
+}
+async function _streamDeck(payload, onEvent) {
+    const res = await fetch('/api/exec/deck/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok || !res.body) throw new Error('stream indisponível (HTTP ' + res.status + ')');
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '', finalDeck = null, errObj = null;
+    while (true) {
+        const r = await reader.read();
+        if (r.done) break;
+        buf += dec.decode(r.value, { stream: true });
+        let idx;
+        while ((idx = buf.indexOf('\n\n')) >= 0) {
+            const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+            let kind = 'message', data = '';
+            chunk.split('\n').forEach(function (line) {
+                if (line.indexOf('event:') === 0) kind = line.slice(6).trim();
+                else if (line.indexOf('data:') === 0) data += line.slice(5).trim();
+            });
+            let obj = {}; try { obj = JSON.parse(data); } catch (_) { }
+            if (kind === 'done') finalDeck = obj;
+            else if (kind === 'error') errObj = obj;
+            else if (onEvent) onEvent(obj);
+        }
+    }
+    if (errObj) throw new Error(errObj.error || 'erro no stream');
+    if (!finalDeck) throw new Error('stream sem resultado');
+    return finalDeck;
+}
 async function runExecDeck() {
     const input = document.getElementById('execQuestion');
     const q = (input.value || '').trim();
@@ -3083,16 +3126,14 @@ async function runExecDeck() {
     try {
         const dmIds = getSelectedExecDatamartIds();
         const dlIds = getSelectedExecDiamondLayerIds();
-        const res = await fetch('/api/exec/deck', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                question: q,
-                datamart_ids: dmIds.length ? dmIds : null,
-                diamond_layer_ids: dlIds.length ? dlIds : null,
-            }),
-        });
-        const data = await res.json();
+        const payload = { question: q, datamart_ids: dmIds.length ? dmIds : null, diamond_layer_ids: dlIds.length ? dlIds : null };
+        let data;
+        try {
+            data = await _streamDeck(payload, _updateDeckProgress);
+        } catch (streamErr) {
+            const res = await fetch('/api/exec/deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            data = await res.json();
+        }
         if (data.detail) { out.innerHTML = _execErrorBox(data.detail); return; }
         if (data.error)  { out.innerHTML = _execErrorBox(data.error); return; }
         _execDeck = data;
@@ -3417,15 +3458,10 @@ async function refreshExecDeck(id) {
     const out = document.getElementById('execResult');
     out.innerHTML = ''; _showDeckProgress();
     try {
-        const res = await fetch('/api/exec/deck', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                question: rec.question,
-                datamart_ids: (rec.datamart_ids || []).length ? rec.datamart_ids : null,
-                diamond_layer_ids: (rec.diamond_layer_ids || []).length ? rec.diamond_layer_ids : null,
-            }),
-        });
-        const deck = await res.json();
+        const payload = { question: rec.question, datamart_ids: (rec.datamart_ids || []).length ? rec.datamart_ids : null, diamond_layer_ids: (rec.diamond_layer_ids || []).length ? rec.diamond_layer_ids : null };
+        let deck;
+        try { deck = await _streamDeck(payload, _updateDeckProgress); }
+        catch (streamErr) { const res = await fetch('/api/exec/deck', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); deck = await res.json(); }
         if (deck.detail || deck.error) { out.innerHTML = _execErrorBox(deck.detail || deck.error); return; }
         await fetch('/api/exec/decks/' + id, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' },
