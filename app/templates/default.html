@@ -375,7 +375,33 @@
         <nav class="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm font-medium">
             <button onclick="showTab('query')" id="tab-query" class="tab-btn tab-active transition-colors">Consultar</button>
             <button onclick="showTab('cockpit')" id="tab-cockpit" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Cockpit</button>
-            <button onclick="showTab('reports')" id="tab-reports" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Reportes</button>
+            <!-- Dropdown Reportes → Reporte Analítico + Análise Executiva -->
+            <div class="cfg-dropdown" id="reportsDropdown">
+                <button class="cfg-trigger" id="reportsTrigger" onclick="toggleReportsDropdown()" title="Reportes">
+                    Reportes
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24"
+                         fill="none" stroke="currentColor" stroke-width="2.5"
+                         stroke-linecap="round" stroke-linejoin="round"
+                         id="reportsChevron" style="transition:transform 0.2s">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </button>
+                <div class="cfg-dropdown-menu" id="reportsMenu">
+                    <button onclick="showReportsTab('reports')" id="rep-tab-reports">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
+                        </svg>
+                        Reporte Analítico
+                    </button>
+                    <div class="cfg-sep"></div>
+                    <button onclick="showReportsTab('execanalysis')" id="rep-tab-execanalysis">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 3v18h18"/><path d="m7 14 3-3 3 3 5-5"/>
+                        </svg>
+                        Análise Executiva
+                    </button>
+                </div>
+            </div>
             <button onclick="showTab('questions')" id="tab-questions" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Perguntas</button>
             <button onclick="showTab('visions')" id="tab-visions" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Visões</button>
             <button onclick="showTab('gallery')" id="tab-gallery" class="tab-btn text-fg-muted hover:text-fg-text transition-colors">Galeria</button>
@@ -454,6 +480,8 @@
                 </div>
             </div>
             <!-- IDs mantidos para compatibilidade com showTab() -->
+            <span id="tab-reports"      class="hidden"></span>
+            <span id="tab-execanalysis" class="hidden"></span>
             <span id="tab-tables"       class="hidden"></span>
             <span id="tab-catalog"      class="hidden"></span>
             <span id="tab-dataproducts" class="hidden"></span>
@@ -1402,7 +1430,7 @@
     <div id="reportsListView">
         <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div>
-                <h2 class="text-sm font-bold text-fg-bright">Reportes</h2>
+                <h2 class="text-sm font-bold text-fg-bright">Reporte Analítico</h2>
                 <p class="text-[10px] text-fg-muted mt-0.5">Reportes executivos com cabeçalhos, agrupamento e totais — visualizados na aplicação</p>
             </div>
             <div class="flex items-center gap-2">
@@ -1438,6 +1466,40 @@
         <div id="reportsViewerFilters" class="hidden bg-fg-800/60 border border-fg-border rounded-xl p-3 mb-3 flex flex-wrap items-end gap-3"></div>
         <div id="reportsViewerContent" class="bg-fg-800 border border-fg-border rounded-xl p-6"></div>
     </div>
+</section>
+
+<!-- ===================== ANÁLISE EXECUTIVA TAB (P0) ===================== -->
+<section id="panel-execanalysis" class="tab-panel hidden">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div>
+            <h2 class="text-sm font-bold text-fg-bright flex items-center gap-2">
+                Análise Executiva
+                <span class="text-[9px] font-semibold uppercase tracking-wider bg-fg-accent/15 text-fg-accent border border-fg-accent/30 rounded px-1.5 py-0.5">Beta</span>
+            </h2>
+            <p class="text-[10px] text-fg-muted mt-0.5">Uma pergunta de negócio → o número-herói com lastro auditável (SQL, fonte, completude) e selo de confiança — sob a sua RLS.</p>
+        </div>
+    </div>
+
+    <div id="execSavedDecks" class="mb-4"></div>
+
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-4 mb-4">
+        <label class="block text-[10px] text-fg-muted uppercase tracking-wider mb-1.5">DataMarts (opcional — em branco usa todas as suas tabelas acessíveis)</label>
+        <div id="execDatamarts" class="flex flex-wrap gap-2 mb-3 items-center text-xs text-fg-muted">Carregando…</div>
+        <div id="execDiamondLayerRow" class="hidden">
+            <label class="block text-[10px] text-fg-muted uppercase tracking-wider mb-1.5">DiamondLayers (opcional)</label>
+            <div id="execDiamondLayers" class="flex flex-wrap gap-2 mb-3 items-center text-xs text-fg-muted"></div>
+        </div>
+        <label class="block text-[10px] text-fg-muted uppercase tracking-wider mb-1.5">Pergunta de negócio</label>
+        <div class="flex gap-2 flex-wrap">
+            <input id="execQuestion" type="text" placeholder="Ex.: por que a captura de Banda Larga na base pré está baixa e o que fazer em 60 dias?"
+                class="flex-1 min-w-[260px] bg-fg-700 border border-fg-border rounded-xl px-4 py-3 text-sm focus:border-fg-accent focus:outline-none focus:ring-1 focus:ring-fg-accent/30 transition placeholder:text-fg-muted/50"
+                onkeydown="if(event.key==='Enter')runExecDeck()">
+            <button onclick="runExecDeck()" id="execDeckBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Gerar deck executivo</button>
+            <button onclick="runExecHero()" id="execBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Só o número-herói</button>
+        </div>
+    </div>
+
+    <div id="execResult"></div>
 </section>
 
 <!-- ===================== REPORT DESIGNER MODAL ===================== -->
@@ -2741,6 +2803,7 @@ let _favPromptData = {};
 // ============================
 function showTab(name) {
     if (typeof _syncCfgState === 'function') _syncCfgState(name);
+    if (typeof _syncReportsState === 'function') _syncReportsState(name);
     document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
     document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('tab-active'); b.classList.add('text-fg-muted'); });
     document.getElementById('panel-' + name).classList.remove('hidden');
@@ -2751,6 +2814,7 @@ function showTab(name) {
     if (name === 'questions') loadQuestionsTab();
     if (name === 'gallery') { loadGallery(); loadIncomingShares(); }
     if (name === 'reports') { loadReports(); }
+    if (name === 'execanalysis') loadExecAnalysis();
     if (name === 'catalog') loadCatalog();
     if (name === 'dataproducts') loadDataProducts();
     if (name === 'api') loadApiKeys();
@@ -2761,6 +2825,627 @@ function showTab(name) {
     if (name === 'cockpit') loadCockpit();
 }
     
+// ============================
+// Reportes dropdown (Reporte Analítico + Análise Executiva)
+// ============================
+function _syncReportsState(name) {
+    const repNames = ['reports', 'execanalysis'];
+    const trigger = document.getElementById('reportsTrigger');
+    if (trigger) trigger.classList.toggle('cfg-trigger-active', repNames.includes(name));
+    repNames.forEach(n => {
+        const b = document.getElementById('rep-tab-' + n);
+        if (b) b.classList.toggle('cfg-active', n === name);
+    });
+}
+function toggleReportsDropdown() {
+    const dd = document.getElementById('reportsDropdown');
+    const ch = document.getElementById('reportsChevron');
+    const tr = document.getElementById('reportsTrigger');
+    if (!dd) return;
+    const isOpen = dd.classList.toggle('open');
+    if (ch) ch.style.transform = isOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+    if (tr) tr.classList.toggle('cfg-trigger-active', isOpen);
+    if (isOpen) setTimeout(() => document.addEventListener('click', _closeReportsOnOutsideClick), 10);
+}
+function _closeReportsOnOutsideClick(e) {
+    const dd = document.getElementById('reportsDropdown');
+    if (dd && !dd.contains(e.target)) {
+        dd.classList.remove('open');
+        const ch = document.getElementById('reportsChevron');
+        if (ch) ch.style.transform = 'rotate(0deg)';
+        document.removeEventListener('click', _closeReportsOnOutsideClick);
+    }
+}
+function showReportsTab(name) {
+    const dd = document.getElementById('reportsDropdown');
+    if (dd) dd.classList.remove('open');
+    const ch = document.getElementById('reportsChevron');
+    if (ch) ch.style.transform = 'rotate(0deg)';
+    document.removeEventListener('click', _closeReportsOnOutsideClick);
+    showTab(name);
+}
+
+// ============================
+// Análise Executiva (P0 — número-herói auditável)
+// ============================
+let _execDatamarts = [];
+const _execSelectedDm = new Set();
+let _execDiamondLayers = [];
+const _execSelectedDl = new Set();
+
+async function loadExecAnalysis() {
+    const dmBox = document.getElementById('execDatamarts');
+    if (dmBox) dmBox.innerHTML = 'Carregando…';
+    try {
+        const [dmRes, dlRes] = await Promise.all([
+            fetch('/api/datamarts/user'),
+            fetch('/api/diamond-layers/user'),
+        ]);
+        const dm = await dmRes.json();
+        const dl = await dlRes.json();
+        _execDatamarts = Array.isArray(dm) ? dm : [];
+        _execDiamondLayers = Array.isArray(dl) ? dl : [];
+    } catch (_) { _execDatamarts = []; _execDiamondLayers = []; }
+    _renderExecDatamarts();
+    _renderExecDiamondLayers();
+    loadExecDecks();
+}
+function _renderExecDatamarts() {
+    const box = document.getElementById('execDatamarts');
+    if (!box) return;
+    if (!_execDatamarts.length) {
+        box.innerHTML = '<span class="text-fg-muted/60">Nenhum DataMart disponível — a análise usará suas tabelas acessíveis.</span>';
+        return;
+    }
+    box.innerHTML = _execDatamarts.map(d => {
+        const on = _execSelectedDm.has(d.id);
+        const cls = on
+            ? 'bg-fg-accent text-white border-fg-accent'
+            : 'bg-fg-700 text-fg-muted border-fg-border hover:border-fg-accent/40';
+        return `<button type="button" onclick="_toggleExecDm(${d.id})" class="px-2.5 py-1 rounded-lg border text-xs transition ${cls}">${escapeHtml(d.name)}</button>`;
+    }).join('');
+}
+function _toggleExecDm(id) {
+    if (_execSelectedDm.has(id)) _execSelectedDm.delete(id); else _execSelectedDm.add(id);
+    _renderExecDatamarts();
+}
+function getSelectedExecDatamartIds() { return Array.from(_execSelectedDm); }
+function _renderExecDiamondLayers() {
+    const row = document.getElementById('execDiamondLayerRow');
+    const box = document.getElementById('execDiamondLayers');
+    if (!box || !row) return;
+    if (!_execDiamondLayers.length) { row.classList.add('hidden'); box.innerHTML = ''; return; }
+    row.classList.remove('hidden');
+    box.innerHTML = _execDiamondLayers.map(l => {
+        const on = _execSelectedDl.has(l.id);
+        const cls = on
+            ? 'bg-fg-accent text-white border-fg-accent'
+            : 'bg-fg-700 text-fg-muted border-fg-border hover:border-fg-accent/40';
+        return `<button type="button" onclick="_toggleExecDl(${l.id})" class="px-2.5 py-1 rounded-lg border text-xs transition ${cls}">${escapeHtml(l.name)}</button>`;
+    }).join('');
+}
+function _toggleExecDl(id) {
+    if (_execSelectedDl.has(id)) _execSelectedDl.delete(id); else _execSelectedDl.add(id);
+    _renderExecDiamondLayers();
+}
+function getSelectedExecDiamondLayerIds() { return Array.from(_execSelectedDl); }
+
+function _execConfColor(level) {
+    if (level === 'Alta')  return { bg: 'rgba(34,197,94,.15)',  bd: 'rgba(34,197,94,.4)',  fg: '#22c55e' };
+    if (level === 'Baixa') return { bg: 'rgba(248,81,73,.15)',  bd: 'rgba(248,81,73,.4)',  fg: '#f85149' };
+    return { bg: 'rgba(245,158,11,.15)', bd: 'rgba(245,158,11,.4)', fg: '#f59e0b' };
+}
+function _execErrorBox(msg, sql) {
+    return `<div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+        <div class="text-sm font-semibold" style="color:#f85149">Não foi possível gerar a análise</div>
+        <div class="text-xs text-fg-muted mt-1">${escapeHtml(msg || 'Erro desconhecido')}</div>
+        ${sql ? `<pre class="mt-3 bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green overflow-x-auto font-mono border border-fg-border">${escapeHtml(sql)}</pre>` : ''}
+    </div>`;
+}
+async function runExecHero() {
+    const input = document.getElementById('execQuestion');
+    const q = (input.value || '').trim();
+    if (!q) return;
+    const btn = document.getElementById('execBtn');
+    const out = document.getElementById('execResult');
+    const oldLabel = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Analisando…';
+    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">⏳ Consultando seus dados e selecionando o número-herói…</div>';
+    try {
+        const dmIds = getSelectedExecDatamartIds();
+        const dlIds = getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/hero', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: q,
+                datamart_ids: dmIds.length ? dmIds : null,
+                diamond_layer_ids: dlIds.length ? dlIds : null,
+            }),
+        });
+        const data = await res.json();
+        if (data.detail) { out.innerHTML = _execErrorBox(data.detail); return; }
+        if (data.error)  { out.innerHTML = _execErrorBox(data.error, data.attempted_sql); return; }
+        renderExecResult(data);
+    } catch (e) {
+        out.innerHTML = _execErrorBox(String(e));
+    } finally {
+        btn.disabled = false; btn.textContent = oldLabel;
+    }
+}
+function renderExecResult(data) {
+    const out = document.getElementById('execResult');
+    const hero = data.hero || {};
+    const conf = data.confidence || { level: 'Média', reason: '' };
+    const c = _execConfColor(conf.level);
+    const src = data.source || {};
+    const tables = (src.tables || []).join(', ') || '—';
+    const comp = (src.min_completeness != null) ? Math.round(src.min_completeness) + '%' : 'não verificada';
+    const qual = (src.min_quality != null) ? Math.round(src.min_quality) + '%' : '—';
+    const piiCaveat = src.pii
+        ? '<div class="mt-2 text-[10px]" style="color:#f59e0b">⚠ Fonte contém colunas marcadas como PII — atenção à LGPD ao compartilhar.</div>'
+        : '';
+    const thesisFlag = (hero.eligible_as_thesis === false)
+        ? `<div class="mt-2 text-[10px]" style="color:${c.fg}">Confiança baixa: este número não deve ser usado como tese central.</div>`
+        : '';
+    out.innerHTML = `
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-6 fade-in">
+        <div class="flex items-start justify-between flex-wrap gap-4">
+            <div class="min-w-[220px]">
+                <div style="font-size:72px;line-height:1;font-weight:800" class="text-fg-accent">${escapeHtml(hero.value_formatted || '—')}</div>
+                <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}</div>
+                ${hero.caption ? `<div class="text-xs text-fg-muted mt-1 max-w-md">${escapeHtml(hero.caption)}</div>` : ''}
+                ${thesisFlag}
+            </div>
+            <div class="text-right">
+                <span class="inline-block text-[11px] font-semibold rounded-full px-3 py-1" style="background:${c.bg};border:1px solid ${c.bd};color:${c.fg}">Confiança: ${escapeHtml(conf.level)}</span>
+                <div class="text-[10px] text-fg-muted mt-1.5 max-w-[220px]">${escapeHtml(conf.reason || '')}</div>
+            </div>
+        </div>
+        ${data.explanation ? `<div class="mt-4 text-xs text-fg-text/90 leading-relaxed border-l-2 border-fg-accent/40 pl-3">${escapeHtml(data.explanation)}</div>` : ''}
+        <details class="mt-4 group">
+            <summary class="text-[10px] text-fg-muted cursor-pointer hover:text-fg-accent transition uppercase tracking-wider font-mono">Ver lastro — SQL, fonte e completude</summary>
+            <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Linhas no resultado</div><div class="text-fg-bright font-semibold mt-0.5">${data.row_count != null ? data.row_count : '—'}</div></div>
+                <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude (mín.)</div><div class="text-fg-bright font-semibold mt-0.5">${comp}</div></div>
+                <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Qualidade catálogo</div><div class="text-fg-bright font-semibold mt-0.5">${qual}</div></div>
+            </div>
+            <div class="mt-2 text-[11px] text-fg-muted">Tabelas-fonte: <span class="text-fg-text">${escapeHtml(tables)}</span></div>
+            ${piiCaveat}
+            <pre class="mt-3 bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green overflow-x-auto font-mono border border-fg-border leading-relaxed">${escapeHtml(data.sql || '(sem SQL)')}</pre>
+        </details>
+    </div>`;
+}
+
+// ============================
+// Análise Executiva — Deck (P1): Storyline + Minto + PPTX
+// ============================
+let _execDeck = null;
+let _execCharts = [];
+let _presCharts = [];
+let _presIdx = 0;
+
+function _ensureChartJs() {
+    return new Promise((resolve, reject) => {
+        if (window.Chart) return resolve();
+        const sc = document.createElement('script');
+        sc.src = 'https://cdn.jsdelivr.net/npm/chart.js@4';
+        sc.onload = () => resolve();
+        sc.onerror = () => reject(new Error('Chart.js indisponível'));
+        document.head.appendChild(sc);
+    });
+}
+
+async function runExecDeck() {
+    const input = document.getElementById('execQuestion');
+    const q = (input.value || '').trim();
+    if (!q) return;
+    const btn = document.getElementById('execDeckBtn');
+    const out = document.getElementById('execResult');
+    const old = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Compondo…';
+    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">🧠 Montando o deck executivo — planejando a história, consultando seus dados e escrevendo a tese.<br>Isso pode levar 1–2 min (várias consultas encadeadas).</div>';
+    try {
+        const dmIds = getSelectedExecDatamartIds();
+        const dlIds = getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/deck', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: q,
+                datamart_ids: dmIds.length ? dmIds : null,
+                diamond_layer_ids: dlIds.length ? dlIds : null,
+            }),
+        });
+        const data = await res.json();
+        if (data.detail) { out.innerHTML = _execErrorBox(data.detail); return; }
+        if (data.error)  { out.innerHTML = _execErrorBox(data.error); return; }
+        _execDeck = data;
+        _execDeck._dm = dmIds; _execDeck._dl = dlIds;
+        await _ensureChartJs().catch(() => {});
+        renderExecDeck(data);
+    } catch (e) {
+        out.innerHTML = _execErrorBox(String(e));
+    } finally {
+        btn.disabled = false; btn.textContent = old;
+    }
+}
+
+function _ul(items, klass) {
+    return `<ul class="list-disc pl-4 space-y-1 ${klass || 'text-xs text-fg-text/90'}">` +
+        (items || []).map(x => `<li>${escapeHtml(typeof x === 'string' ? x : (x.role ? (x.role + ': ' + (x.scope || '')) : JSON.stringify(x)))}</li>`).join('') + '</ul>';
+}
+
+function _deckSlideHtml(s, i, prefix) {
+    const card = (inner) => `<div class="bg-fg-800 border border-fg-border rounded-xl p-5 fade-in" style="animation-delay:${(i * 0.07).toFixed(2)}s">${inner}</div>`;
+    const tag = s.section ? `<span class="text-[10px] font-bold uppercase tracking-wider text-fg-accent">${escapeHtml(s.section)}</span>` : '';
+    const title = s.title ? `<div class="text-base font-bold text-fg-bright mt-1">${escapeHtml(s.title)}</div>` : '';
+
+    if (s.type === 'cover') {
+        return card(`<div class="text-center py-6">
+            <div class="text-2xl font-extrabold text-fg-bright">${escapeHtml(s.title || '')}</div>
+            <div class="text-sm text-fg-muted mt-2 max-w-2xl mx-auto">${escapeHtml(s.subtitle || '')}</div>
+            <div class="text-[11px] text-fg-accent font-semibold mt-3">${escapeHtml(s.date_label || '')}</div>
+        </div>`);
+    }
+    if (s.type === 'sintese') {
+        const callouts = (s.callouts || []).map(c => `<div class="text-center px-3 flex-1 min-w-[110px]">
+            <div class="text-fg-accent font-extrabold" style="font-size:30px;line-height:1">${escapeHtml(c.value)}</div>
+            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}</div></div>`).join('');
+        return card(`${tag}${title}
+            ${s.thesis ? `<div class="text-sm font-semibold text-fg-bright mt-2">${escapeHtml(s.thesis)}</div>` : ''}
+            ${callouts ? `<div class="flex flex-wrap gap-2 my-4 py-3 border-y border-fg-border">${callouts}</div>` : ''}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-2">
+              <div><div class="text-xs font-bold text-fg-bright mb-1">O que os dados mostram</div>${_ul(s.o_que_mostram)}</div>
+              <div><div class="text-xs font-bold text-fg-accent mb-1">Implicação estratégica</div>${_ul(s.implicacao)}</div>
+            </div>`);
+    }
+    if (s.type === 'sowhat') {
+        const pilares = (s.pilares || []).map(p => `<div class="flex-1 min-w-[160px] bg-fg-700/50 rounded-lg p-3">
+            <div class="text-fg-accent font-extrabold text-2xl">${escapeHtml(String(p.n || ''))}</div>
+            <div class="text-sm font-bold text-fg-bright mt-1">${escapeHtml(p.title || '')}</div>
+            <div class="text-xs text-fg-muted mt-1">${escapeHtml(p.text || '')}</div></div>`).join('');
+        return card(`${tag}${title}
+            <div class="flex flex-wrap gap-3 mt-3">${pilares}</div>
+            ${s.thesis ? `<div class="mt-3 text-sm font-semibold text-fg-bright bg-fg-accent/10 border border-fg-accent/30 rounded-lg p-3">Tese: ${escapeHtml(s.thesis)}</div>` : ''}`);
+    }
+    if (s.type === 'insight') {
+        const hero = s.hero || {};
+        const conf = s.confidence || {};
+        const cc = _execConfColor(conf.level || 'Média');
+        const confChip = conf.level ? `<span class="text-[10px] font-semibold rounded-full px-2 py-0.5" style="background:${cc.bg};border:1px solid ${cc.bd};color:${cc.fg}">Confiança: ${escapeHtml(conf.level)}</span>` : '';
+        const chartHtml = s.chart ? `<div class="flex-1 min-w-[260px]"><div style="position:relative;height:240px"><canvas id="${prefix}Chart${i}"></canvas></div></div>` : '';
+        const cz = s.causal;
+        const czHtml = cz ? `<div class="mt-3 inline-block text-[11px] font-semibold rounded px-2 py-1" style="background:${cz.significant ? 'rgba(22,163,74,.12)' : 'rgba(217,119,6,.12)'};border:1px solid ${cz.significant ? 'rgba(22,163,74,.4)' : 'rgba(217,119,6,.4)'};color:${cz.significant ? '#16a34a' : '#d97706'}">Efeito causal (PSM): ${escapeHtml(cz.effect_label || '')} <span class="font-normal opacity-80">· ${escapeHtml(cz.caveat || '')}</span></div>` : '';
+        return card(`<div class="flex items-center justify-between gap-2">${tag}${confChip}</div>${title}
+            ${s.subtitle ? `<div class="text-xs text-fg-muted italic mt-0.5">${escapeHtml(s.subtitle)}</div>` : ''}
+            <div class="flex gap-5 flex-wrap mt-3 items-start">
+              <div class="min-w-[180px]">
+                <div class="text-fg-accent font-extrabold" style="font-size:48px;line-height:1">${escapeHtml(hero.value || '—')}</div>
+                <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}</div>
+                ${hero.caption ? `<div class="text-xs text-fg-muted mt-1 max-w-xs">${escapeHtml(hero.caption)}</div>` : ''}
+              </div>
+              ${chartHtml}
+            </div>
+            ${czHtml}
+            ${s.narrative ? `<div class="text-xs text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3">${escapeHtml(s.narrative)}</div>` : ''}
+            ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}`);
+    }
+    if (s.type === 'estrategia') {
+        const frentes = (s.frentes || []).map(f => `<div class="bg-fg-700/50 rounded-lg p-3 flex gap-3">
+            <div class="text-fg-accent font-extrabold text-2xl">${escapeHtml(String(f.n || ''))}</div>
+            <div><div class="text-sm font-bold text-fg-bright">${escapeHtml(f.title || '')}</div>
+            <div class="text-xs text-fg-muted mt-0.5">${escapeHtml(f.text || '')}</div></div></div>`).join('');
+        return card(`${tag}${title}<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">${frentes}</div>`);
+    }
+    if (s.type === 'roadmap') {
+        const sprints = (s.sprints || []).map(sp => `<div class="flex-1 min-w-[160px]">
+            <div class="bg-fg-accent text-white text-center text-xs font-bold rounded-t-lg py-1.5">${escapeHtml(sp.period || '')}</div>
+            <div class="bg-fg-700/50 rounded-b-lg p-3">
+              <div class="text-xs font-bold text-fg-bright mb-1">${escapeHtml(sp.title || '')}</div>
+              ${_ul(sp.bullets, 'text-[11px] text-fg-muted space-y-1 list-disc pl-4')}</div></div>`).join('');
+        return card(`${tag}${title}<div class="flex flex-wrap gap-2 mt-3">${sprints}</div>`);
+    }
+    if (s.type === 'kpis') {
+        const metas = (s.metas || []).map(m => `<div class="text-center px-3 flex-1 min-w-[110px]">
+            <div class="text-fg-accent font-extrabold" style="font-size:26px;line-height:1">${escapeHtml(m.value || '')}</div>
+            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(m.label || '')}</div></div>`).join('');
+        return card(`${tag}${title}
+            ${metas ? `<div class="flex flex-wrap gap-2 my-4 py-3 border-y border-fg-border">${metas}</div>` : ''}
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-2">
+              <div><div class="text-xs font-bold text-fg-bright mb-1">Ritual de gestão</div>${_ul(s.ritual)}</div>
+              <div><div class="text-xs font-bold text-fg-accent mb-1">Papéis recomendados</div>${_ul(s.donos)}</div>
+            </div>`);
+    }
+    return card(`${tag}${title}`);
+}
+
+function _instantiateDeckCharts(deck, prefix, store) {
+    if (!window.Chart) return;
+    (deck.slides || []).forEach((s, i) => {
+        if (s.type !== 'insight' || !s.chart) return;
+        const el = document.getElementById(prefix + 'Chart' + i);
+        if (!el) return;
+        try {
+            const ch = new Chart(el.getContext('2d'), {
+                type: s.chart.type === 'line' ? 'line' : 'bar',
+                data: {
+                    labels: s.chart.labels || [],
+                    datasets: [{
+                        label: s.chart.y_field || 'valor',
+                        data: s.chart.values || [],
+                        backgroundColor: '#e30613', borderColor: '#e30613',
+                        borderWidth: 2, tension: 0.3, fill: false,
+                    }],
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { display: false } },
+                        y: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { color: 'rgba(128,128,128,0.15)' } },
+                    },
+                },
+            });
+            store.push(ch);
+        } catch (e) { /* gráfico opcional */ }
+    });
+}
+function _destroyCharts(store) { while (store && store.length) { try { store.pop().destroy(); } catch (e) {} } }
+
+function renderExecDeck(deck) {
+    const out = document.getElementById('execResult');
+    const slidesHtml = (deck.slides || []).map((s, i) => _deckSlideHtml(s, i, '')).join('');
+    out.innerHTML = `
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h3 class="text-base font-bold text-fg-bright">${escapeHtml(deck.title || 'Deck executivo')}</h3>
+          <p class="text-[11px] text-fg-muted max-w-2xl">${escapeHtml(deck.thesis || '')}</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="saveExecDeck()" id="execSaveBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">💾 Salvar</button>
+          <button onclick="enterExecPresent()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">▶ Apresentar</button>
+          <button onclick="exportExecPptx()" id="execPptxBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-2 rounded-lg text-xs font-semibold transition">⬇ Exportar PPTX</button>
+        </div>
+      </div>
+      <div class="space-y-3">${slidesHtml}</div>
+      <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${(deck.slides || []).length} slides</p>`;
+    _destroyCharts(_execCharts);
+    _instantiateDeckCharts(deck, '', _execCharts);
+}
+
+async function exportExecPptx() {
+    if (!_execDeck) return;
+    const btn = document.getElementById('execPptxBtn');
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Gerando…'; }
+    try {
+        const res = await fetch('/api/exec/deck/pptx', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(_execDeck),
+        });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao exportar PPTX: ' + (e.detail || res.status)); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = ((_execDeck.title || 'analise_executiva').replace(/[^\w\-]+/g, '_').slice(0, 60) || 'analise_executiva') + '.pptx';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+    } catch (e) { alert('Erro ao exportar: ' + e); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
+// ---- Deck vivo: salvar / listar / reabrir / atualizar ----
+async function loadExecDecks() {
+    const box = document.getElementById('execSavedDecks');
+    if (!box) return;
+    try {
+        const r = await fetch('/api/exec/decks');
+        const list = await r.json();
+        renderExecDecksList(Array.isArray(list) ? list : []);
+    } catch (_) { box.innerHTML = ''; }
+}
+function renderExecDecksList(list) {
+    const box = document.getElementById('execSavedDecks');
+    if (!box) return;
+    if (!list.length) { box.innerHTML = ''; return; }
+    const cards = list.map(d => `
+      <div class="bg-fg-800 border border-fg-border rounded-lg px-3 py-2 flex items-center gap-2">
+        <button onclick="openExecDeck(${d.id})" class="flex-1 text-left min-w-0">
+          <div class="text-xs font-semibold text-fg-bright truncate">${escapeHtml(d.name)}</div>
+          <div class="text-[10px] text-fg-muted truncate">${d.n_slides || 0} slides · ${escapeHtml((d.question || '').slice(0, 70))}</div>
+        </button>
+        <button onclick="refreshExecDeck(${d.id})" title="Atualizar com dados de hoje" class="text-fg-muted hover:text-fg-accent text-sm">↻</button>
+        <button onclick="deleteExecDeck(${d.id})" title="Excluir" class="text-fg-muted hover:text-fg-accent text-sm">✕</button>
+      </div>`).join('');
+    box.innerHTML = `<div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1.5">Decks salvos</div>
+       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${cards}</div>`;
+}
+async function saveExecDeck() {
+    if (!_execDeck) return;
+    const name = prompt('Nome do deck:', _execDeck.title || 'Deck executivo');
+    if (!name) return;
+    const btn = document.getElementById('execSaveBtn');
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
+    try {
+        const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
+        const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/decks', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name, question: _execDeck.question || '',
+                datamart_ids: dmIds && dmIds.length ? dmIds : null,
+                diamond_layer_ids: dlIds && dlIds.length ? dlIds : null,
+                deck_spec: _execDeck,
+            }),
+        });
+        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao salvar: ' + (e.detail || res.status)); return; }
+        const saved = await res.json();
+        _execDeck._savedId = saved.id;
+        loadExecDecks();
+    } catch (e) { alert('Erro ao salvar: ' + e); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+async function openExecDeck(id) {
+    const out = document.getElementById('execResult');
+    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">Abrindo deck…</div>';
+    try {
+        const r = await fetch('/api/exec/decks/' + id);
+        if (!r.ok) { out.innerHTML = _execErrorBox('Deck não encontrado.'); return; }
+        const rec = await r.json();
+        const deck = rec.deck_spec || {};
+        deck._savedId = rec.id;
+        deck._dm = rec.datamart_ids || [];
+        deck._dl = rec.diamond_layer_ids || [];
+        if (!deck.question) deck.question = rec.question || '';
+        _execDeck = deck;
+        await _ensureChartJs().catch(() => {});
+        renderExecDeck(deck);
+    } catch (e) { out.innerHTML = _execErrorBox(String(e)); }
+}
+async function deleteExecDeck(id) {
+    if (!confirm('Excluir este deck salvo?')) return;
+    try { await fetch('/api/exec/decks/' + id, { method: 'DELETE' }); loadExecDecks(); }
+    catch (e) { alert('Erro ao excluir: ' + e); }
+}
+async function refreshExecDeck(id) {
+    const r = await fetch('/api/exec/decks/' + id);
+    if (!r.ok) { alert('Deck não encontrado.'); return; }
+    const rec = await r.json();
+    if (!confirm('Atualizar "' + rec.name + '" recompondo com os dados de hoje? (pode levar 1–2 min)')) return;
+    const out = document.getElementById('execResult');
+    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">↻ Recompondo o deck com os dados atuais…</div>';
+    try {
+        const res = await fetch('/api/exec/deck', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: rec.question,
+                datamart_ids: (rec.datamart_ids || []).length ? rec.datamart_ids : null,
+                diamond_layer_ids: (rec.diamond_layer_ids || []).length ? rec.diamond_layer_ids : null,
+            }),
+        });
+        const deck = await res.json();
+        if (deck.detail || deck.error) { out.innerHTML = _execErrorBox(deck.detail || deck.error); return; }
+        await fetch('/api/exec/decks/' + id, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deck_spec: deck }),
+        });
+        deck._savedId = id; deck._dm = rec.datamart_ids || []; deck._dl = rec.diamond_layer_ids || [];
+        _execDeck = deck;
+        await _ensureChartJs().catch(() => {});
+        renderExecDeck(deck);
+        loadExecDecks();
+    } catch (e) { out.innerHTML = _execErrorBox(String(e)); }
+}
+
+// ---- Modo Apresentação (fullscreen) ----
+function enterExecPresent() {
+    if (!_execDeck || !(_execDeck.slides || []).length) return;
+    _presIdx = 0;
+    const existing = document.getElementById('execPresentOverlay');
+    if (existing) existing.remove();
+    const total = _execDeck.slides.length;
+    const slides = _execDeck.slides.map((s, i) =>
+        `<div class="exec-pres-slide ${i === 0 ? '' : 'hidden'} absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center"><div class="w-full max-w-5xl">${_deckSlideHtml(s, i, 'pres')}</div></div>`
+    ).join('');
+    const ov = document.createElement('div');
+    ov.id = 'execPresentOverlay';
+    ov.className = 'fixed inset-0 z-[60] bg-fg-900 flex flex-col';
+    ov.innerHTML = `
+      <div class="flex items-center justify-between px-5 py-3 border-b border-fg-border bg-fg-800 flex-shrink-0">
+        <div class="text-xs text-fg-muted truncate">${escapeHtml(_execDeck.title || '')}</div>
+        <div class="flex items-center gap-2">
+          <button onclick="_presGo(-1)" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">←</button>
+          <span id="execPresentCounter" class="text-xs text-fg-muted">1 / ${total}</span>
+          <button onclick="_presGo(1)" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">→</button>
+          <button onclick="exitExecPresent()" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs ml-2">✕ Sair</button>
+        </div>
+      </div>
+      <div id="execPresentBody" class="flex-1 relative">${slides}</div>
+      <div class="flex-shrink-0 border-t border-fg-border bg-fg-800 px-4 py-2 flex gap-2 items-center">
+        <span class="text-[10px] text-fg-muted uppercase tracking-wider whitespace-nowrap">Pergunte ao slide</span>
+        <input id="execAskInput" type="text" placeholder="ex.: e se filtrar só a capital?" class="flex-1 bg-fg-700 border border-fg-border rounded-lg px-3 py-1.5 text-xs focus:border-fg-accent focus:outline-none" onkeydown="if(event.key==='Enter')askSlide()">
+        <button onclick="askSlide()" id="execAskBtn" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap">Gerar slide</button>
+      </div>`;
+    document.body.appendChild(ov);
+    _destroyCharts(_presCharts);
+    _instantiateDeckCharts(_execDeck, 'pres', _presCharts);
+    document.addEventListener('keydown', _presKey);
+}
+function _presKey(e) {
+    const tg = e.target && e.target.tagName;
+    if (tg === 'INPUT' || tg === 'TEXTAREA') return;
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); _presGo(1); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); _presGo(-1); }
+    else if (e.key === 'Escape') { exitExecPresent(); }
+}
+function _presGo(d) {
+    const slides = document.querySelectorAll('#execPresentBody .exec-pres-slide');
+    if (!slides.length) return;
+    slides[_presIdx].classList.add('hidden');
+    _presIdx = Math.max(0, Math.min(slides.length - 1, _presIdx + d));
+    slides[_presIdx].classList.remove('hidden');
+    const c = document.getElementById('execPresentCounter');
+    if (c) c.textContent = (_presIdx + 1) + ' / ' + slides.length;
+    _presCharts.forEach(ch => { try { ch.resize(); } catch (e) {} });
+}
+function exitExecPresent() {
+    document.removeEventListener('keydown', _presKey);
+    _destroyCharts(_presCharts);
+    const ov = document.getElementById('execPresentOverlay');
+    if (ov) ov.remove();
+}
+
+// ---- "Pergunte ao slide": follow-up ao vivo vira slide-anexo ----
+async function askSlide() {
+    const inp = document.getElementById('execAskInput');
+    const q = (inp.value || '').trim();
+    if (!q || !_execDeck) return;
+    const btn = document.getElementById('execAskBtn');
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    inp.value = '';
+    try {
+        const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
+        const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/hero', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: q,
+                datamart_ids: dmIds && dmIds.length ? dmIds : null,
+                diamond_layer_ids: dlIds && dlIds.length ? dlIds : null,
+            }),
+        });
+        const d = await res.json();
+        if (d.detail || d.error) { alert('Não foi possível: ' + (d.detail || d.error)); return; }
+        const h = d.hero || {};
+        const slide = {
+            type: 'insight', section: 'APROFUNDAMENTO', title: q,
+            hero: { value: h.value_formatted || '—', label: h.label || '', caption: h.caption || '' },
+            narrative: d.explanation || '', actions: [],
+            confidence: d.confidence || {}, sql: d.sql || '', source: d.source || {},
+        };
+        _execDeck.slides.push(slide);
+        const idx = _execDeck.slides.length - 1;
+        const body = document.getElementById('execPresentBody');
+        if (body) {
+            const div = document.createElement('div');
+            div.className = 'exec-pres-slide absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center';
+            div.innerHTML = '<div class="w-full max-w-5xl">' + _deckSlideHtml(slide, idx, 'pres') + '</div>';
+            body.appendChild(div);
+            const slides = document.querySelectorAll('#execPresentBody .exec-pres-slide');
+            slides.forEach(s => s.classList.add('hidden'));
+            _presIdx = slides.length - 1;
+            slides[_presIdx].classList.remove('hidden');
+            const c = document.getElementById('execPresentCounter');
+            if (c) c.textContent = (_presIdx + 1) + ' / ' + slides.length;
+        }
+    } catch (e) { alert('Erro: ' + e); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
 function useSuggestion(btn) { document.getElementById('queryInput').value = btn.textContent; sendQuery(); }
 function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
