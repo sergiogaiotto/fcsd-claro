@@ -3224,7 +3224,7 @@ async function exportExecPptx() {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(_execDeck),
         });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao exportar PPTX: ' + (e.detail || res.status)); return; }
+        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao exportar PPTX: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -3281,7 +3281,7 @@ async function saveExecDeck() {
                 deck_spec: _execDeck,
             }),
         });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao salvar: ' + (e.detail || res.status)); return; }
+        if (!res.ok) { const e = await res.json().catch(() => ({})); alert('Falha ao salvar: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
         const saved = await res.json();
         _execDeck._savedId = saved.id;
         loadExecDecks();
@@ -3419,7 +3419,7 @@ async function askSlide() {
             }),
         });
         const d = await res.json();
-        if (d.detail || d.error) { alert('Não foi possível: ' + (d.detail || d.error)); return; }
+        if (d.detail || d.error) { alert('Não foi possível: ' + _fmtApiError(d)); return; }
         const h = d.hero || {};
         const slide = {
             type: 'insight', section: 'APROFUNDAMENTO', title: q,
@@ -4223,7 +4223,7 @@ async function pinInlineChartToCockpit() {
             body: JSON.stringify({ question: lastQuestion, label: '', sql_generated: lastSqlGenerated || '' }),
         });
         const vdata = await vres.json().catch(() => ({}));
-        if (!vres.ok || !vdata.id) { alert('Erro ao criar visão: ' + (vdata.detail || 'desconhecido')); return; }
+        if (!vres.ok || !vdata.id) { alert('Erro ao criar visão: ' + _fmtApiError(vdata, 'desconhecido')); return; }
         const cres = await fetch('/api/cockpit', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4233,7 +4233,7 @@ async function pinInlineChartToCockpit() {
                 agg: st.agg === 'none' ? 'none' : (st.agg || 'sum'),
             }),
         });
-        if (!cres.ok) { const e = await cres.json().catch(() => ({})); alert(e.detail || 'Erro ao fixar (limite de 6 tiles?).'); return; }
+        if (!cres.ok) { const e = await cres.json().catch(() => ({})); alert(_fmtApiError(e, 'Erro ao fixar (limite de 6 tiles?).')); return; }
         appendMessage('assistant', '<div class="text-xs text-indigo-400 flex items-center gap-1.5">📌 <strong>Fixado no Cockpit.</strong></div>', true);
     } catch(e) { alert('Erro: ' + e.message); }
 }
@@ -4426,7 +4426,7 @@ async function saveInlineReport() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error || data.detail) {
-            alert('Erro ao salvar reporte: ' + (data.error || data.detail || ('HTTP ' + res.status)));
+            alert('Erro ao salvar reporte: ' + _fmtApiError(data, 'HTTP ' + res.status));
             return;
         }
         appendMessage('assistant', '<div class="text-xs text-indigo-400 flex items-center gap-1.5">💾 <strong>Reporte salvo</strong> — disponível na aba Reportes para refinar, publicar e agendar.</div>', true);
@@ -5429,7 +5429,7 @@ function renderTablesList() {
         }
     }
 }
-async function dropTable(name) { if (!confirm(`Excluir "${name}"?`)) return; if (!confirm(`Confirme: DROP TABLE "${name}"`)) return; try { const res = await fetch(`/api/tables/${encodeURIComponent(name)}`, { method: 'DELETE' }); const data = await res.json(); if (!res.ok) { alert(data.detail || data.error || 'Erro.'); return; } document.getElementById('tablePreview').classList.add('hidden'); loadTables(); } catch(e) { alert('Erro: ' + e.message); } }
+async function dropTable(name) { if (!confirm(`Excluir "${name}"?`)) return; if (!confirm(`Confirme: DROP TABLE "${name}"`)) return; try { const res = await fetch(`/api/tables/${encodeURIComponent(name)}`, { method: 'DELETE' }); const data = await res.json(); if (!res.ok) { alert(_fmtApiError(data, 'Erro.')); return; } document.getElementById('tablePreview').classList.add('hidden'); loadTables(); } catch(e) { alert('Erro: ' + e.message); } }
 async function previewTable(name) { document.getElementById('previewTitle').textContent = `Preview: ${name}`; document.getElementById('tablePreview').classList.remove('hidden'); document.getElementById('previewContent').innerHTML = '<div class="shimmer h-32 rounded-lg"></div>'; const res = await fetch(`/api/tables/${encodeURIComponent(name)}/preview`); document.getElementById('previewContent').innerHTML = renderTable(await res.json()); }
 function handleDrop(e) { e.preventDefault(); e.currentTarget.classList.remove('drop-active'); if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]); }
 async function uploadFile(file) {
@@ -5506,8 +5506,8 @@ async function loadAnalysisTypes() { const el = document.getElementById('analysi
 async function loadAnalysisTypeSelector() { const sel = document.getElementById('analysisType'); try { const res = await fetch('/api/analysis-types'); const types = await res.json(); sel.innerHTML = '<option value="">— Selecione o Tipo de Análise —</option>' + types.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join(''); } catch(e) { sel.innerHTML = '<option value="">Erro</option>'; } }
 function newAnalysisType() { document.getElementById('editorTitle').textContent = 'Novo Tipo'; document.getElementById('analysisForm').classList.remove('hidden'); document.getElementById('editId').value = ''; document.getElementById('editName').value = ''; document.getElementById('editPrompt').value = ''; document.getElementById('editGuardIn').value = ''; document.getElementById('editGuardOut').value = ''; document.getElementById('btnDelete').classList.add('hidden'); _setAnalysisFormReadOnly(false); }
 async function editAnalysisType(id) { const res = await fetch(`/api/analysis-types/${id}`); const t = await res.json(); document.getElementById('editorTitle').textContent = 'Editar: ' + t.name; document.getElementById('analysisForm').classList.remove('hidden'); document.getElementById('editId').value = t.id; document.getElementById('editName').value = t.name; document.getElementById('editPrompt').value = t.system_prompt; document.getElementById('editGuardIn').value = t.guardrails_input; document.getElementById('editGuardOut').value = t.guardrails_output; const canEdit = _canEditAnalysisType(t); document.getElementById('btnDelete').classList.toggle('hidden', !canEdit); _setAnalysisFormReadOnly(!canEdit); }
-async function saveAnalysisType() { const id = document.getElementById('editId').value; const payload = { name: document.getElementById('editName').value, system_prompt: document.getElementById('editPrompt').value, guardrails_input: document.getElementById('editGuardIn').value, guardrails_output: document.getElementById('editGuardOut').value }; const res = await fetch(id ? `/api/analysis-types/${id}` : '/api/analysis-types', { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao salvar.'); return; } loadAnalysisTypes(); loadAnalysisTypeSelector(); alert('Salvo.'); }
-async function deleteAnalysisType() { const id = document.getElementById('editId').value; if (!id || !confirm('Excluir?')) return; const res = await fetch(`/api/analysis-types/${id}`, { method: 'DELETE' }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao excluir.'); return; } document.getElementById('analysisForm').classList.add('hidden'); loadAnalysisTypes(); loadAnalysisTypeSelector(); }
+async function saveAnalysisType() { const id = document.getElementById('editId').value; const payload = { name: document.getElementById('editName').value, system_prompt: document.getElementById('editPrompt').value, guardrails_input: document.getElementById('editGuardIn').value, guardrails_output: document.getElementById('editGuardOut').value }; const res = await fetch(id ? `/api/analysis-types/${id}` : '/api/analysis-types', { method: id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao salvar.')); return; } loadAnalysisTypes(); loadAnalysisTypeSelector(); alert('Salvo.'); }
+async function deleteAnalysisType() { const id = document.getElementById('editId').value; if (!id || !confirm('Excluir?')) return; const res = await fetch(`/api/analysis-types/${id}`, { method: 'DELETE' }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao excluir.')); return; } document.getElementById('analysisForm').classList.add('hidden'); loadAnalysisTypes(); loadAnalysisTypeSelector(); }
 async function loadGallery() {
     const list = document.getElementById('galleryList');
     const empty = document.getElementById('galleryEmpty');
@@ -6518,12 +6518,12 @@ async function testReportQuery() {
                 result_limit: 0,
             }),
         });
-        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro na consulta.'); return; }
+        if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro na consulta.')); return; }
         const data = await res.json();
         _designerSqlPreview = data.sql_generated || '';
         const out = data.data || {};
         if (out.error) {
-            alert('Falha ao executar: ' + out.error);
+            alert('Falha ao executar: ' + _fmtApiError(out));
             return;
         }
         const cols = out.columns || [];
@@ -6723,7 +6723,7 @@ async function saveReportDraft() {
             body: JSON.stringify(payload),
         });
     }
-    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao salvar.'); return; }
+    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao salvar.')); return; }
     _editingReport = await res.json();
     _designerDirty = false;
     document.getElementById('reportDesignerDirty').classList.add('hidden');
@@ -6745,7 +6745,7 @@ async function publishReport() {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ sql_generated: sql }),
     });
-    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao publicar.'); return; }
+    if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao publicar.')); return; }
     _editingReport = await res.json();
     document.getElementById('reportDesignerSubtitle').textContent = `Publicado · v${_editingReport.version}`;
     appendMessage && appendMessage('assistant', `<div class="text-xs text-fg-green flex items-center gap-2"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>Reporte <strong>${escapeHtml(_editingReport.name)}</strong> publicado.</div>`, true);
@@ -6990,7 +6990,7 @@ function _setSkillFormReadOnly(readOnly) {
 }
 function newSkill() { document.getElementById('skillEditId').value = ''; document.getElementById('skillName').value = ''; document.getElementById('skillDesc').value = ''; document.getElementById('skillTriggers').value = ''; document.getElementById('skillContent').value = ''; _setSkillFormReadOnly(false); }
 async function editSkill(id) { const s = await (await fetch(`/api/skills/${id}`)).json(); document.getElementById('skillEditId').value = s.id; document.getElementById('skillName').value = s.name; document.getElementById('skillDesc').value = s.description || ''; document.getElementById('skillTriggers').value = (s.triggers || []).join(', '); document.getElementById('skillContent').value = s.content || ''; _setSkillFormReadOnly(!_canEditSkill(s)); showTab('skills'); }
-async function saveSkill() { const id = document.getElementById('skillEditId').value; const name = document.getElementById('skillName').value.trim(); if (!name) { alert('Nome obrigatório.'); return; } const triggersRaw = document.getElementById('skillTriggers').value.trim(); const triggers = triggersRaw ? triggersRaw.split(',').map(t => t.trim()).filter(t => t.length > 0) : []; const body = { name, description: document.getElementById('skillDesc').value.trim(), content: document.getElementById('skillContent').value, triggers }; const res = id ? await fetch(`/api/skills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) : await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(err.detail || 'Erro ao salvar.'); return; } newSkill(); loadSkills(); }
+async function saveSkill() { const id = document.getElementById('skillEditId').value; const name = document.getElementById('skillName').value.trim(); if (!name) { alert('Nome obrigatório.'); return; } const triggersRaw = document.getElementById('skillTriggers').value.trim(); const triggers = triggersRaw ? triggersRaw.split(',').map(t => t.trim()).filter(t => t.length > 0) : []; const body = { name, description: document.getElementById('skillDesc').value.trim(), content: document.getElementById('skillContent').value, triggers }; const res = id ? await fetch(`/api/skills/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) : await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); if (!res.ok) { const err = await res.json().catch(() => ({})); alert(_fmtApiError(err, 'Erro ao salvar.')); return; } newSkill(); loadSkills(); }
 async function toggleSkillActive(id) { await fetch(`/api/skills/${id}/toggle`, { method: 'PUT' }); loadSkills(); }
 async function removeSkill(id, name) { if (!confirm(`Excluir "${name}"?`)) return; await fetch(`/api/skills/${id}`, { method: 'DELETE' }); loadSkills(); }
 async function loadActiveSkillsBadge() { /* no-op — header skill entry point doesn't show a count badge */ }
@@ -7001,7 +7001,9 @@ async function loadActiveSkillsBadge() { /* no-op — header skill entry point d
 async function loadUsers() { try { const users = await (await fetch('/api/users')).json(); const tbody = document.getElementById('usersTableBody'); const typeLabels = { root: 'Root', superuser: 'Super Usuário', admin: 'Administrador', analista: 'Analista', engenheiro_dados: 'Engenheiro de Dados', user: 'Usuário' }; const typeColors = { root: 'text-red-400', superuser: 'text-fg-accent', admin: 'text-fg-blue', analista: 'text-fg-green', engenheiro_dados: 'text-fg-green', user: 'text-fg-muted' }; const dmMap = {}; allDatamarts.forEach(d => dmMap[d.id] = d.name); tbody.innerHTML = users.map(u => { const dmNames = (u.datamart_ids || []).map(id => dmMap[id] || id).join(', ') || '—'; return `<tr class="hover:bg-fg-700/50 transition-colors"><td class="px-4 py-2.5 font-mono text-fg-bright">${u.login}</td><td class="px-4 py-2.5 text-fg-text">${u.display_name || '—'}</td><td class="px-4 py-2.5"><span class="${typeColors[u.user_type] || 'text-fg-muted'} text-xs font-semibold">${typeLabels[u.user_type] || u.user_type}</span></td><td class="px-4 py-2.5 text-fg-muted text-xs max-w-[150px] truncate font-mono" title="${dmNames}">${dmNames}</td><td class="px-4 py-2.5 text-center">${u.is_active ? '<span class="text-fg-green text-xs">Ativo</span>' : '<span class="text-red-400 text-xs">Inativo</span>'}</td><td class="px-4 py-2.5 text-fg-muted text-xs font-mono">${u.created_at ? u.created_at.slice(0,16).replace('T',' ') : '—'}</td><td class="px-4 py-2.5 text-center"><div class="flex items-center justify-center gap-1"><button onclick="editUser(${u.id})" class="text-fg-muted hover:text-fg-blue text-xs transition-colors">Editar</button><span class="text-fg-border">·</span><button onclick="resetUserPassword(${u.id}, '${u.login}')" class="text-fg-muted hover:text-fg-accent text-xs transition-colors">Senha</button>${u.user_type !== 'root' ? `<span class="text-fg-border">·</span><button onclick="removeUser(${u.id}, '${u.login}')" class="text-fg-muted hover:text-red-400 text-xs transition-colors">Excluir</button>` : ''}</div></td></tr>`; }).join(''); } catch(e) { console.error(e); } }
 function showCreateUserForm() { document.getElementById('userFormPanel').classList.remove('hidden'); document.getElementById('userFormTitle').textContent = 'Novo Usuário'; document.getElementById('userFormId').value = ''; document.getElementById('userFormLogin').value = ''; document.getElementById('userFormPassword').value = ''; document.getElementById('userFormType').value = 'user'; document.getElementById('userFormName').value = ''; document.getElementById('userFormDesc').value = ''; document.getElementById('userFormLogin').disabled = false; document.getElementById('userFormPassword').placeholder = 'Obrigatório'; renderUserFormDatamarts([]); renderUserFormDiamondLayers([]); }
 async function editUser(userId) { const users = await (await fetch('/api/users')).json(); const u = users.find(x => x.id === userId); if (!u) return; document.getElementById('userFormPanel').classList.remove('hidden'); document.getElementById('userFormTitle').textContent = 'Editar — ' + u.login; document.getElementById('userFormId').value = u.id; document.getElementById('userFormLogin').value = u.login; document.getElementById('userFormPassword').value = ''; document.getElementById('userFormPassword').placeholder = 'Vazio = manter'; document.getElementById('userFormType').value = u.user_type; document.getElementById('userFormName').value = u.display_name || ''; document.getElementById('userFormDesc').value = u.profile_description || ''; renderUserFormDatamarts(u.datamart_ids || []); renderUserFormDiamondLayers(u.diamond_layer_ids || []); }
-function _fmtApiError(e, f) { f = f || 'Erro.'; var d = (e && e.detail !== undefined) ? e.detail : e; if (d == null) return f; if (typeof d === 'string') return d; if (Array.isArray(d)) return d.map(function (x) { if (x && typeof x === 'object') { var fld = Array.isArray(x.loc) ? x.loc[x.loc.length - 1] : ''; return (fld ? fld + ': ' : '') + (x.msg || JSON.stringify(x)); } return String(x); }).join('; ') || f; if (typeof d === 'object') return d.msg || JSON.stringify(d); return String(d) || f; }
+function _trField(f) { var m = { login: 'login', password: 'senha', new_password: 'nova senha', name: 'nome', display_name: 'nome de exibição', user_type: 'tipo de usuário', question: 'pergunta', description: 'descrição', email: 'e-mail', to_email: 'e-mail', label: 'rótulo', content: 'conteúdo' }; return m[f] || f; }
+function _trMsg(s) { if (!s) return s; var t = String(s); var r = [[/String should have at least (\d+) characters?/i, 'deve ter ao menos $1 caracteres'], [/String should have at most (\d+) characters?/i, 'deve ter no máximo $1 caracteres'], [/ensure this value has at least (\d+) characters?/i, 'deve ter ao menos $1 caracteres'], [/Field required/i, 'campo obrigatório'], [/none is not an allowed value/i, 'valor não pode ser nulo'], [/Input should be a valid integer.*/i, 'deve ser um número inteiro'], [/Input should be a valid number.*/i, 'deve ser um número'], [/Input should be greater than or equal to (\S+)/i, 'deve ser maior ou igual a $1'], [/Input should be less than or equal to (\S+)/i, 'deve ser menor ou igual a $1'], [/Input should be a valid (.+)/i, 'deve ser $1 válido'], [/value is not a valid (.+)/i, 'não é $1 válido'], [/String should match pattern.*/i, 'formato inválido']]; for (var i = 0; i < r.length; i++) { if (r[i][0].test(t)) return t.replace(r[i][0], r[i][1]); } return t; }
+function _fmtApiError(e, f) { f = f || 'Erro.'; var d = (e && e.detail != null) ? e.detail : ((e && e.error != null) ? e.error : e); if (d == null) return f; if (typeof d === 'string') return _trMsg(d); if (Array.isArray(d)) return d.map(function (x) { if (x && typeof x === 'object') { var loc = Array.isArray(x.loc) ? x.loc.filter(function (p) { return p !== 'body'; }) : []; var fld = loc.length ? _trField(loc[loc.length - 1]) : ''; return (fld ? fld + ': ' : '') + _trMsg(x.msg || JSON.stringify(x)); } return String(x); }).join('; ') || f; if (typeof d === 'object') return _trMsg(d.msg || d.message) || JSON.stringify(d); return String(d) || f; }
 function hideUserForm() { document.getElementById('userFormPanel').classList.add('hidden'); }
 async function saveUser() { const id = document.getElementById('userFormId').value; const login = document.getElementById('userFormLogin').value.trim(); const password = document.getElementById('userFormPassword').value; const userType = document.getElementById('userFormType').value; const displayName = document.getElementById('userFormName').value.trim(); const profileDesc = document.getElementById('userFormDesc').value.trim(); if (!login) { alert('Login obrigatório.'); return; } const dlIds = (typeof getUserFormDiamondLayerIds === 'function') ? getUserFormDiamondLayerIds() : []; try { if (id) { await fetch(`/api/users/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, user_type: userType, display_name: displayName, profile_description: profileDesc, datamart_ids: getUserFormDatamartIds(), diamond_layer_ids: dlIds }) }); if (password) await fetch(`/api/users/${id}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_password: password }) }); } else { if (!password) { alert('Senha obrigatória.'); return; } const res = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ login, password, user_type: userType, display_name: displayName, profile_description: profileDesc, datamart_ids: getUserFormDatamartIds(), diamond_layer_ids: dlIds }) }); if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; } } hideUserForm(); loadUsers(); } catch(e) { alert('Erro: ' + e.message); } }
 async function resetUserPassword(userId, login) { const pwd = prompt(`Nova senha para "${login}":`); if (!pwd || pwd.length < 3) return; const res = await fetch(`/api/users/${userId}/password`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ new_password: pwd }) }); if (res.ok) alert('Senha alterada.'); else { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); } }
@@ -7078,7 +7080,7 @@ async function selectSystemPrompt(promptId) {
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
             if (ed) ed.value = '';
-            alert(e.detail || 'Erro ao ler arquivo.');
+            alert(_fmtApiError(e, 'Erro ao ler arquivo.'));
             return;
         }
         const data = await res.json();
@@ -7105,7 +7107,7 @@ async function saveSystemPrompt() {
         });
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
-            alert(e.detail || 'Erro ao salvar.');
+            alert(_fmtApiError(e, 'Erro ao salvar.'));
             return;
         }
         const cur = document.getElementById('sysPromptCurrent');
@@ -7130,7 +7132,7 @@ async function newSystemPrompt() {
         });
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
-            alert(e.detail || 'Erro ao criar skill.');
+            alert(_fmtApiError(e, 'Erro ao criar skill.'));
             return;
         }
         const created = await res.json();
@@ -7148,7 +7150,7 @@ async function deleteSystemPrompt() {
         const res = await fetch('/api/system-prompts/' + encodeURIComponent(_sysPromptCurrent.id), { method: 'DELETE' });
         if (!res.ok) {
             const e = await res.json().catch(() => ({}));
-            alert(e.detail || 'Erro ao excluir.');
+            alert(_fmtApiError(e, 'Erro ao excluir.'));
             return;
         }
         _sysPromptCurrent = null;
@@ -8170,7 +8172,7 @@ async function enrichCatalogTable() {
         const res = await fetch(`/api/catalog/enrich/${_catalogSelectedTable}`, { method: 'POST' });
         const data = await res.json();
         if (data.error) {
-            alert(data.error);
+            alert(_fmtApiError(data));
         } else {
             // Reload catalog and re-show detail
             await loadCatalog();
@@ -8359,7 +8361,7 @@ async function _persistCatalogJoins() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data.error || data.detail) {
-            alert('Erro ao salvar joins: ' + (data.error || data.detail || `HTTP ${res.status}`));
+            alert('Erro ao salvar joins: ' + _fmtApiError(data, 'HTTP ' + res.status));
             return false;
         }
         // Atualiza cache local
@@ -9041,7 +9043,7 @@ async function confirmAddTile() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ vision_id: visionId, chart_type: chartType, x_field: xField, y_field: yField, agg }),
             });
-            if (!res.ok) { const e = await res.json(); alert(e.detail || 'Erro.'); btn.disabled = false; btn.textContent = editId ? 'Salvar' : 'Adicionar'; return; }
+            if (!res.ok) { const e = await res.json(); alert(_fmtApiError(e)); btn.disabled = false; btn.textContent = editId ? 'Salvar' : 'Adicionar'; return; }
         }
         closeAddTileModal();
         await loadCockpit();
@@ -9385,7 +9387,7 @@ async function saveCockpitAnalysis() {
         });
         const out = await res.json().catch(() => ({}));
         if (!res.ok || out.error || out.detail) {
-            alert('Erro ao salvar: ' + (out.error || out.detail || ('HTTP ' + res.status)));
+            alert('Erro ao salvar: ' + _fmtApiError(out, 'HTTP ' + res.status));
         } else {
             alert('Análise salva na Galeria, seção "Análises Cockpit".');
         }
