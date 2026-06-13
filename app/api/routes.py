@@ -11,7 +11,8 @@ from datetime import date as _date
 from datetime import date as _date
 
 from app.models.schemas import (
-    QueryRequest, AnalysisTypeCreate, AnalysisTypeUpdate,
+    QueryRequest, ExecHeroRequest, ExecDeckRequest, ExecDeckSaveRequest, ExecDeckUpdateRequest,
+    AnalysisTypeCreate, AnalysisTypeUpdate,
     EmailRequest, ApiKeyCreate, ApiQueryRequest, GallerySaveRequest, PredictionRequest,
     CausalRequest,
     LoginRequest, UserCreate, UserUpdate, PasswordChange,
@@ -105,6 +106,11 @@ from app.core.database import (
 from app.models.schemas import (
     DataProductCreate, DataProductUpdate,
     DataProductStatusTransition,
+)
+
+from app.core.database import (
+    create_exec_deck, get_exec_deck, list_exec_decks,
+    update_exec_deck, delete_exec_deck,
 )
 
 router = APIRouter(prefix="/api")
@@ -927,6 +933,105 @@ async def reports_preview(req: ReportCreate, user: dict = Depends(get_current_us
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao pré-visualizar: {e}")
+
+
+# --- Análise Executiva (P0 — número-herói auditável) ---
+
+@router.post("/exec/hero")
+async def exec_hero(req: ExecHeroRequest, user: dict = Depends(get_current_user)):
+    """Resolve uma pergunta de negócio e devolve o número-herói com lastro
+    (SQL, nº de linhas, tabelas-fonte, completude do catálogo) e selo de
+    confiança. Reusa a autorização de DataMart/DiamondLayer e a RLS por login,
+    exatamente como /api/query e /api/reports."""
+    from app.services.exec_analysis_service import build_hero
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    apply_login_filter = not is_root(user)
+    try:
+        return await build_hero(req.question, user, accessible, apply_login_filter)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro na análise executiva: {e}")
+
+
+@router.post("/exec/deck")
+async def exec_deck(req: ExecDeckRequest, user: dict = Depends(get_current_user)):
+    """P1 — Compõe um deck executivo completo (Storyline Composer + Narrador
+    Minto + Governance Autopilot) a partir de UMA pergunta de negócio. Cada
+    slide é resolvido via run_query sob a RLS do usuário."""
+    from app.services.exec_deck_service import compose_deck
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    apply_login_filter = not is_root(user)
+    try:
+        return await compose_deck(
+            req.question, user, accessible, apply_login_filter,
+            n_insights=req.n_insights or 4,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao compor o deck: {e}")
+
+
+@router.post("/exec/deck/pptx")
+async def exec_deck_pptx(deck: dict, user: dict = Depends(get_current_user)):
+    """Exporta um deck_spec (gerado por /exec/deck) para .pptx nativo."""
+    from app.services.pptx_service import export_to_pptx_bytes
+    if not deck or not deck.get("slides"):
+        raise HTTPException(status_code=400, detail="deck_spec inválido (sem slides).")
+    try:
+        data = export_to_pptx_bytes(deck)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar PPTX: {e}")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": "attachment; filename=analise_executiva.pptx"},
+    )
+
+
+# --- Análise Executiva — Decks salvos (Deck vivo) ---
+
+@router.get("/exec/decks")
+async def exec_decks_list(user: dict = Depends(get_current_user)):
+    """Lista os decks salvos do usuário (metadados, sem o spec completo)."""
+    return list_exec_decks(user["id"])
+
+
+@router.post("/exec/decks")
+async def exec_decks_create(req: ExecDeckSaveRequest, user: dict = Depends(get_current_user)):
+    if not req.deck_spec or not req.deck_spec.get("slides"):
+        raise HTTPException(status_code=400, detail="deck_spec inválido (sem slides).")
+    return create_exec_deck(
+        owner_id=user["id"], name=req.name, question=req.question,
+        datamart_ids=req.datamart_ids, diamond_layer_ids=req.diamond_layer_ids,
+        deck_spec=req.deck_spec,
+    )
+
+
+@router.get("/exec/decks/{deck_id}")
+async def exec_decks_get(deck_id: int, user: dict = Depends(get_current_user)):
+    deck = get_exec_deck(deck_id)
+    if not deck or (deck["owner_id"] != user["id"] and not is_admin(user)):
+        raise HTTPException(status_code=404, detail="Deck não encontrado.")
+    return deck
+
+
+@router.put("/exec/decks/{deck_id}")
+async def exec_decks_update(deck_id: int, req: ExecDeckUpdateRequest, user: dict = Depends(get_current_user)):
+    deck = get_exec_deck(deck_id)
+    if not deck or (deck["owner_id"] != user["id"] and not is_admin(user)):
+        raise HTTPException(status_code=404, detail="Deck não encontrado.")
+    return update_exec_deck(deck_id, deck_spec=req.deck_spec, name=req.name)
+
+
+@router.delete("/exec/decks/{deck_id}")
+async def exec_decks_delete(deck_id: int, user: dict = Depends(get_current_user)):
+    deck = get_exec_deck(deck_id)
+    if not deck or (deck["owner_id"] != user["id"] and not is_admin(user)):
+        raise HTTPException(status_code=404, detail="Deck não encontrado.")
+    delete_exec_deck(deck_id, owner_id=None if is_admin(user) else user["id"])
+    return {"ok": True}
 
 
 # --- Tables ---
