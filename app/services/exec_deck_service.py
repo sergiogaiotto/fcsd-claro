@@ -383,7 +383,8 @@ def _assemble(question, plan, resolved, synthesis, governance, source_global) ->
     for r in resolved:
         h = r.get("hero") or {}
         if h.get("value_formatted") and h["value_formatted"] != "—":
-            callouts.append({"value": h["value_formatted"], "label": h.get("label", "")})
+            callouts.append({"value": h["value_formatted"], "label": h.get("label", ""),
+                             "value_raw": h.get("value_raw"), "fmt": h.get("fmt"), "key": r["key"]})
     callouts = callouts[:5]
 
     slides: list[dict] = []
@@ -405,11 +406,12 @@ def _assemble(question, plan, resolved, synthesis, governance, source_global) ->
     for r in insight_resolved:
         h = r.get("hero") or {}
         slides.append({
-            "type": "insight", "section": "INSIGHT", "title": r["title"],
+            "type": "insight", "section": "INSIGHT", "title": r["title"], "key": r["key"],
             "subtitle": subtitles.get(r["key"], ""),
             "narrative": r.get("narrative", ""),
             "hero": {"value": h.get("value_formatted", "—"), "label": h.get("label", ""),
-                     "caption": h.get("caption", ""), "eligible": h.get("eligible_as_thesis", True)},
+                     "caption": h.get("caption", ""), "eligible": h.get("eligible_as_thesis", True),
+                     "value_raw": h.get("value_raw"), "fmt": h.get("fmt")},
             "chart": r.get("chart"),
             "actions": (actions.get(r["key"]) or [])[:3],
             "confidence": r.get("confidence", {}),
