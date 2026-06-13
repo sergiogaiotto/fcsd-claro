@@ -41,6 +41,25 @@ _TEMPORAL_HINTS = ("mes", "mês", "data", "ano", "periodo", "período", "tempo",
                    "dia", "semana", "trimestre", "safra", "cohort", "coorte")
 
 
+def _clean_narrative(text, max_chars: int = 320) -> str:
+    """Encurta e limpa a narrativa de um slide: remove markdown (**, crases),
+    colapsa quebras de linha/listas e trunca para ~2 frases. Evita que o
+    explanation longo do LLM transborde a caixa do slide (HTML e PPTX)."""
+    if not text:
+        return ""
+    import re as _re
+    t = str(text).replace("**", "").replace("`", "")
+    t = _re.sub(r"\s+", " ", t).strip()
+    if len(t) <= max_chars:
+        return t
+    cut = t[:max_chars]
+    last = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+    if last > 80:
+        return cut[:last + 1]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > 80 else cut).rstrip() + "…"
+
+
 # ---------------------------------------------------------------------------
 # LLM helper — invoca o modelo geral e devolve JSON (ou None)
 # ---------------------------------------------------------------------------
@@ -185,7 +204,7 @@ async def _resolve_slide(q: dict, user_login: str, accessible_tables, apply_logi
     explanation = result.get("explanation", "") or ""
     out = {
         "key": q["key"], "section": q["section"], "title": q["title"],
-        "nl_question": q["nl_question"], "sql": sql, "narrative": explanation,
+        "nl_question": q["nl_question"], "sql": sql, "narrative": _clean_narrative(explanation),
         "hero": None, "chart": None, "source": {}, "confidence": {},
         "row_count": 0, "error": None, "_causal_spec": q.get("causal"),
     }
