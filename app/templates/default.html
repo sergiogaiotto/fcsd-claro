@@ -1497,15 +1497,12 @@
             <button onclick="runExecDeck()" id="execDeckBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Gerar deck executivo</button>
             <button onclick="runExecHero()" id="execBtn" title="Responde sua pergunta com UM número-chave já auditável (clique nele e veja o SQL exato, a tabela-fonte, a completude e o selo de confiança) — sem montar o deck inteiro. Ideal para uma decisão pontual e rápida." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Resposta rápida (1 número auditável)</button>
         </div>
-        <div class="flex flex-wrap items-center gap-1.5 mt-2">
-            <span class="text-[10px] text-fg-muted">📚 Playbooks:</span>
-            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Por que a captura de Banda Larga está baixa e o que fazer em 60 dias?</button>
-            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Quais canais convertem melhor e onde realocar o orçamento?</button>
-            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Qual o efeito do App na conversão (causa, não correlação)?</button>
-            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Como evoluiu a captura de BL por tempo de base (cohort 0–90 dias)?</button>
-            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Quem está em maior risco de churn de recarga e qual o valor em risco?</button>
-            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Como decompor o ARPU por faixa de recarga e canal?</button>
-            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Onde está a maior oportunidade de cross-sell na base?</button>
+        <div class="flex items-center justify-between mt-2 mb-1">
+            <span class="text-[10px] text-fg-muted">📚 Playbooks <span class="text-fg-muted/60">— jogadas curadas, clique numa pergunta</span></span>
+            <button type="button" onclick="openPlaybookLibrary()" title="Criar, editar e organizar playbooks; admin pode copiar para outros usuários." class="text-[10px] bg-fg-700 border border-fg-border rounded-lg px-2.5 py-1 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">📚 Biblioteca</button>
+        </div>
+        <div id="execPlaybooks" class="flex flex-wrap items-start gap-x-3 gap-y-2">
+            <span class="text-[10px] text-fg-muted/60">Carregando…</span>
         </div>
     </div>
 
@@ -2899,6 +2896,7 @@ async function loadExecAnalysis() {
     _renderExecDatamarts();
     _renderExecDiamondLayers();
     loadExecDecks();
+    loadExecPlaybooks();
 }
 function _renderExecDatamarts() {
     const box = document.getElementById('execDatamarts');
@@ -2939,6 +2937,246 @@ function _toggleExecDl(id) {
     _renderExecDiamondLayers();
 }
 function getSelectedExecDiamondLayerIds() { return Array.from(_execSelectedDl); }
+
+// ---- Playbooks (jogadas curadas) — chips na exec + Biblioteca (CRUD + cópia admin) ----
+let _playbooks = [];
+let _plbEditingId = null;
+let _plbAdminView = false;
+let _plbAllCache = [];
+const _plbFormDm = new Set();
+const _plbFormDl = new Set();
+function _plbIsAdmin() { return currentUser && ['root', 'superuser', 'admin'].includes(currentUser.user_type); }
+
+async function loadExecPlaybooks() {
+    try {
+        const res = await fetch('/api/playbooks');
+        const data = await res.json();
+        _playbooks = Array.isArray(data) ? data : [];
+    } catch (_) { _playbooks = []; }
+    _renderExecPlaybookChips();
+}
+function _renderExecPlaybookChips() {
+    const box = document.getElementById('execPlaybooks');
+    if (!box) return;
+    const withQ = _playbooks.filter(p => (p.questions || []).length);
+    if (!withQ.length) {
+        box.innerHTML = '<span class="text-[10px] text-fg-muted/60">Nenhum playbook ainda — clique em "📚 Biblioteca" para criar.</span>';
+        return;
+    }
+    box.innerHTML = withQ.map(p => {
+        const chips = (p.questions || []).map(q => `<button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition text-left">${escapeHtml(q)}</button>`).join('');
+        const hasScope = (p.datamart_ids && p.datamart_ids.length) || (p.diamond_layer_ids && p.diamond_layer_ids.length);
+        const scopeLink = hasScope ? `<button type="button" onclick="_applyPlaybookScope(${p.id})" title="Pré-seleciona os DataMarts/DiamondLayers recomendados deste playbook" class="text-[10px] text-fg-accent hover:underline">aplicar escopo</button>` : '';
+        const org = p.visibility === 'shared' ? '<span class="text-[9px] text-fg-muted/70" title="Compartilhado com a organização">· org</span>' : '';
+        return `<div class="flex flex-col gap-1 bg-fg-800/40 border border-fg-border/60 rounded-lg px-2 py-1.5">
+            <div class="flex items-center gap-1.5 text-[10px] text-fg-bright/90 font-semibold">${escapeHtml(p.emoji || '📊')} <span class="truncate max-w-[240px]">${escapeHtml(p.title)}</span>${org}${scopeLink}</div>
+            <div class="flex flex-wrap gap-1">${chips}</div>
+        </div>`;
+    }).join('');
+}
+function _applyPlaybookScope(id) {
+    const p = _playbooks.find(x => x.id === id);
+    if (!p) return;
+    _execSelectedDm.clear();
+    (p.datamart_ids || []).forEach(d => { if (_execDatamarts.some(x => x.id === d)) _execSelectedDm.add(d); });
+    _execSelectedDl.clear();
+    (p.diamond_layer_ids || []).forEach(l => { if (_execDiamondLayers.some(x => x.id === l)) _execSelectedDl.add(l); });
+    _renderExecDatamarts();
+    _renderExecDiamondLayers();
+}
+
+function openPlaybookLibrary() {
+    const old = document.getElementById('playbookModal'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'playbookModal';
+    ov.className = 'fixed inset-0 z-[60] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+    ov.innerHTML = `<div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-3xl max-h-[88vh] flex flex-col shadow-2xl">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-fg-border">
+            <div class="text-sm font-bold text-fg-bright">📚 Biblioteca de Playbooks</div>
+            <div class="flex items-center gap-3">
+                ${_plbIsAdmin() ? '<label class="flex items-center gap-1 text-[10px] text-fg-muted cursor-pointer"><input type="checkbox" onchange="_plbToggleAdminView(this.checked)" class="accent-fg-accent"> ver todos os usuários</label>' : ''}
+                <button onclick="showPlaybookForm()" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition">＋ Novo</button>
+                <button onclick="closePlaybookLibrary()" class="text-fg-muted hover:text-fg-accent">✕</button>
+            </div>
+        </div>
+        <div id="plbFormPanel" class="hidden border-b border-fg-border px-5 py-3 bg-fg-700/30"></div>
+        <div id="plbListBox" class="overflow-auto px-5 py-3 flex-1 space-y-2"></div>
+    </div>`;
+    document.body.appendChild(ov);
+    _plbAdminView = false; _plbEditingId = null;
+    loadPlaybookList();
+}
+function closePlaybookLibrary() { const ov = document.getElementById('playbookModal'); if (ov) ov.remove(); }
+function _plbToggleAdminView(on) { _plbAdminView = !!on; hidePlaybookForm(); loadPlaybookList(); }
+
+async function loadPlaybookList() {
+    const box = document.getElementById('plbListBox');
+    if (!box) return;
+    box.innerHTML = '<div class="text-xs text-fg-muted">Carregando…</div>';
+    try {
+        const url = (_plbAdminView && _plbIsAdmin()) ? '/api/playbooks/all' : '/api/playbooks';
+        const res = await fetch(url);
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : [];
+        if (_plbAdminView && _plbIsAdmin()) _plbAllCache = list; else _playbooks = list;
+        _renderPlaybookList(list);
+    } catch (e) { box.innerHTML = '<div class="text-xs text-fg-muted">Erro ao carregar.</div>'; }
+}
+function _renderPlaybookList(list) {
+    const box = document.getElementById('plbListBox');
+    if (!box) return;
+    if (!list.length) { box.innerHTML = '<div class="text-xs text-fg-muted">Nenhum playbook.</div>'; return; }
+    const admin = _plbIsAdmin();
+    box.innerHTML = list.map(p => {
+        const mine = currentUser && p.owner_id === currentUser.id;
+        const canEdit = admin || (!p.is_system && mine);
+        const visBadge = p.visibility === 'shared'
+            ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-fg-blue/15 text-fg-blue border border-fg-blue/30">Compartilhado</span>'
+            : '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-fg-700 text-fg-muted border border-fg-border">Privado</span>';
+        const sysBadge = p.is_system ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full bg-fg-accent/15 text-fg-accent border border-fg-accent/30">Sistema</span>' : '';
+        const owner = (_plbAdminView && p.owner_login) ? `<span class="text-[9px] text-fg-muted/70">· ${escapeHtml(p.owner_name || p.owner_login)}</span>` : '';
+        const qcount = (p.questions || []).length;
+        const acts = [];
+        if (canEdit) {
+            acts.push(`<button onclick="showPlaybookForm(${p.id})" class="text-fg-muted hover:text-fg-blue">Editar</button>`);
+            acts.push(`<button onclick="deletePlaybookItem(${p.id})" class="text-fg-muted hover:text-red-400">Excluir</button>`);
+        }
+        if (!mine) acts.push(`<button onclick="duplicatePlaybookToMe(${p.id})" title="Cria uma cópia privada sua deste playbook" class="text-fg-muted hover:text-fg-bright">Duplicar p/ mim</button>`);
+        if (admin) acts.push(`<button onclick="_plbOpenCopy(${p.id})" class="text-fg-muted hover:text-fg-accent">Copiar p/ usuários…</button>`);
+        const qPreview = (p.questions || []).map(q => `<span class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted">${escapeHtml(q)}</span>`).join(' ');
+        return `<div class="bg-fg-800 border border-fg-border rounded-lg p-3">
+            <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                    <div class="text-sm font-semibold text-fg-bright flex items-center gap-1.5 flex-wrap">${escapeHtml(p.emoji || '📊')} <span>${escapeHtml(p.title)}</span> ${visBadge} ${sysBadge} ${owner}</div>
+                    ${p.category ? `<div class="text-[10px] text-fg-accent uppercase tracking-wider mt-0.5">${escapeHtml(p.category)}</div>` : ''}
+                    ${p.description ? `<div class="text-[11px] text-fg-muted mt-0.5">${escapeHtml(p.description)}</div>` : ''}
+                </div>
+                <div class="text-[10px] text-fg-muted whitespace-nowrap">${qcount} pergunta(s)</div>
+            </div>
+            <div class="flex flex-wrap gap-1 mt-2">${qPreview}</div>
+            <div class="flex flex-wrap items-center gap-3 mt-2 text-[11px]">${acts.join('<span class="text-fg-border">·</span>') || '<span class="text-fg-muted/50">somente leitura</span>'}</div>
+            <div id="plbCopyBox-${p.id}" class="hidden mt-2 border-t border-fg-border pt-2"></div>
+        </div>`;
+    }).join('');
+}
+function showPlaybookForm(id) {
+    const panel = document.getElementById('plbFormPanel');
+    if (!panel) return;
+    _plbEditingId = id || null;
+    _plbFormDm.clear(); _plbFormDl.clear();
+    const p = id ? ((_plbAdminView ? _plbAllCache : _playbooks).find(x => x.id === id) || _playbooks.find(x => x.id === id)) : null;
+    if (p) { (p.datamart_ids || []).forEach(d => _plbFormDm.add(d)); (p.diamond_layer_ids || []).forEach(l => _plbFormDl.add(l)); }
+    const v = (f, d) => (p && p[f] != null) ? p[f] : d;
+    panel.classList.remove('hidden');
+    panel.innerHTML = `
+        <div class="text-xs font-semibold text-fg-bright mb-2">${id ? 'Editar playbook' : 'Novo playbook'}</div>
+        <div class="grid grid-cols-1 sm:grid-cols-6 gap-2">
+            <div class="sm:col-span-1"><label class="text-[10px] text-fg-muted uppercase block mb-0.5">Emoji</label><input id="plbEmoji" maxlength="8" value="${escapeHtml(v('emoji', '📊'))}" class="w-full bg-fg-900 border border-fg-border rounded-lg px-2 py-1.5 text-sm focus:border-fg-accent focus:outline-none"></div>
+            <div class="sm:col-span-3"><label class="text-[10px] text-fg-muted uppercase block mb-0.5">Título</label><input id="plbTitle" value="${escapeHtml(v('title', ''))}" class="w-full bg-fg-900 border border-fg-border rounded-lg px-2 py-1.5 text-sm focus:border-fg-accent focus:outline-none"></div>
+            <div class="sm:col-span-2"><label class="text-[10px] text-fg-muted uppercase block mb-0.5">Categoria</label><input id="plbCategory" value="${escapeHtml(v('category', ''))}" placeholder="Captura, Receita…" class="w-full bg-fg-900 border border-fg-border rounded-lg px-2 py-1.5 text-sm focus:border-fg-accent focus:outline-none"></div>
+        </div>
+        <div class="mt-2"><label class="text-[10px] text-fg-muted uppercase block mb-0.5">Descrição</label><input id="plbDescription" value="${escapeHtml(v('description', ''))}" class="w-full bg-fg-900 border border-fg-border rounded-lg px-2 py-1.5 text-sm focus:border-fg-accent focus:outline-none"></div>
+        <div class="mt-2"><label class="text-[10px] text-fg-muted uppercase block mb-0.5">Perguntas (uma por linha)</label><textarea id="plbQuestions" rows="4" class="w-full bg-fg-900 border border-fg-border rounded-lg px-2 py-1.5 text-sm font-mono focus:border-fg-accent focus:outline-none">${escapeHtml((v('questions', []) || []).join('\n'))}</textarea></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <div><label class="text-[10px] text-fg-muted uppercase block mb-0.5">Visibilidade</label><select id="plbVisibility" class="w-full bg-fg-900 border border-fg-border rounded-lg px-2 py-1.5 text-sm focus:border-fg-accent focus:outline-none"><option value="private"${v('visibility', 'private') === 'private' ? ' selected' : ''}>Privado</option><option value="shared"${v('visibility', 'private') === 'shared' ? ' selected' : ''}>Compartilhado (org)</option></select></div>
+        </div>
+        <div class="mt-2"><label class="text-[10px] text-fg-muted uppercase block mb-0.5">Escopo recomendado (opcional)</label><div id="plbScopeBox" class="flex flex-wrap gap-1.5"></div></div>
+        <div class="flex gap-2 mt-3">
+            <button onclick="savePlaybook()" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-1.5 rounded-lg text-xs font-semibold transition">Salvar</button>
+            <button onclick="hidePlaybookForm()" class="bg-fg-700 border border-fg-border text-fg-muted px-4 py-1.5 rounded-lg text-xs transition hover:text-fg-bright">Cancelar</button>
+        </div>`;
+    _renderPlbScope();
+}
+function hidePlaybookForm() { const panel = document.getElementById('plbFormPanel'); if (panel) { panel.classList.add('hidden'); panel.innerHTML = ''; } _plbEditingId = null; }
+function _renderPlbScope() {
+    const box = document.getElementById('plbScopeBox');
+    if (!box) return;
+    if (!_execDatamarts.length && !_execDiamondLayers.length) { box.innerHTML = '<span class="text-[10px] text-fg-muted/60">Nenhum DataMart/DiamondLayer disponível.</span>'; return; }
+    const chip = (on, label, fn) => `<button type="button" onclick="${fn}" class="px-2 py-0.5 rounded-full border text-[10px] transition ${on ? 'bg-fg-accent text-white border-fg-accent' : 'bg-fg-700 text-fg-muted border-fg-border hover:border-fg-accent/40'}">${label}</button>`;
+    const dm = _execDatamarts.map(d => chip(_plbFormDm.has(d.id), escapeHtml(d.name), `_plbToggleDm(${d.id})`)).join('');
+    const dl = _execDiamondLayers.map(l => chip(_plbFormDl.has(l.id), '◆ ' + escapeHtml(l.name), `_plbToggleDl(${l.id})`)).join('');
+    box.innerHTML = dm + dl;
+}
+function _plbToggleDm(id) { if (_plbFormDm.has(id)) _plbFormDm.delete(id); else _plbFormDm.add(id); _renderPlbScope(); }
+function _plbToggleDl(id) { if (_plbFormDl.has(id)) _plbFormDl.delete(id); else _plbFormDl.add(id); _renderPlbScope(); }
+async function savePlaybook() {
+    const title = (document.getElementById('plbTitle').value || '').trim();
+    if (title.length < 2) { alert('Informe um título (mín. 2 caracteres).'); return; }
+    const questions = (document.getElementById('plbQuestions').value || '').split('\n').map(s => s.trim()).filter(Boolean);
+    const body = {
+        title,
+        category: (document.getElementById('plbCategory').value || '').trim(),
+        description: (document.getElementById('plbDescription').value || '').trim(),
+        emoji: (document.getElementById('plbEmoji').value || '📊').trim() || '📊',
+        questions,
+        datamart_ids: Array.from(_plbFormDm),
+        diamond_layer_ids: Array.from(_plbFormDl),
+        visibility: document.getElementById('plbVisibility').value || 'private',
+    };
+    try {
+        const url = _plbEditingId ? `/api/playbooks/${_plbEditingId}` : '/api/playbooks';
+        const res = await fetch(url, { method: _plbEditingId ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; }
+        hidePlaybookForm();
+        await loadPlaybookList();
+        loadExecPlaybooks();
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+async function deletePlaybookItem(id) {
+    if (!confirm('Excluir este playbook?')) return;
+    try {
+        const res = await fetch(`/api/playbooks/${id}`, { method: 'DELETE' });
+        if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; }
+        await loadPlaybookList();
+        loadExecPlaybooks();
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+async function duplicatePlaybookToMe(id) {
+    const src = (_plbAdminView ? _plbAllCache : _playbooks).find(x => x.id === id) || _playbooks.find(x => x.id === id);
+    if (!src) return;
+    const body = {
+        title: src.title, category: src.category || '', description: src.description || '',
+        emoji: src.emoji || '📊', questions: src.questions || [],
+        datamart_ids: src.datamart_ids || [], diamond_layer_ids: src.diamond_layer_ids || [],
+        visibility: 'private',
+    };
+    try {
+        const res = await fetch('/api/playbooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; }
+        await loadPlaybookList();
+        loadExecPlaybooks();
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+async function _plbOpenCopy(id) {
+    const box = document.getElementById('plbCopyBox-' + id);
+    if (!box) return;
+    if (!box.classList.contains('hidden')) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    box.innerHTML = '<div class="text-[11px] text-fg-muted">Carregando usuários…</div>';
+    try {
+        const users = await (await fetch('/api/users')).json();
+        const me = currentUser ? currentUser.id : null;
+        const opts = (Array.isArray(users) ? users : []).filter(u => u.id !== me).map(u =>
+            `<label class="flex items-center gap-1.5 text-[11px] text-fg-text"><input type="checkbox" class="plbCopyChk accent-fg-accent" value="${u.id}"> ${escapeHtml(u.display_name || u.login)} <span class="text-fg-muted/60">(${escapeHtml(u.login)})</span></label>`
+        ).join('');
+        box.innerHTML = `<div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1">Copiar para</div>
+            <div class="grid grid-cols-2 gap-x-3 gap-y-1 max-h-40 overflow-auto mb-2">${opts || '<span class="text-[11px] text-fg-muted">Sem outros usuários.</span>'}</div>
+            <button onclick="_plbConfirmCopy(${id})" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-3 py-1 rounded-lg text-[11px] font-semibold">Copiar</button>`;
+    } catch (e) { box.innerHTML = '<div class="text-[11px] text-fg-muted">Erro ao carregar usuários.</div>'; }
+}
+async function _plbConfirmCopy(id) {
+    const box = document.getElementById('plbCopyBox-' + id);
+    if (!box) return;
+    const ids = Array.from(box.querySelectorAll('.plbCopyChk:checked')).map(c => parseInt(c.value)).filter(Boolean);
+    if (!ids.length) { alert('Selecione ao menos um usuário.'); return; }
+    try {
+        const res = await fetch(`/api/playbooks/${id}/copy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ target_user_ids: ids }) });
+        if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; }
+        const d = await res.json();
+        box.classList.add('hidden'); box.innerHTML = '';
+        alert('Copiado para ' + (d.copied || 0) + ' usuário(s).');
+    } catch (e) { alert('Erro: ' + e.message); }
+}
 
 function _execConfColor(level) {
     if (level === 'Alta')  return { bg: 'rgba(34,197,94,.15)',  bd: 'rgba(34,197,94,.4)',  fg: '#22c55e' };

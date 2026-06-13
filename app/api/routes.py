@@ -12,6 +12,7 @@ from datetime import date as _date
 
 from app.models.schemas import (
     QueryRequest, ExecHeroRequest, ExecDeckRequest, ExecDeckSaveRequest, ExecDeckUpdateRequest,
+    PlaybookCreate, PlaybookUpdate, PlaybookCopyRequest,
     AnalysisTypeCreate, AnalysisTypeUpdate,
     EmailRequest, ApiKeyCreate, ApiQueryRequest, GallerySaveRequest, PredictionRequest,
     CausalRequest,
@@ -112,6 +113,8 @@ from app.models.schemas import (
 from app.core.database import (
     create_exec_deck, get_exec_deck, list_exec_decks,
     update_exec_deck, delete_exec_deck,
+    create_playbook, get_playbook, list_playbooks_for_user,
+    list_all_playbooks, update_playbook, delete_playbook,
 )
 
 router = APIRouter(prefix="/api")
@@ -1095,6 +1098,90 @@ async def exec_decks_delete(deck_id: int, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Deck não encontrado.")
     delete_exec_deck(deck_id, owner_id=None if is_admin(user) else user["id"])
     return {"ok": True}
+
+
+# --- Análise Executiva — Playbooks (jogadas curadas) ---
+
+def _playbook_can_edit(playbook: dict, user: dict) -> bool:
+    """Edita/exclui: admin sempre; dono de playbook não-sistema; semente do
+    sistema só por admin."""
+    if is_admin(user):
+        return True
+    if playbook.get("is_system"):
+        return False
+    return playbook.get("owner_id") == user["id"]
+
+
+@router.get("/playbooks")
+async def playbooks_list(user: dict = Depends(get_current_user)):
+    """Playbooks do usuário + compartilhados (org). Alimenta os chips e o modal."""
+    return list_playbooks_for_user(user["id"])
+
+
+@router.get("/playbooks/all")
+async def playbooks_list_all(user: dict = Depends(require_admin)):
+    """Visão admin: todos os playbooks de todos os usuários."""
+    return list_all_playbooks()
+
+
+@router.post("/playbooks")
+async def playbooks_create(req: PlaybookCreate, user: dict = Depends(get_current_user)):
+    return create_playbook(
+        owner_id=user["id"], title=req.title, category=req.category,
+        description=req.description, emoji=req.emoji, questions=req.questions,
+        datamart_ids=req.datamart_ids, diamond_layer_ids=req.diamond_layer_ids,
+        visibility=req.visibility,
+        created_by=user.get("display_name") or user.get("login") or "",
+    )
+
+
+@router.put("/playbooks/{playbook_id}")
+async def playbooks_update(playbook_id: int, req: PlaybookUpdate, user: dict = Depends(get_current_user)):
+    pb = get_playbook(playbook_id)
+    if not pb:
+        raise HTTPException(status_code=404, detail="Playbook não encontrado.")
+    if not _playbook_can_edit(pb, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para editar este playbook.")
+    return update_playbook(
+        playbook_id, title=req.title, category=req.category,
+        description=req.description, emoji=req.emoji, questions=req.questions,
+        datamart_ids=req.datamart_ids, diamond_layer_ids=req.diamond_layer_ids,
+        visibility=req.visibility,
+    )
+
+
+@router.delete("/playbooks/{playbook_id}")
+async def playbooks_delete(playbook_id: int, user: dict = Depends(get_current_user)):
+    pb = get_playbook(playbook_id)
+    if not pb:
+        raise HTTPException(status_code=404, detail="Playbook não encontrado.")
+    if not _playbook_can_edit(pb, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para excluir este playbook.")
+    delete_playbook(playbook_id, owner_id=None if is_admin(user) else user["id"])
+    return {"ok": True}
+
+
+@router.post("/playbooks/{playbook_id}/copy")
+async def playbooks_copy(playbook_id: int, req: PlaybookCopyRequest, user: dict = Depends(require_admin)):
+    """Admin copia um playbook como cópia privada para 1+ usuários."""
+    src = get_playbook(playbook_id)
+    if not src:
+        raise HTTPException(status_code=404, detail="Playbook não encontrado.")
+    by = user.get("display_name") or user.get("login") or ""
+    copied = 0
+    for target_id in req.target_user_ids:
+        if get_user_by_id(target_id) is None:
+            continue
+        create_playbook(
+            owner_id=target_id, title=src.get("title", ""),
+            category=src.get("category", ""), description=src.get("description", ""),
+            emoji=src.get("emoji", "📊"), questions=src.get("questions", []),
+            datamart_ids=src.get("datamart_ids", []),
+            diamond_layer_ids=src.get("diamond_layer_ids", []),
+            visibility="private", created_by=by, is_system=0,
+        )
+        copied += 1
+    return {"copied": copied}
 
 
 # --- Tables ---
