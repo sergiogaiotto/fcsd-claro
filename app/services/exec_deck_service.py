@@ -223,6 +223,7 @@ async def _resolve_slide(q: dict, user_login: str, accessible_tables, apply_logi
     out.update({
         "hero": hero,
         "chart": _chart_spec(columns, rows, hero),
+        "chart_data": {"columns": columns, "rows": rows[:60]},
         "source": quality,
         "confidence": conf,
         "row_count": row_count,
@@ -433,6 +434,7 @@ def _assemble(question, plan, resolved, synthesis, governance, source_global) ->
                      "caption": h.get("caption", ""), "eligible": h.get("eligible_as_thesis", True),
                      "value_raw": h.get("value_raw"), "fmt": h.get("fmt")},
             "chart": r.get("chart"),
+            "chart_data": r.get("chart_data"),
             "actions": (actions.get(r["key"]) or [])[:3],
             "confidence": r.get("confidence", {}),
             "causal": r.get("causal"),
@@ -509,6 +511,7 @@ async def resolve_single_slide(question, user, accessible_tables, apply_login_fi
                  "caption": h.get("caption", ""), "eligible": h.get("eligible_as_thesis", True),
                  "value_raw": h.get("value_raw"), "fmt": h.get("fmt")},
         "chart": r.get("chart"),
+        "chart_data": r.get("chart_data"),
         "actions": _quick_actions(r["title"], h, r.get("narrative", "")),
         "confidence": r.get("confidence", {}),
         "sql": r.get("sql", ""),
