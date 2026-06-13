@@ -1497,6 +1497,13 @@
             <button onclick="runExecDeck()" id="execDeckBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Gerar deck executivo</button>
             <button onclick="runExecHero()" id="execBtn" title="Responde sua pergunta com UM número-chave já auditável (clique nele e veja o SQL exato, a tabela-fonte, a completude e o selo de confiança) — sem montar o deck inteiro. Ideal para uma decisão pontual e rápida." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-4 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Resposta rápida (1 número auditável)</button>
         </div>
+        <div class="flex flex-wrap items-center gap-1.5 mt-2">
+            <span class="text-[10px] text-fg-muted">Exemplos:</span>
+            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Por que a captura de Banda Larga está baixa e o que fazer em 60 dias?</button>
+            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Quais canais convertem melhor e onde realocar o orçamento?</button>
+            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Qual o efeito do App na conversão (causa, não correlação)?</button>
+            <button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">Onde está a maior oportunidade de cross-sell na base?</button>
+        </div>
     </div>
 
     <div id="execResult"></div>
@@ -3025,6 +3032,7 @@ let _execCharts = [];
 let _presCharts = [];
 let _presIdx = 0;
 
+function _execSuggest(btn) { const el = document.getElementById('execQuestion'); if (el) { el.value = (btn.textContent || '').trim(); el.focus(); } }
 function _ensureChartJs() {
     return new Promise((resolve, reject) => {
         if (window.Chart) return resolve();
@@ -3292,7 +3300,7 @@ function openDeckDesigner() {
         if (s.type === 'cover') { f = _ddField('dd-' + i + '-title', 'Título', s.title, 1) + _ddField('dd-' + i + '-subtitle', 'Subtítulo / tese', s.subtitle, 2); }
         else if (s.type === 'sintese') { f = _ddField('dd-' + i + '-thesis', 'Tese', s.thesis, 2) + _ddField('dd-' + i + '-omostram', 'O que os dados mostram (1 por linha)', (s.o_que_mostram || []).join('\n'), 3) + _ddField('dd-' + i + '-implicacao', 'Implicação estratégica (1 por linha)', (s.implicacao || []).join('\n'), 3); }
         else if (s.type === 'sowhat') { f = _ddField('dd-' + i + '-thesis', 'Tese', s.thesis, 2); }
-        else if (s.type === 'insight') { f = _ddField('dd-' + i + '-title', 'Título', s.title, 1) + _ddField('dd-' + i + '-subtitle', 'Subtítulo', s.subtitle, 1) + _ddField('dd-' + i + '-narrative', 'Narrativa', s.narrative, 3) + _ddField('dd-' + i + '-herolabel', 'Rótulo do número', (s.hero || {}).label, 1) + _ddField('dd-' + i + '-herocaption', 'Legenda do número', (s.hero || {}).caption, 1) + _ddField('dd-' + i + '-actions', 'Ações recomendadas (1 por linha)', (s.actions || []).join('\n'), 3); }
+        else if (s.type === 'insight') { f = _ddField('dd-' + i + '-title', 'Título', s.title, 1) + _ddField('dd-' + i + '-subtitle', 'Subtítulo', s.subtitle, 1) + _ddField('dd-' + i + '-narrative', 'Narrativa', s.narrative, 3) + _ddField('dd-' + i + '-herolabel', 'Rótulo do número', (s.hero || {}).label, 1) + _ddField('dd-' + i + '-herocaption', 'Legenda do número', (s.hero || {}).caption, 1) + _ddField('dd-' + i + '-actions', 'Ações recomendadas (1 por linha)', (s.actions || []).join('\n'), 3) + _ddField('dd-' + i + '-nlq', 'Pergunta deste insight (edite e regenere com IA)', s.nl_question || s.title || '', 2) + '<button onclick="regenInsight(' + i + ', this)" title="Re-roda a pergunta no motor de dados e atualiza o número, gráfico, narrativa e ações deste slide." class="bg-fg-accent hover:bg-fg-accent-hover text-white px-2.5 py-1 rounded text-[11px] font-semibold">🔄 Regenerar com IA</button>'; }
         else if (s.type === 'kpis') { f = _ddField('dd-' + i + '-ritual', 'Ritual de gestão (1 por linha)', (s.ritual || []).join('\n'), 3); }
         else { return ''; }
         return '<div class="border-b border-fg-border pb-2">' + head + f + '</div>';
@@ -3310,18 +3318,46 @@ function openDeckDesigner() {
 }
 function closeDeckDesigner() { const ov = document.getElementById('deckDesignerModal'); if (ov) ov.remove(); }
 function _ddLines(id) { const el = document.getElementById(id); if (!el) return null; return el.value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean); }
-function applyDeckDesigner() {
-    if (!_execDeck) { closeDeckDesigner(); return; }
+function _readDeckDesignerFields() {
+    if (!_execDeck) return;
     (_execDeck.slides || []).forEach(function (s, i) {
         function setIf(id, fn) { const el = document.getElementById(id); if (el) fn(el.value); }
         if (s.type === 'cover') { setIf('dd-' + i + '-title', function (v) { s.title = v; }); setIf('dd-' + i + '-subtitle', function (v) { s.subtitle = v; }); }
         else if (s.type === 'sintese') { setIf('dd-' + i + '-thesis', function (v) { s.thesis = v; }); const a = _ddLines('dd-' + i + '-omostram'); if (a) s.o_que_mostram = a; const b = _ddLines('dd-' + i + '-implicacao'); if (b) s.implicacao = b; }
         else if (s.type === 'sowhat') { setIf('dd-' + i + '-thesis', function (v) { s.thesis = v; }); }
-        else if (s.type === 'insight') { setIf('dd-' + i + '-title', function (v) { s.title = v; }); setIf('dd-' + i + '-subtitle', function (v) { s.subtitle = v; }); setIf('dd-' + i + '-narrative', function (v) { s.narrative = v; }); s.hero = s.hero || {}; setIf('dd-' + i + '-herolabel', function (v) { s.hero.label = v; }); setIf('dd-' + i + '-herocaption', function (v) { s.hero.caption = v; }); const ac = _ddLines('dd-' + i + '-actions'); if (ac) s.actions = ac; }
+        else if (s.type === 'insight') { setIf('dd-' + i + '-title', function (v) { s.title = v; }); setIf('dd-' + i + '-subtitle', function (v) { s.subtitle = v; }); setIf('dd-' + i + '-narrative', function (v) { s.narrative = v; }); s.hero = s.hero || {}; setIf('dd-' + i + '-herolabel', function (v) { s.hero.label = v; }); setIf('dd-' + i + '-herocaption', function (v) { s.hero.caption = v; }); const ac = _ddLines('dd-' + i + '-actions'); if (ac) s.actions = ac; setIf('dd-' + i + '-nlq', function (v) { s.nl_question = v; }); }
         else if (s.type === 'kpis') { const r = _ddLines('dd-' + i + '-ritual'); if (r) s.ritual = r; }
     });
-    closeDeckDesigner();
-    renderExecDeck(_execDeck);
+}
+function applyDeckDesigner() { _readDeckDesignerFields(); closeDeckDesigner(); renderExecDeck(_execDeck); }
+async function regenInsight(i, btn) {
+    const s = ((_execDeck && _execDeck.slides) || [])[i];
+    if (!s) return;
+    _readDeckDesignerFields();
+    const question = ((s.nl_question || s.title || '') + '').trim();
+    if (!question) { alert('Sem pergunta para regenerar.'); return; }
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Regenerando…'; }
+    try {
+        const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
+        const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/slide', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: question, datamart_ids: dmIds && dmIds.length ? dmIds : null, diamond_layer_ids: dlIds && dlIds.length ? dlIds : null }) });
+        const d = await res.json();
+        if (d.detail || d.error) { alert('Não foi possível regenerar: ' + _fmtApiError(d)); return; }
+        s.nl_question = d.nl_question || question;
+        s.narrative = d.narrative || '';
+        s.hero = d.hero || s.hero;
+        s.chart = d.chart || null;
+        if (d.actions && d.actions.length) s.actions = d.actions;
+        s.confidence = d.confidence || s.confidence;
+        s.causal = null;
+        s.sql = d.sql || s.sql;
+        s.source = d.source || s.source;
+        closeDeckDesigner();
+        renderExecDeck(_execDeck);
+        openDeckDesigner();
+    } catch (e) { alert('Erro: ' + e); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 function renderExecDeck(deck) {
     const out = document.getElementById('execResult');
