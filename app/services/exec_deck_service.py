@@ -407,6 +407,7 @@ def _assemble(question, plan, resolved, synthesis, governance, source_global) ->
         h = r.get("hero") or {}
         slides.append({
             "type": "insight", "section": "INSIGHT", "title": r["title"], "key": r["key"],
+            "nl_question": r.get("nl_question", ""),
             "subtitle": subtitles.get(r["key"], ""),
             "narrative": r.get("narrative", ""),
             "hero": {"value": h.get("value_formatted", "—"), "label": h.get("label", ""),
@@ -455,6 +456,45 @@ def _source_footer(src: dict) -> str:
     if isinstance(comp, (int, float)):
         base += f" | completude {int(comp)}%"
     return base + " | Análise interna"
+
+
+# ---------------------------------------------------------------------------
+# Deck Designer AI — regenerar um único insight
+# ---------------------------------------------------------------------------
+
+def _quick_actions(title: str, hero: dict, narrative: str) -> list[str]:
+    sys = ("Você sugere ações executivas curtas e acionáveis. Responda APENAS com "
+           "JSON {\"actions\":[\"...\",\"...\",\"...\"]}.")
+    human = (f"Insight: {title}\nNúmero-herói: {hero.get('value_formatted', '')} "
+             f"({hero.get('label', '')})\nNarrativa: {(narrative or '')[:300]}\n\n"
+             "Dê 3 ações recomendadas (máx ~14 palavras cada).")
+    out = _llm_json(sys, human, temperature=0.4) or {}
+    acts = out.get("actions") or []
+    return [str(x) for x in acts if x][:3]
+
+
+async def resolve_single_slide(question, user, accessible_tables, apply_login_filter) -> dict:
+    """Regenera UM insight (Deck Designer AI): resolve a pergunta e devolve o
+    slide pronto (hero/chart/narrativa/ações/lastro). Mantém a auditabilidade
+    (o número vem do SQL); ações são sugeridas por um passo leve de LLM."""
+    user_login = (user or {}).get("login", "") if user else ""
+    q = {"key": "adhoc", "section": "INSIGHT", "title": (question or "")[:90], "nl_question": question}
+    r = await _resolve_slide(q, user_login, accessible_tables, apply_login_filter)
+    if r.get("error") or not r.get("hero"):
+        return {"error": r.get("error") or "A pergunta não retornou um número utilizável."}
+    h = r.get("hero") or {}
+    return {
+        "title": r["title"], "nl_question": question,
+        "narrative": r.get("narrative", ""),
+        "hero": {"value": h.get("value_formatted", "—"), "label": h.get("label", ""),
+                 "caption": h.get("caption", ""), "eligible": h.get("eligible_as_thesis", True),
+                 "value_raw": h.get("value_raw"), "fmt": h.get("fmt")},
+        "chart": r.get("chart"),
+        "actions": _quick_actions(r["title"], h, r.get("narrative", "")),
+        "confidence": r.get("confidence", {}),
+        "sql": r.get("sql", ""),
+        "source": r.get("source", {}),
+    }
 
 
 # ---------------------------------------------------------------------------

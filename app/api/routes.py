@@ -1021,6 +1021,21 @@ async def exec_deck_stream(req: ExecDeckRequest, user: dict = Depends(get_curren
     )
 
 
+@router.post("/exec/slide")
+async def exec_slide(req: ExecHeroRequest, user: dict = Depends(get_current_user)):
+    """Deck Designer AI — regenera um único insight a partir de uma pergunta
+    (re-roda a pergunta-slide e devolve hero/chart/narrativa/ações/lastro)."""
+    from app.services.exec_deck_service import resolve_single_slide
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    apply_login_filter = not is_root(user)
+    try:
+        return await resolve_single_slide(req.question, user, accessible, apply_login_filter)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao regenerar insight: {e}")
+
+
 @router.post("/exec/deck/pptx")
 async def exec_deck_pptx(deck: dict, user: dict = Depends(get_current_user)):
     """Exporta um deck_spec (gerado por /exec/deck) para .pptx nativo."""
