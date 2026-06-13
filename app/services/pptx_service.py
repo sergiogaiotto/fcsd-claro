@@ -40,6 +40,25 @@ M = 0.6
 _ALIGN = {"l": PP_ALIGN.LEFT, "c": PP_ALIGN.CENTER, "r": PP_ALIGN.RIGHT}
 
 
+def _short(text, n: int = 320) -> str:
+    """Limpa markdown (**, crases) e trunca texto para caber numa caixa de slide
+    — defensivo contra narrativas longas que transbordam e sobrepõem o número-
+    herói e as ações no PPTX."""
+    if not text:
+        return ""
+    import re as _re
+    t = str(text).replace("**", "").replace("`", "")
+    t = _re.sub(r"\s+", " ", t).strip()
+    if len(t) <= n:
+        return t
+    cut = t[:n]
+    last = max(cut.rfind(". "), cut.rfind("? "), cut.rfind("! "))
+    if last > 60:
+        return cut[:last + 1]
+    sp = cut.rfind(" ")
+    return (cut[:sp] if sp > 60 else cut).rstrip() + "…"
+
+
 def _slide(prs):
     s = prs.slides.add_slide(prs.slide_layouts[6])  # blank
     try:
@@ -223,9 +242,9 @@ def _insight(prs, sp, deck, page):
         _txt(s, M, 1.32, SW - 2 * M, 0.4, sp["subtitle"], size=13, color=MUTED, italic=True)
     has_chart = bool(sp.get("chart"))
     left_w = 5.6 if has_chart else (SW - 2 * M)
-    # narrativa
+    # narrativa (curta/limpa para não transbordar e sobrepor o resto)
     if sp.get("narrative"):
-        _txt(s, M, 1.85, left_w, 1.1, sp["narrative"], size=12, color=INK)
+        _txt(s, M, 1.85, left_w, 1.05, _short(sp["narrative"], 240 if has_chart else 360), size=11, color=INK)
     # número-herói
     hero = sp.get("hero") or {}
     _txt(s, M, 3.0, left_w, 1.1, hero.get("value", "—"), size=52, bold=True, color=RED)
