@@ -843,6 +843,67 @@ def _persist_relationships(relationships: list):
         conn.close()
 
 
+def recompute_dataset_quality(table_name: str) -> dict:
+    """Recomputa e persiste quality_detail/entities/quality_score de um dataset a
+    partir do estado ATUAL de catalog_columns (após edição manual de coluna).
+
+    Reusa as mesmas funções do scan (_compute_quality/_detect_quality_issues/
+    _detect_entities), mas SEM re-profilar os dados — aproveita o profile_data já
+    gravado (nulls/blanks/cardinalidade/completude) combinado com o pii_data e o
+    semantic_type EDITADOS. Assim, desmarcar um PII remove o "PII detectado",
+    definir um tipo semântico atualiza a validade, etc. Retorna {} se a tabela
+    não estiver catalogada."""
+    conn = get_sync_connection()
+    try:
+        from app.core.db_engine import table_exists as _table_exists
+        if not _table_exists(conn, "catalog_columns") or not _table_exists(conn, "catalog_datasets"):
+            return {}
+        rows = conn.execute(
+            "SELECT column_name, semantic_type, profile_data, pii_data "
+            "FROM catalog_columns WHERE table_name=? ORDER BY column_name",
+            (table_name,),
+        ).fetchall()
+        if not rows:
+            return {}
+        profiles: list[dict] = []
+        col_names: list[str] = []
+        for r in rows:
+            d = dict(r)
+            col_names.append(d["column_name"])
+            try:
+                prof = json.loads(d.get("profile_data") or "{}")
+            except (ValueError, TypeError):
+                prof = {}
+            if not isinstance(prof, dict):
+                prof = {}
+            try:
+                pii = json.loads(d.get("pii_data") or "{}")
+            except (ValueError, TypeError):
+                pii = {}
+            prof["column"] = d["column_name"]
+            prof["semantic_type"] = d.get("semantic_type") or ""
+            prof["pii"] = pii if isinstance(pii, dict) else {}
+            profiles.append(prof)
+
+        quality = _compute_quality(table_name, profiles)
+        entities = _detect_entities(table_name, col_names)
+
+        conn.execute(
+            "UPDATE catalog_datasets SET quality_score=?, quality_detail=?, entities=? "
+            "WHERE table_name=?",
+            (
+                quality.get("overall", 0),
+                json.dumps(quality, ensure_ascii=False),
+                json.dumps(entities, ensure_ascii=False),
+                table_name,
+            ),
+        )
+        conn.commit()
+        return {"quality": quality, "entities": entities}
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Read Catalog (for API)
 # ---------------------------------------------------------------------------

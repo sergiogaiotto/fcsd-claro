@@ -78,6 +78,7 @@ from app.services.analytics_service import generate_analytics_html, run_predicti
 from app.services.catalog_service import (
     run_catalog_scan, get_catalog_summary, enrich_table_with_llm, search_catalog,
     tables_in_sql, build_cockpit_catalog_context,
+    recompute_dataset_quality,
 )
 from app.core.database import (
     get_cockpit_tiles, add_cockpit_tile, update_cockpit_tile,
@@ -1933,9 +1934,18 @@ async def catalog_update_column(
             tuple(params),
         )
         conn.commit()
-        return {"success": True, "updated": [s.split("=")[0] for s in sets]}
+        updated = [s.split("=")[0] for s in sets]
     finally:
         conn.close()
+
+    # Recomputa qualidade/entidades do dataset para refletir a edição em QUALIDADE
+    # e ENTIDADES (ex.: desmarcar um PII remove o "PII detectado"; definir tipo
+    # semântico atualiza a validade). Não pode derrubar o salvamento da coluna.
+    try:
+        recompute_dataset_quality(table_name)
+    except Exception:
+        pass
+    return {"success": True, "updated": updated}
 
 
 @router.put("/catalog/{table_name}/joins")
