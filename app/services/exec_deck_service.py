@@ -306,13 +306,29 @@ async def _attach_causal(spec: dict, user_login: str, accessible_tables, apply_l
         p_txt = ""
     caveat = (f"PSM · {treatment}→{outcome} · n={n_t}+{n_c} · {p_txt} · "
               f"{'significativo' if sig else 'não significativo'}")
+    # Drivers do modelo: importância das variáveis via regressão logística sobre
+    # os MESMOS dados (custo extra ~zero). Degrada para [] em qualquer falha.
+    drivers = []
+    try:
+        from app.services.analytics_service import run_prediction
+        pred = run_prediction({"rows": rows}, target=outcome,
+                              features=[treatment] + covs, model_type="logistic")
+        for row in (pred.get("coeff_table") or []):
+            nm, cf = row.get("name"), row.get("coeff")
+            if nm and nm != "(Intercepto)" and cf is not None:
+                drivers.append({"name": nm, "coeff": cf, "exp_b": row.get("exp_b"),
+                                "significant": bool(row.get("significant"))})
+        drivers.sort(key=lambda d: abs(d.get("coeff") or 0), reverse=True)
+        drivers = drivers[:3]
+    except Exception:
+        drivers = []
     return {
         "method": "PSM", "effect_label": eff, "att_pct": out.get("att_pct"),
         "att": out.get("att"), "ci_lower": out.get("ci_lower"), "ci_upper": out.get("ci_upper"),
         "p_value": out.get("p_value"), "significant": sig,
         "n_treated": n_t, "n_control": n_c,
         "treatment": treatment, "outcome": outcome, "covariates": covs,
-        "caveat": caveat, "sql": res.get("sql_generated", ""),
+        "caveat": caveat, "drivers": drivers, "sql": res.get("sql_generated", ""),
     }
 
 
