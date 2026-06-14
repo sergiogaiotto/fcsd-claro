@@ -1483,6 +1483,9 @@ def get_all_tables(use_cache: bool = True) -> list[dict]:
                 "datamarts": dms_by_table.get(t, []),
                 "diamond_layers": layers_by_table.get(t, []),
                 "is_tech": t in tech_set,
+                # RLS por linha: a tabela tem coluna "login" (filtro por usuário)?
+                "has_login": any((c.get("name") or "").lower() == "login"
+                                 for c in cols_by_table.get(t, [])),
             }
             for t in user_tables
         ]
