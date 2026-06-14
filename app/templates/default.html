@@ -47,6 +47,15 @@
         .table-container table { border-collapse: collapse; width: 100%; }
         .table-container th { position: sticky; top: 0; z-index: 1; }
         .table-container tbody tr:last-child td { border-bottom: none; }
+        /* Preview de dados (#previewContent): tabela cresce até o conteúdo (não
+           espreme as colunas) e mostra um scrollbar horizontal NÍTIDO p/ navegar. */
+        #previewContent { overflow: auto; overflow-x: auto; overflow-y: auto; scrollbar-width: auto; scrollbar-color: #5b6470 transparent; }
+        #previewContent table { width: max-content; min-width: 100%; }
+        #previewContent th, #previewContent td { white-space: nowrap; }
+        #previewContent::-webkit-scrollbar { height: 12px; width: 12px; }
+        #previewContent::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 6px; }
+        #previewContent::-webkit-scrollbar-thumb { background: #5b6470; border-radius: 6px; }
+        #previewContent::-webkit-scrollbar-thumb:hover { background: #ff6347; }
         .tab-active { color: #ff6347; position: relative; }
         .tab-active::after { content: ''; position: absolute; bottom: -12px; left: 0; right: 0; height: 2px; background: #ff6347; border-radius: 1px; }
         .glow-accent { box-shadow: 0 0 20px rgba(255, 99, 71, 0.08); }
@@ -1403,8 +1412,8 @@ CREATE INDEX IF NOT EXISTS ix_minha_tabela_login ON minha_tabela (login);</pre>
                 <div class="mb-3" id="uploadDatamartGroup">
                     <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">DataMart</label>
                     <div class="flex gap-2">
-                        <select id="uploadDatamart" class="flex-1 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none"><option value="">Escolha o DataMart</option></select>
-                        <input id="uploadDatamartNew" type="text" placeholder="ou criar novo..." class="flex-1 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none">
+                        <select id="uploadDatamart" class="flex-1 min-w-0 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none"><option value="">Escolha o DataMart</option></select>
+                        <input id="uploadDatamartNew" type="text" placeholder="ou criar novo..." class="flex-1 min-w-0 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none">
                     </div>
                 </div>
                 <div class="mb-3 hidden" id="uploadDatamartAnalista">
