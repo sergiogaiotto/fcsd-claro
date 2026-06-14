@@ -517,6 +517,7 @@ async def run_query(
     saved_sql: str | None = None,
     apply_login_filter: bool = True,
     max_history_turns: int = 4,
+    log_history: bool = False,
 ) -> dict:
     """Run a natural language query through the Deep Agent.
 
@@ -562,17 +563,19 @@ async def run_query(
         data = execute_readonly_sql(sql_to_run)
 
         if "error" not in data:
-            # Success — log and return immediately
-            conn = get_sync_connection()
-            try:
-                conn.execute(
-                    "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id, user_login) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (question, saved_sql, "(reuso de SQL salvo)", analysis_type_id, user_login or ""),
-                )
-                conn.commit()
-            finally:
-                conn.close()
+            # Histórico só para a tela Consultar (log_history=True); chamadas
+            # internas (Análise Executiva, reports, API externa) não poluem.
+            if log_history:
+                conn = get_sync_connection()
+                try:
+                    conn.execute(
+                        "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id, user_login) "
+                        "VALUES (?, ?, ?, ?, ?)",
+                        (question, saved_sql, "(reuso de SQL salvo)", analysis_type_id, user_login or ""),
+                    )
+                    conn.commit()
+                finally:
+                    conn.close()
 
             return {
                 "question": question,
@@ -731,16 +734,17 @@ async def run_query(
                 "retry_error": retry_error,
             }
 
-    conn = get_sync_connection()
-    try:
-        conn.execute(
-            "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id, user_login) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (question, sql_generated, ai_response[:500] if ai_response else "", analysis_type_id, user_login or ""),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    if log_history:  # só a tela Consultar registra histórico (ver run_query)
+        conn = get_sync_connection()
+        try:
+            conn.execute(
+                "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id, user_login) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (question, sql_generated, ai_response[:500] if ai_response else "", analysis_type_id, user_login or ""),
+            )
+            conn.commit()
+        finally:
+            conn.close()
 
     sql_no_limit = _apply_limit(sql_generated, 0) if sql_generated else ""
 
