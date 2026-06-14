@@ -10572,6 +10572,9 @@ async function loadCockpit() {
         const res = await fetch('/api/cockpit');
         if (!res.ok) return;
         _cockpitTiles = await res.json();
+        // Invariante: só guarda resultados de tiles que ainda existem (poda órfãos
+        // de tiles excluídos — evita que entrem na Análise Inteligente).
+        try { var _ids = new Set(_cockpitTiles.map(function (t) { return String(t.id); })); for (var k in _cockpitTileResults) { if (!_ids.has(String(k))) delete _cockpitTileResults[k]; } } catch (e) {}
         _renderCockpitGrid();
     } catch(e) { console.error('Cockpit load error:', e); }
 }
@@ -10969,6 +10972,7 @@ async function removeCockpitTile(tileId) {
     if (!confirm('Remover este tile do Cockpit?')) return;
     try {
         await fetch(`/api/cockpit/${tileId}`, { method: 'DELETE' });
+        delete _cockpitTileResults[tileId];   // remove o resultado órfão do tile excluído
         await loadCockpit();
     } catch(e) { alert('Erro: ' + e.message); }
 }
@@ -11056,8 +11060,12 @@ async function generateCockpitInsights() {
     const recsEl   = document.getElementById('cockpitRecommendations');
     const btn      = document.getElementById('btnRefreshInsights');
  
-    // Must have at least one tile with data
-    const tilesWithData = Object.values(_cockpitTileResults).filter(t => t.rows && t.rows.length > 0);
+    // Must have at least one tile with data. Considera SOMENTE os tiles
+    // atualmente na tela (percorre _cockpitTiles e busca o resultado por id) —
+    // assim resultados órfãos de tiles já excluídos NÃO entram na análise.
+    const tilesWithData = _cockpitTiles
+        .map(t => _cockpitTileResults[t.id])
+        .filter(t => t && t.rows && t.rows.length > 0);
     if (!tilesWithData.length) {
         section.classList.remove('hidden');
         errEl.textContent = 'Aguardando os tiles carregarem dados antes de gerar insights.';
