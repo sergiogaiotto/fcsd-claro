@@ -3463,6 +3463,69 @@ async function _streamDeck(payload, onEvent) {
     if (!finalDeck) throw new Error('stream sem resultado');
     return finalDeck;
 }
+// ---- Portão de confirmação de período (escopo temporal) ----
+let _periodGate = {};
+let _periodGateResolve = null;
+function _periodGateRow(c) {
+    const st = _periodGate[c.name] || {};
+    const inputType = c.kind === 'numeric' ? 'number' : 'date';
+    const minmax = (c.min != null && c.max != null) ? `<span class="text-[9px] text-fg-muted/60">(dados: ${escapeHtml(String(c.min))} → ${escapeHtml(String(c.max))})</span>` : '';
+    return `<div class="mb-3 border border-fg-border/60 rounded-lg p-2">
+        <label class="flex items-center gap-1.5 text-[11px] text-fg-bright font-semibold mb-1">
+            <input type="checkbox" class="accent-fg-accent" ${st.enabled ? 'checked' : ''} onchange="_periodGate['${c.name}'].enabled=this.checked">
+            ${escapeHtml(c.name)} <span class="text-fg-muted/70 font-normal">(${escapeHtml(c.kind)})</span> ${minmax}
+        </label>
+        <div class="flex gap-2 items-center pl-5">
+            <input type="${inputType}" value="${escapeHtml(String(st.start || ''))}" onchange="_periodGate['${c.name}'].start=this.value" class="flex-1 bg-fg-900 border border-fg-border rounded px-2 py-1 text-xs focus:border-fg-accent focus:outline-none" placeholder="início">
+            <span class="text-fg-muted text-xs">até</span>
+            <input type="${inputType}" value="${escapeHtml(String(st.end || ''))}" onchange="_periodGate['${c.name}'].end=this.value" class="flex-1 bg-fg-900 border border-fg-border rounded px-2 py-1 text-xs focus:border-fg-accent focus:outline-none" placeholder="fim">
+        </div>
+    </div>`;
+}
+function _openPeriodGate(columns) {
+    return new Promise(function (resolve) {
+        _periodGate = {};
+        (columns || []).forEach(function (c) {
+            _periodGate[c.name] = { enabled: false, start: (c.min != null ? String(c.min) : ''), end: (c.max != null ? String(c.max) : ''), kind: c.kind || 'date' };
+        });
+        _periodGateResolve = resolve;
+        const old = document.getElementById('periodGateModal'); if (old) old.remove();
+        const ov = document.createElement('div');
+        ov.id = 'periodGateModal';
+        ov.className = 'fixed inset-0 z-[67] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+        const bodyHtml = (!columns || !columns.length)
+            ? '<div class="text-xs text-fg-muted">Nenhuma coluna temporal (<em>data/tempo</em>) encontrada nesta base — a análise usará <strong class="text-fg-bright">todo o período disponível</strong>.</div>'
+            : '<div class="text-[11px] text-fg-muted mb-2">Marque as colunas que deseja recortar por período e informe <strong>início → fim</strong>. Sem marcar = todo o período.</div>' + columns.map(_periodGateRow).join('');
+        ov.innerHTML = `<div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-xl max-h-[88vh] flex flex-col shadow-2xl">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-fg-border">
+                <div class="text-sm font-bold text-fg-bright">📅 Escopo da análise — período</div>
+                <button onclick="_resolvePeriodGate(null)" class="text-fg-muted hover:text-fg-accent">✕</button>
+            </div>
+            <div class="overflow-auto px-5 py-4 flex-1">${bodyHtml}</div>
+            <div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border">
+                <span class="text-[10px] text-fg-muted mr-auto">O período vira WHERE em todos os slides (determinístico, auditável).</span>
+                <button onclick="_resolvePeriodGate(null)" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Cancelar</button>
+                <button onclick="_resolvePeriodGate('ok')" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-1.5 rounded-lg text-xs font-semibold">Confirmar e gerar</button>
+            </div>
+        </div>`;
+        document.body.appendChild(ov);
+    });
+}
+function _resolvePeriodGate(action) {
+    const m = document.getElementById('periodGateModal'); if (m) m.remove();
+    const r = _periodGateResolve; _periodGateResolve = null;
+    if (!r) return;
+    if (action === null) { r(null); return; }
+    const ranges = [];
+    Object.keys(_periodGate).forEach(function (col) {
+        const s = _periodGate[col];
+        if (s.enabled && (String(s.start || '') !== '' || String(s.end || '') !== '')) {
+            ranges.push({ column: col, kind: s.kind || 'date', start: String(s.start || ''), end: String(s.end || '') });
+        }
+    });
+    r(ranges);
+}
+
 async function runExecDeck() {
     const input = document.getElementById('execQuestion');
     const q = (input.value || '').trim();
@@ -3470,12 +3533,24 @@ async function runExecDeck() {
     const btn = document.getElementById('execDeckBtn');
     const out = document.getElementById('execResult');
     const old = btn.textContent;
+    const dmIds = getSelectedExecDatamartIds();
+    const dlIds = getSelectedExecDiamondLayerIds();
+    // PORTÃO de período (sempre): detecta colunas temporais e confirma o escopo
+    // (achadas → escolhe início/fim; nenhuma → confirma "todo o período").
+    let temporalRanges;
+    try {
+        const tcRes = await fetch('/api/exec/temporal-columns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ datamart_ids: dmIds.length ? dmIds : null, diamond_layer_ids: dlIds.length ? dlIds : null }) });
+        const tc = tcRes.ok ? await tcRes.json() : { temporal_columns: [] };
+        temporalRanges = await _openPeriodGate(tc.temporal_columns || []);
+    } catch (_) {
+        temporalRanges = await _openPeriodGate([]);
+    }
+    if (temporalRanges === null) return;  // usuário cancelou
     btn.disabled = true; btn.textContent = 'Compondo…';
     out.innerHTML = ''; _showDeckProgress();
     try {
-        const dmIds = getSelectedExecDatamartIds();
-        const dlIds = getSelectedExecDiamondLayerIds();
         const payload = { question: q, datamart_ids: dmIds.length ? dmIds : null, diamond_layer_ids: dlIds.length ? dlIds : null };
+        if (temporalRanges.length) payload.temporal_ranges = temporalRanges;
         let data;
         try {
             data = await _streamDeck(payload, _updateDeckProgress);
@@ -3654,6 +3729,12 @@ function _deckHasDeltas(deck) {
     return !!(deck && (deck.slides || []).some(function (s) {
         return (s.hero && s.hero.delta) || (s.type === 'sintese' && (s.callouts || []).some(function (c) { return c.delta; }));
     }));
+}
+function _periodBadgeHtml(deck) {
+    const p = (deck && deck._period) || [];
+    if (!p.length) return '';
+    const parts = p.map(function (r) { return escapeHtml(r.column) + ': ' + escapeHtml(r.start || '…') + ' → ' + escapeHtml(r.end || '…'); });
+    return '<div class="text-[10px] text-fg-muted mb-3 inline-flex items-center gap-1.5 bg-fg-700/30 border border-fg-border rounded-lg px-3 py-1.5"><span>📅</span><span class="font-semibold text-fg-bright/80">Período:</span> ' + parts.join(' · ') + '</div>';
 }
 function _deltaLegendHtml() {
     return '<div class="text-[10px] text-fg-muted mb-3 bg-fg-700/30 border border-fg-border rounded-lg px-3 py-2 flex items-center gap-x-3 gap-y-1 flex-wrap">'
@@ -3871,6 +3952,7 @@ function renderExecDeck(deck) {
       </div>
       ${_execAudience === 'ceo' ? `<div class="bg-fg-accent/10 border border-fg-accent/30 rounded-lg p-3 mb-3 text-sm font-semibold text-fg-bright">TL;DR — ${escapeHtml(deck.thesis || '')}</div>` : ''}
       ${_replayBannerHtml(deck)}
+      ${_periodBadgeHtml(deck)}
       ${_deckHasDeltas(deck) ? _deltaLegendHtml() : ''}
       <div class="space-y-3">${slidesHtml}</div>
       <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${visible.length} de ${(deck.slides || []).length} slides${_execAudience !== 'diretor' ? ' · visão ' + _execAudience : ''}</p>`;
@@ -3882,6 +3964,7 @@ function renderExecDeck(deck) {
 let _replayParams = null;
 let _replaySegments = {};
 let _replayWindow = '';
+let _replayTemporalRanges = {};
 function _replayBannerHtml(deck) {
     const r = deck && deck._replay;
     if (!r) return '';
@@ -3916,6 +3999,8 @@ async function openReplayPanel() {
     </div>`;
     document.body.appendChild(ov);
     _replaySegments = {}; _replayWindow = '';
+    _replayTemporalRanges = {};
+    (_execDeck._period || []).forEach(function (r) { if (r && r.column) _replayTemporalRanges[r.column] = { kind: r.kind || 'date', start: r.start || '', end: r.end || '' }; });
     try {
         const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
         const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
@@ -3938,6 +4023,22 @@ function _renderReplayPanel(params) {
         windows.forEach(function (w) { html += `<button type="button" onclick="_setReplayWindow('${w}')" class="px-2.5 py-1 rounded-lg border text-xs ${_replayWindow === w ? 'bg-fg-accent text-white border-fg-accent' : 'bg-fg-700 text-fg-muted border-fg-border'}">${winLabels[w] || w}</button>`; });
         html += `</div></div>`;
     }
+    const tcols = (params && params.temporal_columns) || [];
+    if (tcols.length) {
+        html += `<div class="mb-4"><div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1">Período (intervalo) <span class="text-fg-muted/60 normal-case">(vazio = todo o período)</span></div>`;
+        tcols.forEach(function (tc) {
+            const st = _replayTemporalRanges[tc.name] || {};
+            const it = tc.kind === 'numeric' ? 'number' : 'date';
+            const mm = (tc.min != null && tc.max != null) ? `<span class="text-[9px] text-fg-muted/60 ml-1">(${escapeHtml(String(tc.min))}→${escapeHtml(String(tc.max))})</span>` : '';
+            html += `<div class="mb-2"><div class="text-[11px] text-fg-bright font-semibold mb-1">${escapeHtml(tc.name)} <span class="text-fg-muted/70 font-normal">(${escapeHtml(tc.kind)})</span>${mm}</div>
+                <div class="flex gap-2 items-center">
+                    <input type="${it}" value="${escapeHtml(String(st.start || ''))}" onchange="_setReplayTemporalRange('${tc.name}','${tc.kind}','start',this.value)" class="flex-1 bg-fg-700 border border-fg-border rounded px-2 py-1 text-xs focus:border-fg-accent focus:outline-none" placeholder="início">
+                    <span class="text-fg-muted text-xs">até</span>
+                    <input type="${it}" value="${escapeHtml(String(st.end || ''))}" onchange="_setReplayTemporalRange('${tc.name}','${tc.kind}','end',this.value)" class="flex-1 bg-fg-700 border border-fg-border rounded px-2 py-1 text-xs focus:border-fg-accent focus:outline-none" placeholder="fim">
+                </div></div>`;
+        });
+        html += `</div>`;
+    }
     html += `<div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1">Recorte por segmento <span class="text-fg-muted/60 normal-case">(vazio = base toda)</span></div>`;
     if (!dims.length) html += '<div class="text-xs text-fg-muted">Nenhuma dimensão categórica detectada neste deck.</div>';
     dims.forEach(function (d) {
@@ -3951,6 +4052,10 @@ function _renderReplayPanel(params) {
     body.innerHTML = html;
 }
 function _setReplayWindow(w) { _replayWindow = w; _renderReplayPanel(_replayParams); }
+function _setReplayTemporalRange(col, kind, field, val) {
+    const r = _replayTemporalRanges[col] || (_replayTemporalRanges[col] = { kind: kind, start: '', end: '' });
+    r.kind = kind; r[field] = val;
+}
 function _toggleReplaySeg(column, btn) {
     const v = (btn && btn.dataset && btn.dataset.v) || '';
     const sel = _replaySegments[column] || (_replaySegments[column] = []);
@@ -3962,17 +4067,18 @@ function _toggleReplaySeg(column, btn) {
 async function runDeckReplay() {
     if (!_execDeck) return;
     const segs = Object.keys(_replaySegments).filter(function (c) { return (_replaySegments[c] || []).length; }).map(function (c) { return { column: c, values: _replaySegments[c] }; });
+    const tranges = Object.keys(_replayTemporalRanges).map(function (col) { const r = _replayTemporalRanges[col]; return { column: col, kind: r.kind || 'date', start: String(r.start || ''), end: String(r.end || '') }; }).filter(function (r) { return r.start !== '' || r.end !== ''; });
     const btn = document.getElementById('replayRunBtn');
     const old = btn ? btn.textContent : '';
     if (btn) { btn.disabled = true; btn.textContent = 'Reexecutando…'; }
     try {
         const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
         const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
-        const res = await fetch('/api/exec/deck/replay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deck_spec: _execDeck, segment_filters: segs, window: _replayWindow || null, datamart_ids: dmIds && dmIds.length ? dmIds : null, diamond_layer_ids: dlIds && dlIds.length ? dlIds : null }) });
+        const res = await fetch('/api/exec/deck/replay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deck_spec: _execDeck, segment_filters: segs, temporal_ranges: tranges, window: _replayWindow || null, datamart_ids: dmIds && dmIds.length ? dmIds : null, diamond_layer_ids: dlIds && dlIds.length ? dlIds : null }) });
         if (!res.ok) { const e = await res.json().catch(function () { return {}; }); alert('Falha ao reexecutar: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
         const newDeck = await res.json();
         _applyDeckDelta(_execDeck, newDeck);
-        newDeck._dm = dmIds; newDeck._dl = dlIds; newDeck.question = _execDeck.question;
+        newDeck._dm = dmIds; newDeck._dl = dlIds; newDeck.question = _execDeck.question; newDeck._period = tranges;
         _execDeck = newDeck;
         closeReplayPanel();
         renderExecDeck(newDeck);
