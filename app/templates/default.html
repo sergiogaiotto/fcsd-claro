@@ -56,6 +56,11 @@
         #previewContent::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 6px; }
         #previewContent::-webkit-scrollbar-thumb { background: #5b6470; border-radius: 6px; }
         #previewContent::-webkit-scrollbar-thumb:hover { background: #ff6347; }
+        /* Lista de Visões: cresce com o conteúdo (a página rola) em vez de cortar
+           em 400px com overflow-y:hidden — assim o editor SQL expandido e o preview
+           do "Testar" ficam totalmente visíveis. O preview interno mantém seu
+           próprio scroll (.vision-preview-scroll). */
+        #visionsTableContainer { max-height: none; overflow-x: auto; overflow-y: visible; }
         .tab-active { color: #ff6347; position: relative; }
         .tab-active::after { content: ''; position: absolute; bottom: -12px; left: 0; right: 0; height: 2px; background: #ff6347; border-radius: 1px; }
         .glow-accent { box-shadow: 0 0 20px rgba(255, 99, 71, 0.08); }
