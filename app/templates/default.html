@@ -3590,9 +3590,13 @@ function _deckSlideHtml(s, i, prefix) {
         </div>`);
     }
     if (s.type === 'sintese') {
-        const callouts = (s.callouts || []).map(c => `<div class="text-center px-3 flex-1 min-w-[110px]">
+        const callouts = (s.callouts || []).map(c => {
+            const _au = (prefix === '' && c.key) ? ` onclick="openExecAudit('${c.key}')" title="Auditar — SQL, campos e conferência deste número" style="cursor:pointer"` : '';
+            const _mag = (prefix === '' && c.key) ? ` <span class="text-fg-muted/50">🔍</span>` : '';
+            return `<div class="text-center px-3 flex-1 min-w-[110px] rounded-lg hover:bg-fg-700/30 transition"${_au}>
             <div class="text-fg-accent font-extrabold" style="font-size:30px;line-height:1">${escapeHtml(c.value)}</div>
-            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}</div>${c.delta ? _deltaBadge(c.delta) : ''}</div>`).join('');
+            <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}${_mag}</div>${c.delta ? _deltaBadge(c.delta) : ''}</div>`;
+        }).join('');
         return card(`${tag}${title}
             ${s.thesis ? `<div class="text-sm font-semibold text-fg-bright mt-2">${escapeHtml(s.thesis)}</div>` : ''}
             ${callouts ? `<div class="flex flex-wrap gap-2 my-4 py-3 border-y border-fg-border">${callouts}</div>` : ''}
@@ -3623,12 +3627,16 @@ function _deckSlideHtml(s, i, prefix) {
         const _cd = s.chart_data || {};
         const chartBtn = (prefix === '' && _cd.rows && _cd.rows.length >= 2) ? `<button onclick="openChartStudio(${i})" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">${s.chart ? '📊 Editar gráfico' : '➕ Adicionar gráfico'}</button>` : '';
         const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-herói)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
+        // Auditar — disponível para TODOS os públicos (tira o lastro do antigo gate só-Gerente).
+        const auditBtn = (prefix === '') ? `<button onclick="openExecAuditForSlide(${i})" title="Auditar este número — SQL, campos, conferência automática e explicação assistida" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">🔍 Auditar</button>` : '';
+        const _auditHero = (prefix === '') ? ` onclick="openExecAuditForSlide(${i})" title="Auditar este número — clique para ver SQL, campos e conferência" style="cursor:pointer"` : '';
+        const _magHero = (prefix === '') ? ` <span class="text-fg-muted/50">🔍</span>` : '';
         return card(`<div class="flex items-center justify-between gap-2">${tag}${confChip}</div>${title}
             ${s.subtitle ? `<div class="text-xs text-fg-muted italic mt-0.5">${escapeHtml(s.subtitle)}</div>` : ''}
             <div class="flex gap-5 flex-wrap mt-3 items-start">
-              <div class="min-w-[180px]">
+              <div class="min-w-[180px] rounded-lg hover:bg-fg-700/20 transition"${_auditHero}>
                 <div class="text-fg-accent font-extrabold" style="font-size:48px;line-height:1">${escapeHtml(hero.value || '—')}</div>
-                <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}</div>
+                <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}${_magHero}</div>
                 ${hero.delta ? _deltaBadge(hero.delta) : ''}
                 ${hero.caption ? `<div class="text-xs text-fg-muted mt-1 max-w-xs">${escapeHtml(hero.caption)}</div>` : ''}
               </div>
@@ -3638,7 +3646,7 @@ function _deckSlideHtml(s, i, prefix) {
             ${s.narrative ? `<div class="text-xs text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3">${escapeHtml(s.narrative)}</div>` : ''}
             ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}
             ${(_execAudience === 'gerente' && s.sql) ? `<details class="mt-3"><summary class="text-[10px] text-fg-muted cursor-pointer uppercase tracking-wider font-mono">SQL (lastro)</summary><pre class="mt-2 bg-fg-900 rounded-lg p-2 text-[10px] text-fg-green overflow-x-auto border border-fg-border">${escapeHtml(s.sql)}</pre></details>` : ''}
-            ${(chartBtn || narrateBtn) ? `<div class="mt-2 flex items-center justify-end gap-2">${narrateBtn}${chartBtn}</div>` : ''}`);
+            ${(chartBtn || narrateBtn || auditBtn) ? `<div class="mt-2 flex items-center justify-end gap-2">${auditBtn}${narrateBtn}${chartBtn}</div>` : ''}`);
     }
     if (s.type === 'estrategia') {
         const frentes = (s.frentes || []).map(f => `<div class="bg-fg-700/50 rounded-lg p-3 flex gap-3">
@@ -3960,6 +3968,269 @@ function renderExecDeck(deck) {
     _instantiateDeckCharts(deck, '', _execCharts);
 }
 
+// ============================
+// Auditar números — drill-down (SQL/campos/amostra) + conferência determinística
+// + explicação assistida + portão pré-save. Disponível para TODOS os públicos.
+// O número permanece o do SQL (auditável); aqui só verificamos e explicamos.
+// ============================
+let _execAuditCtx = null;
+
+// --- Formatadores BR (espelham report_service._format_value) ---
+function _execBrNumber(n, dec) {
+    try { return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec }); }
+    catch (e) { return String(n); }
+}
+function _execBrNumberK(n) {
+    var a = Math.abs(n);
+    if (a >= 1e9) return _execBrNumber(n / 1e9, 1) + ' B';
+    if (a >= 1e6) return _execBrNumber(n / 1e6, 1) + ' M';
+    if (a >= 1e3) return _execBrNumber(n / 1e3, 1) + ' K';
+    return _execBrNumber(n, 0);
+}
+function _execFmtValue(raw, fmt) {
+    if (raw === null || raw === undefined || raw === '') return '—';
+    var n = Number(String(raw).replace(',', '.'));
+    var isNum = isFinite(n);
+    switch (fmt) {
+        case 'currency_brl': return isNum ? 'R$ ' + _execBrNumber(n, 2) : String(raw);
+        case 'number_2': return isNum ? _execBrNumber(n, 2) : String(raw);
+        case 'number_0': return isNum ? _execBrNumber(n, 0) : String(raw);
+        case 'number_k': return isNum ? _execBrNumberK(n) : String(raw);
+        case 'percent_2': return isNum ? _execBrNumber(n * 100, 2) + '%' : String(raw);
+        case 'percent_0': return isNum ? _execBrNumber(n * 100, 0) + '%' : String(raw);
+        case 'percent_raw': return isNum ? _execBrNumber(n, 0) + '%' : String(raw);
+        case 'percent_raw_sign': return isNum ? (n > 0 ? '+' : '') + _execBrNumber(n, 0) + '%' : String(raw);
+        default: return String(raw);
+    }
+}
+// --- Recálculo (espelha _compute_value/_aggregate) ---
+function _execCoerceNum(v) {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number') return isFinite(v) ? v : null;
+    var s = String(v).trim().replace(',', '.'); if (!s) return null;
+    var n = Number(s); return isFinite(n) ? n : null;
+}
+function _execAggValue(rows, column, agg) {
+    if (!rows || !rows.length || !column) return null;
+    if (agg === 'first') return rows[0] ? rows[0][column] : null;
+    var raw = rows.map(function (r) { return r[column]; });
+    if (agg === 'count') return raw.filter(function (v) { return v !== null && v !== undefined; }).length;
+    var nums = raw.map(_execCoerceNum).filter(function (n) { return n !== null; });
+    if (!nums.length) return null;
+    if (agg === 'sum') return nums.reduce(function (s, b) { return s + b; }, 0);
+    if (agg === 'avg') return nums.reduce(function (s, b) { return s + b; }, 0) / nums.length;
+    if (agg === 'min') return Math.min.apply(null, nums);
+    if (agg === 'max') return Math.max.apply(null, nums);
+    return null;
+}
+function _aggLabel(a) { return ({ first: 'o primeiro valor', sum: 'a soma', avg: 'a média', count: 'a contagem', min: 'o mínimo', max: 'o máximo' })[a] || a; }
+
+// Lastro de um número, keyed por `key`. Prefere a proveniência de geração
+// (deck._provenance — inclui o panorama/manchete); cai no slide insight (estado
+// atual, pós-edição) e tolera decks antigos sem _provenance.
+function _provFor(key) {
+    if (!key || !_execDeck) return null;
+    var p = _execDeck._provenance || {};
+    if (p[key]) return p[key];
+    var sl = ((_execDeck.slides) || []).find(function (s) { return s.type === 'insight' && s.key === key; });
+    if (sl) return _provFromSlide(sl, -1);
+    return null;
+}
+function _provFromSlide(s, i) {
+    var cd = s.chart_data || {};
+    return {
+        key: s.key || ('slide' + i), title: s.title || ('Slide ' + (i + 1)), section: s.section || 'INSIGHT',
+        nl_question: s.nl_question || '', sql: s.sql || '', source: s.source || {}, confidence: s.confidence || {},
+        row_count: cd.row_count, chart_data: cd, hero: s.hero || {},
+    };
+}
+
+// Conferência determinística: recalcula o herói a partir da amostra retornada e
+// compara com o value_raw. Honesto quando a amostra é truncada (não dá p/ somar).
+function _execReconcile(prov) {
+    var h = prov.hero || {}, cd = prov.chart_data || {}, rows = cd.rows || [];
+    var col = h.column, agg = h.agg || 'first', fmt = h.fmt || 'raw', expRaw = h.value_raw;
+    if (expRaw === null || expRaw === undefined || expRaw === '') return { status: 'na', note: 'Sem número-herói numérico para reconferir.' };
+    if (!col || !rows.length) return { status: 'na', note: 'Sem amostra de linhas para reconferir o cálculo (o número permanece o do SQL).' };
+    var total = cd.row_count;
+    var truncated = (typeof total === 'number') && rows.length < total;
+    if (agg !== 'first' && truncated) {
+        return { status: 'na', note: 'O resultado tem ' + total + ' linhas; a amostra traz ' + rows.length + '. Reconferir ' + _aggLabel(agg) + ' exige o conjunto inteiro — reexecute para auditar com tudo.' };
+    }
+    var rec = _execAggValue(rows, col, agg);
+    if (rec === null || rec === undefined) return { status: 'na', note: 'Não foi possível recalcular a partir da amostra.' };
+    var expN = Number(String(expRaw).replace(',', '.')), recN = Number(rec), recFmt = _execFmtValue(rec, fmt);
+    if (isFinite(expN) && isFinite(recN)) {
+        var tol = Math.max(1e-6, Math.abs(expN) * 0.005);
+        if (Math.abs(recN - expN) <= tol) {
+            return { status: 'ok', note: _aggLabel(agg) + ' de "' + col + '" em ' + rows.length + ' linha(s) = ' + recFmt + ' — confere com o card (' + (h.value_formatted || expRaw) + ').' };
+        }
+        return { status: 'mismatch', note: 'Recalculei ' + _aggLabel(agg) + ' de "' + col + '" = ' + recFmt + ', mas o card mostra ' + (h.value_formatted || expRaw) + '. Verifique a coluna/agregação ou reexecute.' };
+    }
+    if (String(rec) === String(expRaw)) return { status: 'ok', note: 'O valor exibido corresponde ao primeiro registro da amostra.' };
+    return { status: 'na', note: 'Número não numérico — exibido: ' + String(expRaw) + '.' };
+}
+function _execReconcileHtml(rec) {
+    if (rec.status === 'ok') return '<div class="rounded-lg p-3 text-xs" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#22c55e">✅ <strong>Número reproduzível.</strong> ' + escapeHtml(rec.note) + '</div>';
+    if (rec.status === 'mismatch') return '<div class="rounded-lg p-3 text-xs" style="background:rgba(248,81,73,.12);border:1px solid rgba(248,81,73,.4);color:#f85149">⚠ <strong>Divergência.</strong> ' + escapeHtml(rec.note) + '</div>';
+    return '<div class="rounded-lg p-3 text-xs" style="background:rgba(245,158,11,.10);border:1px solid rgba(245,158,11,.3);color:#f59e0b">◻ ' + escapeHtml(rec.note) + '</div>';
+}
+// Sinais de sanidade além do recálculo (completude, PII, período não aplicado).
+function _execAuditFlags(prov) {
+    var flags = [], src = prov.source || {};
+    var comp = src.min_completeness;
+    if (typeof comp === 'number' && comp < 70) flags.push({ lvl: 'warn', txt: 'Completude do dado-fonte baixa (' + Math.round(comp) + '%).' });
+    if (src.pii) flags.push({ lvl: 'info', txt: 'Fonte contém colunas marcadas como PII — atenção à LGPD ao compartilhar.' });
+    var per = (_execDeck && _execDeck._period) || [];
+    if (per.length && prov.sql) {
+        var sqlU = prov.sql.toUpperCase();
+        var applied = sqlU.indexOf('BETWEEN') >= 0 || per.some(function (p) { return p.column && sqlU.indexOf(String(p.column).toUpperCase()) >= 0; });
+        if (!applied) flags.push({ lvl: 'warn', txt: 'Período do deck definido, mas o SQL deste número não parece filtrá-lo — pode estar sobre todo o período.' });
+    }
+    return flags;
+}
+function _execFlagsHtml(flags) {
+    if (!flags.length) return '';
+    return '<div class="flex flex-wrap gap-1.5">' + flags.map(function (f) {
+        var col = f.lvl === 'warn' ? '#f59e0b' : '#8b949e';
+        return '<span class="text-[10px] rounded px-2 py-0.5" style="border:1px solid ' + col + '55;color:' + col + '">' + (f.lvl === 'warn' ? '⚠ ' : '· ') + escapeHtml(f.txt) + '</span>';
+    }).join('') + '</div>';
+}
+function _execAuditSampleTable(cd, heroCol) {
+    var cols = (cd && cd.columns) || [], rows = (cd && cd.rows) || [];
+    if (!cols.length || !rows.length) return '<div class="text-[11px] text-fg-muted">Sem amostra de linhas (resultado de valor único ou indisponível).</div>';
+    var numeric = _numericColsOf(rows, cols);
+    var head = cols.map(function (c) { var hl = (c === heroCol) ? ' style="color:#e30613"' : ''; return '<th class="text-left font-semibold px-2 py-1 whitespace-nowrap"' + hl + '>' + escapeHtml(c) + '</th>'; }).join('');
+    var body = rows.slice(0, 12).map(function (r) {
+        return '<tr class="border-t border-fg-border/50">' + cols.map(function (c) {
+            var v = r[c], disp;
+            if (numeric.indexOf(c) >= 0 && v !== null && v !== undefined && v !== '') { var n = Number(String(v).replace(',', '.')); disp = isFinite(n) ? (Number.isInteger(n) ? n.toLocaleString('pt-BR') : n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })) : String(v); }
+            else disp = (v === null || v === undefined) ? '—' : String(v);
+            var hl = (c === heroCol) ? ' style="color:#e30613"' : '';
+            return '<td class="px-2 py-1 whitespace-nowrap"' + hl + '>' + escapeHtml(disp) + '</td>';
+        }).join('') + '</tr>';
+    }).join('');
+    var more = rows.length > 12 ? '<div class="text-[10px] text-fg-muted mt-1">… mostrando 12 de ' + rows.length + ' linhas da amostra.</div>' : '';
+    return '<div class="overflow-auto max-h-52 border border-fg-border rounded-lg"><table class="text-[11px] w-full"><thead class="bg-fg-900/60 text-fg-muted sticky top-0"><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table></div>' + more;
+}
+
+function openExecAudit(key) {
+    var prov = _provFor(key);
+    if (!prov) { alert('Lastro indisponível para este número. Gere o deck novamente para auditar a Síntese.'); return; }
+    _openExecAuditWith(prov);
+}
+function openExecAuditForSlide(i) {
+    var s = ((_execDeck && _execDeck.slides) || [])[i]; if (!s) return;
+    _openExecAuditWith(_provFromSlide(s, i));
+}
+function closeExecAudit() { var ov = document.getElementById('execAuditModal'); if (ov) ov.remove(); }
+function _openExecAuditWith(prov) {
+    closeExecAudit();
+    var h = prov.hero || {}, src = prov.source || {}, cd = prov.chart_data || {}, conf = prov.confidence || {};
+    var tables = (src.tables || []).join(', ') || '—';
+    var comp = (src.min_completeness != null) ? Math.round(src.min_completeness) + '%' : 'não verificada';
+    var qual = (src.min_quality != null) ? Math.round(src.min_quality) + '%' : '—';
+    var rowCount = (cd.row_count != null ? cd.row_count : prov.row_count);
+    var rec = _execReconcile(prov), flags = _execAuditFlags(prov), cc = _execConfColor(conf.level || 'Média');
+    _execAuditCtx = {
+        label: h.label || '', value_formatted: h.value_formatted || '—', nl_question: prov.nl_question || '',
+        sql: prov.sql || '', hero_column: h.column || '', hero_agg: h.agg || '',
+        period: (_execDeck && _execDeck._period) || [], row_count: rowCount,
+        tables: src.tables || [], completeness: comp, sample_rows: (cd.rows || []).slice(0, 15),
+    };
+    var confChip = conf.level ? '<span class="text-[10px] font-semibold rounded-full px-2 py-0.5" style="background:' + cc.bg + ';border:1px solid ' + cc.bd + ';color:' + cc.fg + '">Confiança: ' + escapeHtml(conf.level) + '</span>' : '';
+    var ov = document.createElement('div');
+    ov.id = 'execAuditModal';
+    ov.className = 'fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+    ov.onclick = function (e) { if (e.target === ov) closeExecAudit(); };
+    ov.innerHTML =
+        '<div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">'
+        + '<div class="flex items-center justify-between px-5 py-3 border-b border-fg-border">'
+        + '<div class="text-sm font-bold text-fg-bright">🔍 Auditar número — ' + escapeHtml(prov.title || '') + '</div>'
+        + '<button onclick="closeExecAudit()" class="text-fg-muted hover:text-fg-accent">✕</button></div>'
+        + '<div class="overflow-auto px-5 py-4 space-y-4">'
+        + '<div class="flex items-end justify-between gap-3 flex-wrap">'
+        + '<div><div class="text-fg-accent font-extrabold" style="font-size:40px;line-height:1">' + escapeHtml(h.value_formatted || '—') + '</div>'
+        + '<div class="text-xs font-semibold text-fg-bright mt-1">' + escapeHtml(h.label || '') + '</div></div>' + confChip + '</div>'
+        + '<div><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Conferência automática</div>' + _execReconcileHtml(rec) + '</div>'
+        + (flags.length ? ('<div>' + _execFlagsHtml(flags) + '</div>') : '')
+        + '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">'
+        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Pergunta que originou</div><div class="text-fg-bright mt-0.5">' + escapeHtml(prov.nl_question || '—') + '</div></div>'
+        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Como o número é calculado</div><div class="text-fg-bright mt-0.5">' + escapeHtml(_aggLabel(h.agg || 'first')) + ' de <span style="color:#e30613">' + escapeHtml(h.column || '—') + '</span></div></div></div>'
+        + '<div class="grid grid-cols-3 gap-3 text-xs">'
+        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Linhas</div><div class="text-fg-bright font-semibold mt-0.5">' + (rowCount != null ? rowCount : '—') + '</div></div>'
+        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude</div><div class="text-fg-bright font-semibold mt-0.5">' + comp + '</div></div>'
+        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Qualidade</div><div class="text-fg-bright font-semibold mt-0.5">' + qual + '</div></div></div>'
+        + '<div class="text-[11px] text-fg-muted">Tabelas-fonte: <span class="text-fg-text">' + escapeHtml(tables) + '</span></div>'
+        + '<div><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Dados que geraram o número (amostra)</div>' + _execAuditSampleTable(cd, h.column) + '</div>'
+        + '<div><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">SQL executado</div><pre class="bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green overflow-x-auto font-mono border border-fg-border leading-relaxed">' + escapeHtml(prov.sql || '(sem SQL)') + '</pre></div>'
+        + '<div class="border-t border-fg-border pt-3"><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Pergunte sobre este número</div>'
+        + '<div class="flex gap-2"><input id="execAuditAsk" type="text" placeholder="ex.: esse total inclui pós-pago? por que parece alto?" class="flex-1 bg-fg-700 border border-fg-border rounded-lg px-3 py-1.5 text-xs focus:border-fg-accent focus:outline-none" onkeydown="if(event.key===\'Enter\')askAboutNumber()">'
+        + '<button id="execAuditAskBtn" onclick="askAboutNumber()" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap">Explicar</button></div>'
+        + '<div id="execAuditAnswer" class="text-xs mt-2"></div></div>'
+        + '</div>'
+        + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">O número vem do SQL (auditável); a explicação é assistida por IA e não altera o valor.</span>'
+        + '<button onclick="closeExecAudit()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Fechar</button></div></div>';
+    document.body.appendChild(ov);
+    var inp = document.getElementById('execAuditAsk'); if (inp) inp.focus();
+}
+async function askAboutNumber() {
+    var inp = document.getElementById('execAuditAsk'); var q = (inp.value || '').trim();
+    var ans = document.getElementById('execAuditAnswer');
+    if (!q) { inp.focus(); return; }
+    var ctx = _execAuditCtx || {};
+    var btn = document.getElementById('execAuditAskBtn'); var old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Consultando…'; }
+    ans.innerHTML = '<span class="text-fg-muted">⏳ Lendo o SQL e a amostra…</span>';
+    var ctrl = new AbortController(); var to = setTimeout(function () { ctrl.abort(); }, 120000);
+    try {
+        var res = await fetch('/api/exec/number/explain', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, context: ctx }), signal: ctrl.signal });
+        var d = await res.json();
+        if (d.detail) { ans.innerHTML = '<span style="color:#f85149">' + escapeHtml(_fmtApiError(d)) + '</span>'; return; }
+        ans.innerHTML = '<div class="text-fg-text/90 leading-relaxed border-l-2 border-fg-accent/40 pl-3">' + escapeHtml(d.answer || '(sem resposta)') + '</div>';
+    } catch (e) {
+        var aborted = e && e.name === 'AbortError';
+        ans.innerHTML = '<span style="color:#f85149">' + (aborted ? 'A explicação demorou demais e foi cancelada.' : 'Não foi possível explicar agora (a falha foi registrada em Configurações › Falhas).') + '</span>';
+        _recordClientFailure({ source: 'exec', question: 'Auditar número: ' + q, error_message: String((e && e.message) || e), error_type: (e && e.name) || 'ClientError', model: '' });
+    } finally { clearTimeout(to); if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
+// --- Portão pré-save: varre os números e alerta os não-reconferidos ---
+function _collectIssues(prov, issues) {
+    var rec = _execReconcile(prov);
+    if (rec.status === 'mismatch') issues.push({ key: prov.key, title: prov.title, kind: 'mismatch', message: rec.note });
+    _execAuditFlags(prov).forEach(function (f) { if (f.lvl === 'warn') issues.push({ key: prov.key, title: prov.title, kind: 'flag', message: f.txt }); });
+}
+function _execAuditSweep() {
+    var issues = []; if (!_execDeck) return issues; var seen = {};
+    (_execDeck.slides || []).forEach(function (s, i) {
+        if (s.type === 'insight' && s.hero) { var p = _provFromSlide(s, i); _collectIssues(p, issues); if (s.key) seen[s.key] = 1; }
+        if (s.type === 'sintese') { (s.callouts || []).forEach(function (c) { if (c.key && !seen[c.key]) { var pv = _provFor(c.key); if (pv) { _collectIssues(pv, issues); seen[c.key] = 1; } } }); }
+    });
+    return issues;
+}
+function _execSaveGate(issues) {
+    return new Promise(function (resolve) {
+        var ov = document.createElement('div');
+        ov.id = 'execSaveGateModal';
+        ov.className = 'fixed inset-0 z-[71] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+        var list = issues.slice(0, 12).map(function (it) {
+            var ic = it.kind === 'mismatch' ? '⚠' : '·';
+            return '<button onclick="_saveGateReview(\'' + (it.key || '') + '\')" class="w-full text-left bg-fg-900/60 hover:bg-fg-700/40 border border-fg-border rounded-lg p-2 transition text-xs"><span style="color:#f59e0b">' + ic + '</span> <span class="text-fg-bright">' + escapeHtml(it.title || '') + '</span> <span class="text-fg-muted">— ' + escapeHtml(it.message || '') + '</span></button>';
+        }).join('');
+        ov.innerHTML =
+            '<div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-lg flex flex-col shadow-2xl">'
+            + '<div class="flex items-center justify-between px-5 py-3 border-b border-fg-border"><div class="text-sm font-bold text-fg-bright">Conferência antes de salvar</div><button onclick="_saveGateResolve(\'cancel\')" class="text-fg-muted hover:text-fg-accent">✕</button></div>'
+            + '<div class="px-5 py-4 space-y-2"><div class="text-xs text-fg-muted">' + issues.length + ' número(s) não puderam ser reconferidos automaticamente. Clique para auditar cada um, ou salve mesmo assim.</div><div class="space-y-1.5 max-h-72 overflow-auto">' + list + '</div></div>'
+            + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">Salvar não apaga a auditoria — você pode reabrir e revisar depois.</span>'
+            + '<button onclick="_saveGateResolve(\'cancel\')" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Cancelar</button>'
+            + '<button onclick="_saveGateResolve(\'proceed\')" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold">Salvar mesmo assim</button></div></div>';
+        document.body.appendChild(ov);
+        window._saveGateResolve = function (action) { var m = document.getElementById('execSaveGateModal'); if (m) m.remove(); delete window._saveGateResolve; delete window._saveGateReview; resolve(action); };
+        window._saveGateReview = function (key) { var m = document.getElementById('execSaveGateModal'); if (m) m.remove(); delete window._saveGateResolve; delete window._saveGateReview; resolve('cancel'); if (key) openExecAudit(key); };
+    });
+}
+
 // ---- Reexecutar deck: replay determinístico (recorte + janela) ----
 let _replayParams = null;
 let _replaySegments = {};
@@ -4179,6 +4450,12 @@ function renderExecDecksList(list) {
 }
 async function saveExecDeck() {
     if (!_execDeck) return;
+    // Portão de conferência: alerta números não-reconferidos antes de persistir.
+    const issues = _execAuditSweep();
+    if (issues.length) {
+        const action = await _execSaveGate(issues);
+        if (action !== 'proceed') return;
+    }
     const name = prompt('Nome do deck:', _execDeck.title || 'Deck executivo');
     if (!name) return;
     const btn = document.getElementById('execSaveBtn');
