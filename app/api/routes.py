@@ -14,7 +14,7 @@ from datetime import date as _date
 
 from app.models.schemas import (
     QueryRequest, ExecHeroRequest, ExecDeckRequest, ExecDeckSaveRequest, ExecDeckUpdateRequest,
-    ExecDeckParamsRequest, ExecReplayRequest, ExecNarrateRequest,
+    ExecDeckParamsRequest, ExecReplayRequest, ExecNarrateRequest, ExecTemporalColumnsRequest,
     PlaybookCreate, PlaybookUpdate, PlaybookCopyRequest,
     FailureCreate, FailureArtifact, FailureStatusUpdate,
     AnalysisTypeCreate, AnalysisTypeUpdate,
@@ -999,6 +999,7 @@ async def exec_deck(req: ExecDeckRequest, user: dict = Depends(get_current_user)
         return await compose_deck(
             req.question, user, accessible, apply_login_filter,
             n_insights=req.n_insights or 4,
+            temporal_ranges=req.temporal_ranges or None,
         )
     except HTTPException:
         raise
@@ -1030,6 +1031,7 @@ async def exec_deck_stream(req: ExecDeckRequest, user: dict = Depends(get_curren
             deck = await compose_deck(
                 req.question, user, accessible, apply_login_filter,
                 n_insights=req.n_insights or 4, on_progress=on_progress,
+                temporal_ranges=req.temporal_ranges or None,
             )
             await queue.put(("done", deck))
         except Exception as e:
@@ -1083,6 +1085,25 @@ async def exec_deck_params(req: ExecDeckParamsRequest, user: dict = Depends(get_
         raise HTTPException(status_code=500, detail="Erro ao analisar parâmetros do deck. O detalhe foi registrado em Falhas.")
 
 
+@router.post("/exec/temporal-columns")
+async def exec_temporal_columns(req: ExecTemporalColumnsRequest, user: dict = Depends(get_current_user)):
+    """Detecta colunas temporais (data/tempo) das tabelas acessíveis — alimenta o
+    portão de confirmação de período na 1ª geração do deck."""
+    from app.services.exec_replay_service import _temporal_columns_for
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    try:
+        # accessible=None = root sem filtro: ainda não dá p/ saber as tabelas do
+        # deck → retorna vazio (o portão mostra "todo o período"; o painel
+        # Reexecutar detecta das tabelas reais do deck depois da geração).
+        if accessible is None:
+            return {"temporal_columns": []}
+        return {"temporal_columns": _temporal_columns_for(accessible)}
+    except Exception as e:
+        _record_exec_failure(user, "exec/temporal-columns", "(detecção de período)", e,
+                             req.datamart_ids, req.diamond_layer_ids)
+        raise HTTPException(status_code=500, detail="Erro ao detectar colunas de período. O detalhe foi registrado em Falhas.")
+
+
 @router.post("/exec/deck/replay")
 async def exec_deck_replay(req: ExecReplayRequest, user: dict = Depends(get_current_user)):
     """Reexecuta determinístico o deck com recorte de segmento + janela (sem LLM).
@@ -1093,10 +1114,12 @@ async def exec_deck_replay(req: ExecReplayRequest, user: dict = Depends(get_curr
     accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
     apply_login_filter = not is_root(user) if user else False
     filters = [{"column": f.column, "values": f.values} for f in (req.segment_filters or [])]
+    ranges = [{"column": r.column, "kind": r.kind, "start": r.start, "end": r.end}
+              for r in (req.temporal_ranges or [])]
     try:
         return replay_deck(
-            req.deck_spec, segment_filters=filters, window=req.window, user=user,
-            accessible_tables=accessible, apply_login_filter=apply_login_filter,
+            req.deck_spec, segment_filters=filters, window=req.window, temporal_ranges=ranges,
+            user=user, accessible_tables=accessible, apply_login_filter=apply_login_filter,
         )
     except HTTPException:
         raise

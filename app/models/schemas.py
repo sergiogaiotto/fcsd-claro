@@ -44,6 +44,7 @@ class ExecDeckRequest(BaseModel):
     datamart_ids: Optional[list[int]] = Field(None, description="IDs dos DataMarts para focar a análise")
     diamond_layer_ids: Optional[list[int]] = Field(None, description="IDs das DiamondLayers para focar a análise")
     n_insights: Optional[int] = Field(4, ge=2, le=5, description="Quantidade de slides de insight (2 a 5)")
+    temporal_ranges: Optional[list[dict]] = Field(None, description="Intervalos temporais (período) [{column,kind,start,end}]")
 
 
 class ExecDeckSaveRequest(BaseModel):
@@ -72,10 +73,25 @@ class ExecSegmentFilter(BaseModel):
     values: list[str] = Field(default_factory=list)
 
 
+class ExecTemporalRange(BaseModel):
+    """Intervalo temporal (início→fim) para uma coluna de data/período."""
+    column: str = Field(..., max_length=120)
+    kind: str = Field("date", pattern="^(date|numeric)$")
+    start: str = Field("", max_length=40)
+    end: str = Field("", max_length=40)
+
+
+class ExecTemporalColumnsRequest(BaseModel):
+    """Detecta colunas temporais das tabelas acessíveis (portão da 1ª geração)."""
+    datamart_ids: Optional[list[int]] = None
+    diamond_layer_ids: Optional[list[int]] = None
+
+
 class ExecReplayRequest(BaseModel):
-    """Reexecuta determinístico um deck com recorte de segmento + janela."""
+    """Reexecuta determinístico um deck com recorte de segmento + janela + período."""
     deck_spec: dict = Field(..., description="Deck a reexecutar")
     segment_filters: list[ExecSegmentFilter] = Field(default_factory=list)
+    temporal_ranges: list[ExecTemporalRange] = Field(default_factory=list)
     window: Optional[str] = Field(None, pattern="^(3m|6m|12m)$")
     datamart_ids: Optional[list[int]] = None
     diamond_layer_ids: Optional[list[int]] = None

@@ -103,6 +103,105 @@ def _safe_ident(name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Detecção de colunas temporais (período / intervalo de datas)
+# ---------------------------------------------------------------------------
+
+_TEMPORAL_TOKENS = {
+    "data", "datas", "date", "datetime", "timestamp", "hora", "ano", "year",
+    "mes", "mês", "month", "dia", "day", "periodo", "período", "safra",
+    "semestre", "trimestre", "competencia", "competência", "ref",
+}
+
+
+def _name_is_temporal(name: str) -> bool:
+    """Heurística de nome (fallback quando não há catálogo). Casa por TOKEN
+    (split em não-alfanumérico) para evitar falsos positivos tipo 'media'→'dia'."""
+    n = (name or "").lower()
+    toks = set(t for t in _re.split(r"[^a-z0-9]+", n) if t)
+    if toks & _TEMPORAL_TOKENS:
+        return True
+    return n.startswith("dt_") or n.startswith("data") or n.endswith("_dt") or "_data_" in n
+
+
+def _table_typed_columns(table: str) -> dict:
+    """{col_lower: (col_name, data_type)} via information_schema."""
+    t = (table or "").lower()
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT column_name, data_type FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND LOWER(table_name) = ? ORDER BY ordinal_position",
+            (t,),
+        ).fetchall()
+        out = {}
+        for r in rows:
+            d = dict(r)
+            nm = str(d.get("column_name"))
+            out[nm.lower()] = (nm, str(d.get("data_type") or ""))
+        return out
+    except Exception:
+        return {}
+    finally:
+        conn.close()
+
+
+def _get_column_range(table: str, col: str):
+    """(min, max) de uma coluna — pré-preenche o controle início→fim."""
+    if not _safe_ident(table) or not _safe_ident(col):
+        return None, None
+    conn = get_sync_connection()
+    try:
+        row = conn.execute(
+            f'SELECT MIN("{col}") AS mn, MAX("{col}") AS mx FROM "{table}" WHERE "{col}" IS NOT NULL'
+        ).fetchone()
+        if not row:
+            return None, None
+        d = dict(row)
+        return d.get("mn"), d.get("mx")
+    except Exception:
+        return None, None
+    finally:
+        conn.close()
+
+
+def _temporal_columns_for(tables) -> list[dict]:
+    """Colunas temporais das tabelas: por tipo semântico do Catálogo ('data/tempo'),
+    por tipo físico (date/timestamp) ou por heurística de nome. Retorna
+    [{name, table, kind('date'|'numeric'), min, max}] deduplicado por nome."""
+    try:
+        from app.services.catalog_service import get_catalog_context
+        cat = get_catalog_context([str(t) for t in (tables or [])]) or {}
+    except Exception:
+        cat = {}
+    # mapa case-insensitive nome-tabela -> {col_lower: semantic_type}
+    sem_by_table: dict[str, dict] = {}
+    for tname, tinfo in (cat or {}).items():
+        m = {}
+        for c in (tinfo.get("columns") or []):
+            m[(c.get("name") or "").lower()] = (c.get("semantic_type") or "").strip().lower()
+        sem_by_table[str(tname).lower()] = m
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    for t in sorted({str(x).lower() for x in (tables or [])}):
+        sem = sem_by_table.get(t, {})
+        for col_lower, (name, dtype) in _table_typed_columns(t).items():
+            if col_lower in seen:
+                continue
+            dl = (dtype or "").lower()
+            is_date_type = ("date" in dl) or ("timestamp" in dl)
+            is_temporal = (sem.get(col_lower) == "data/tempo") or is_date_type or _name_is_temporal(name)
+            if not is_temporal:
+                continue
+            kind = "date" if (is_date_type or "time" in dl) else "numeric"
+            mn, mx = _get_column_range(t, name)
+            seen.add(col_lower)
+            out.append({"name": name, "table": t, "kind": kind,
+                        "min": _json_safe(mn), "max": _json_safe(mx)})
+    return out
+
+
+# ---------------------------------------------------------------------------
 # sqlglot — parse / transforms / regenerate
 # ---------------------------------------------------------------------------
 
@@ -192,6 +291,66 @@ def _apply_filter(node, column: str, values: list[str], valid_columns: set[str])
     kept = _existing_where_conditions(node, drop_column=column)
     _set_where(node, kept + [pred])
     return True
+
+
+def _temporal_literal(v, kind: str):
+    if kind == "numeric":
+        try:
+            return exp.Literal.number(str(int(float(v))))
+        except Exception:
+            return exp.Literal.string(str(v))
+    return exp.Literal.string(str(v))  # 'YYYY-MM-DD' — Postgres casta p/ date
+
+
+def _apply_temporal_range(node, column: str, start, end, kind: str, valid_columns: set[str]) -> bool:
+    """Injeta o intervalo temporal: `col BETWEEN start AND end` (ou `>=`/`<=` se
+    só um lado). Independente por coluna. Só atua se a coluna existe no slide."""
+    column = (column or "").strip()
+    has_start = start not in (None, "")
+    has_end = end not in (None, "")
+    if not column or column.lower() not in valid_columns or not (has_start or has_end):
+        return False
+    col = exp.column(column)
+    if has_start and has_end:
+        pred = exp.Between(this=col, low=_temporal_literal(start, kind), high=_temporal_literal(end, kind))
+    elif has_start:
+        pred = exp.GTE(this=col, expression=_temporal_literal(start, kind))
+    else:
+        pred = exp.LTE(this=col, expression=_temporal_literal(end, kind))
+    kept = _existing_where_conditions(node, drop_column=column)
+    _set_where(node, kept + [pred])
+    return True
+
+
+def apply_temporal_to_sql(sql: str, temporal_ranges, accessible_tables=None,
+                          login: str = "", apply_login_filter: bool = True):
+    """Usado na GERAÇÃO: injeta os ranges temporais num SQL recém-gerado e
+    reexecuta. Retorna (new_sql, data|None, err). data=None & err=None significa
+    'nenhuma coluna do range existe neste slide' (caller mantém o original)."""
+    if not temporal_ranges:
+        return sql, None, None
+    node = _parse(sql)
+    if node is None:
+        return sql, None, "SQL não pôde ser parseado."
+    if not _is_simple_select(node):
+        return sql, None, "Estrutura de SQL não suportada para filtro de período (UNION/CTE/subconsulta)."
+    valid = _valid_columns_for(node)
+    applied = False
+    for tr in temporal_ranges:
+        if _apply_temporal_range(node, tr.get("column"), tr.get("start"), tr.get("end"),
+                                 (tr.get("kind") or "date"), valid):
+            applied = True
+    if not applied:
+        return sql, None, None
+    login_tables = set()
+    if apply_login_filter and login:
+        login_tables = {str(t).lower() for t in (get_tables_with_login_column(accessible_tables) or [])}
+    _ensure_login_filter(node, login, login_tables)
+    new_sql = _regenerate(node)
+    data = execute_readonly_sql(new_sql)
+    if isinstance(data, dict) and "error" in data:
+        return new_sql, None, data.get("error")
+    return new_sql, data, None
 
 
 def _ensure_login_filter(node, login: str, login_tables: set[str]) -> None:
@@ -310,6 +469,7 @@ def analyze_deck_params(deck_spec: dict, accessible_tables=None) -> dict:
     return {
         "windows": [w for w in _WINDOWS if w in windows],
         "dimensions": dimensions,
+        "temporal_columns": _temporal_columns_for(tables),
         "tables": sorted(tables),
     }
 
@@ -330,7 +490,8 @@ def _is_simple_select(node) -> bool:
     return True
 
 
-def _replay_one_sql(sql: str, segment_filters, window, login, login_tables, allowed_tables=None):
+def _replay_one_sql(sql: str, segment_filters, window, login, login_tables, allowed_tables=None,
+                    temporal_ranges=None):
     """Aplica transforms a um SQL e reexecuta. Retorna (new_sql, data|None, applied_filters, error)."""
     node = _parse(sql)
     if node is None:
@@ -343,7 +504,7 @@ def _replay_one_sql(sql: str, segment_filters, window, login, login_tables, allo
             return sql, None, [], f"Tabela(s) não autorizada(s): {', '.join(sorted(not_allowed))}."
 
     touches_login = bool(login_tables and (_slide_tables(node) & login_tables))
-    need_transform = bool(segment_filters) or bool(window)
+    need_transform = bool(segment_filters) or bool(window) or bool(temporal_ranges)
 
     if not _is_simple_select(node):
         # SQL complexo (UNION/CTE/subquery): modificar a WHERE não atingiria todos
@@ -352,7 +513,7 @@ def _replay_one_sql(sql: str, segment_filters, window, login, login_tables, allo
             # Não dá p/ garantir o filtro de login em SQL complexo → não executa.
             return sql, None, [], "SQL com UNION/CTE/subconsulta sobre tabela com RLS por login não é reexecutável com segurança."
         if need_transform:
-            return sql, None, [], "Estrutura de SQL não suportada para recorte/janela seguros (UNION/CTE/subconsulta)."
+            return sql, None, [], "Estrutura de SQL não suportada para recorte/janela/período seguros (UNION/CTE/subconsulta)."
         # Sem transform e sem RLS de login: reexecução VERBATIM (o filtro de login
         # original, se houver, já está embutido no SQL gerado).
         data = execute_readonly_sql(sql)
@@ -367,6 +528,10 @@ def _replay_one_sql(sql: str, segment_filters, window, login, login_tables, allo
         col = (f.get("column") or "").strip()
         if _apply_filter(node, col, f.get("values") or [], valid):
             applied.append(col)
+    for tr in temporal_ranges or []:
+        if _apply_temporal_range(node, tr.get("column"), tr.get("start"), tr.get("end"),
+                                 (tr.get("kind") or "date"), valid):
+            applied.append((tr.get("column") or "").strip())
     if window and len(_slide_tables(node)) <= 1:  # swap de janela só em single-table
         _swap_window(node, window, valid)
     _ensure_login_filter(node, login, login_tables)
@@ -414,10 +579,10 @@ def _recompute_insight(slide: dict, data: dict, new_sql: str) -> bool:
     return True
 
 
-def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, user=None,
-                accessible_tables=None, apply_login_filter: bool = True) -> dict:
-    """Reexecuta o deck determinístico com recorte/janela. Muta uma cópia rasa
-    dos slides e devolve o novo deck_spec com `_replay` de auditoria."""
+def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, temporal_ranges=None,
+                user=None, accessible_tables=None, apply_login_filter: bool = True) -> dict:
+    """Reexecuta o deck determinístico com recorte/janela/período. Muta uma cópia
+    rasa dos slides e devolve o novo deck_spec com `_replay` de auditoria."""
     import copy
     _TABLE_COLS_CACHE.clear()  # frescor por requisição (schema pode ter mudado)
     deck = copy.deepcopy(deck_spec or {})
@@ -435,7 +600,8 @@ def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, user=None
         if s.get("type") != "insight" or not s.get("sql"):
             continue
         new_sql, data, applied, err = _replay_one_sql(
-            s["sql"], segment_filters, window, login, login_tables, allowed_tables
+            s["sql"], segment_filters, window, login, login_tables, allowed_tables,
+            temporal_ranges=temporal_ranges,
         )
         if err or data is None:
             s["replay_error"] = err or "Sem dados após reexecução."
@@ -447,7 +613,8 @@ def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, user=None
             continue
         # Causal: reaplica transforms ao SQL causal e reexecuta (best-effort).
         if s.get("causal") and (s["causal"].get("sql")):
-            _replay_causal(s, segment_filters, window, login, login_tables, allowed_tables)
+            _replay_causal(s, segment_filters, window, login, login_tables, allowed_tables,
+                           temporal_ranges=temporal_ranges)
         updated.append(s.get("key"))
 
     _resync_sintese_callouts(deck)
@@ -455,6 +622,7 @@ def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, user=None
     deck["_replay"] = {
         "segment_filters": segment_filters or [],
         "window": window or "",
+        "temporal_ranges": temporal_ranges or [],
         "slides_updated": updated,
         "slides_skipped": skipped,
     }
@@ -470,7 +638,8 @@ def _mark_causal_degraded(slide: dict, reason: str) -> None:
     slide["causal"] = c
 
 
-def _replay_causal(slide: dict, segment_filters, window, login, login_tables, allowed_tables=None) -> None:
+def _replay_causal(slide: dict, segment_filters, window, login, login_tables, allowed_tables=None,
+                   temporal_ranges=None) -> None:
     """Reexecuta o backbone causal (PSM) com os mesmos transforms. Degrada para o
     causal original em qualquer fragilidade (filosofia do _attach_causal), mas
     SINALIZA a degradação (_degraded) para não passar número causal estável por
@@ -480,7 +649,8 @@ def _replay_causal(slide: dict, segment_filters, window, login, login_tables, al
     outcome = (causal.get("outcome") or "").strip()
     covs = [str(c).strip() for c in (causal.get("covariates") or []) if c]
     new_sql, data, _applied, err = _replay_one_sql(
-        causal.get("sql", ""), segment_filters, window, login, login_tables, allowed_tables
+        causal.get("sql", ""), segment_filters, window, login, login_tables, allowed_tables,
+        temporal_ranges=temporal_ranges,
     )
     if err or data is None:
         return _mark_causal_degraded(slide, "Reexecução do SQL causal falhou.")

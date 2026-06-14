@@ -191,7 +191,8 @@ def _chart_spec(columns: list[str], rows: list[dict], hero: dict) -> dict | None
     }
 
 
-async def _resolve_slide(q: dict, user_login: str, accessible_tables, apply_login_filter) -> dict:
+async def _resolve_slide(q: dict, user_login: str, accessible_tables, apply_login_filter,
+                         temporal_ranges=None) -> dict:
     result = await run_query(
         question=q["nl_question"],
         result_limit=0,
@@ -202,6 +203,19 @@ async def _resolve_slide(q: dict, user_login: str, accessible_tables, apply_logi
     data = result.get("data") or {}
     sql = result.get("sql_generated", "") or ""
     explanation = result.get("explanation", "") or ""
+    # Filtro de período (escolhido no portão): reinjeta o intervalo no SQL gerado
+    # e reexecuta. Se a coluna não existir no slide ou o SQL for complexo, mantém
+    # o resultado original (transparente). Determinístico, reusa o motor de replay.
+    if temporal_ranges and sql and not (isinstance(data, dict) and "error" in data):
+        try:
+            from app.services.exec_replay_service import apply_temporal_to_sql
+            t_sql, t_data, t_err = apply_temporal_to_sql(
+                sql, temporal_ranges, accessible_tables, user_login, apply_login_filter)
+            if t_data is not None and not t_err:
+                sql = t_sql
+                data = t_data
+        except Exception:
+            pass
     out = {
         "key": q["key"], "section": q["section"], "title": q["title"],
         "nl_question": q["nl_question"], "sql": sql, "narrative": _clean_narrative(explanation),
@@ -548,6 +562,7 @@ async def compose_deck(
     apply_login_filter: bool,
     n_insights: int = 4,
     on_progress=None,
+    temporal_ranges=None,
 ) -> dict:
     n_insights = max(2, min(5, int(n_insights or 4)))
     user_login = (user or {}).get("login", "") if user else ""
@@ -568,7 +583,8 @@ async def compose_deck(
     for _qi, q in enumerate(plan["questions"]):
         _emit({"phase": "resolve", "i": _qi + 1, "total": _total_q, "title": q.get("title", "")})
         try:
-            resolved.append(await _resolve_slide(q, user_login, accessible_tables, apply_login_filter))
+            resolved.append(await _resolve_slide(q, user_login, accessible_tables, apply_login_filter,
+                                                 temporal_ranges=temporal_ranges))
         except Exception as e:
             resolved.append({"key": q["key"], "section": q["section"], "title": q["title"],
                              "nl_question": q["nl_question"], "sql": "", "narrative": "",
@@ -611,4 +627,5 @@ async def compose_deck(
     _emit({"phase": "assemble"})
     deck = _assemble(question, plan, ok, synthesis, governance, source_global)
     deck["generated_at"] = _dt.datetime.utcnow().isoformat() + "Z"
+    deck["_period"] = temporal_ranges or []  # escopo temporal escolhido (auditoria + reuso)
     return deck
