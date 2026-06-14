@@ -336,17 +336,28 @@ def _kpis(prs, sp, deck, page):
     s = _slide(prs)
     _header(s, sp)
     metas = sp.get("metas") or []
+    bottom_y = 3.3
     if metas:
         n = len(metas)
         gap = 0.2
         cw = (SW - 2 * M - gap * (n - 1)) / n
+        card_top, card_h = 1.55, 2.35
         for i, m in enumerate(metas):
             x = M + i * (cw + gap)
-            _rect(s, x, 1.6, cw, 1.25, fill=LIGHT)
-            _txt(s, x + 0.1, 1.72, cw - 0.2, 0.7, m.get("value", ""), size=28, bold=True, color=RED, align="c")
-            _txt(s, x + 0.1, 2.42, cw - 0.2, 0.35, m.get("label", ""), size=10, color=MUTED, align="c")
+            _rect(s, x, card_top, cw, card_h, fill=LIGHT)
+            val = str(m.get("value", "") or "")
+            # Fonte adaptativa ao tamanho do texto: valores longos usam um corpo
+            # menor para caber sem sobrepor o rótulo — sem cortar conteúdo.
+            L = len(val)
+            vsize = (30 if L <= 6 else 24 if L <= 12 else 19 if L <= 20
+                     else 15 if L <= 32 else 13 if L <= 48 else 11)
+            _txt(s, x + 0.12, card_top + 0.12, cw - 0.24, 1.45, val,
+                 size=vsize, bold=True, color=RED, align="c", anchor=MSO_ANCHOR.MIDDLE)
+            _txt(s, x + 0.12, card_top + 1.62, cw - 0.24, card_h - 1.74,
+                 m.get("label", ""), size=10, color=MUTED, align="c", anchor=MSO_ANCHOR.TOP)
+        bottom_y = card_top + card_h + 0.35  # empurra a seção de baixo p/ não colidir
     colw = (SW - 2 * M - 0.4) / 2
-    y = 3.3
+    y = bottom_y
     _txt(s, M, y, colw, 0.35, "Ritual de gestão", size=13, bold=True, color=INK)
     _bullets(s, M, y + 0.45, colw, 2.2, sp.get("ritual") or [], size=12, color=INK)
     x2 = M + colw + 0.4
