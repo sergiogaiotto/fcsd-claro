@@ -405,7 +405,11 @@ class ShareCreate(BaseModel):
     sql_generated: str = Field("", description="SQL gerado pelo agente para a consulta compartilhada")
     datamart_ids: list[int] = Field(
         default_factory=list,
-        description="IDs dos DataMarts referenciados pela consulta — recipient precisa ter acesso a todos",
+        description="IDs dos DataMarts referenciados pela consulta",
+    )
+    diamond_layer_ids: list[int] = Field(
+        default_factory=list,
+        description="IDs das DiamondLayers referenciadas pela consulta",
     )
     label: str = Field("", description="Rótulo curto exibido na inbox do destinatário")
     message: str = Field("", description="Mensagem opcional do remetente")
