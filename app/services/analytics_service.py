@@ -1,5 +1,5 @@
 """
-Quick Insights — Analytics Service (Análise Avançada)
+Fale com Seus Dados — Analytics Service (Análise Avançada)
 
 Descriptive: central tendency, dispersion, position, histograms, correlation matrix,
              scatter plots, frequency tables + charts.
@@ -1996,7 +1996,7 @@ def generate_analytics_html(data: dict) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quick Insights — Análise Avançada</title>
+    <title>Fale com Seus Dados — Análise Avançada</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -2086,7 +2086,7 @@ def generate_analytics_html(data: dict) -> str:
 <body>
 
 <div class="aa-header">
-    <div class="aa-logo">QUICK<span>INSIGHTS</span> — Análise Avançada</div>
+    <div class="aa-logo">FALE COM <span>SEUS DADOS</span> — Análise Avançada</div>
     <div class="aa-tabs">
         <div class="aa-tab active" onclick="switchTab('descriptive',this)">Descritiva</div>
         <div class="aa-tab" onclick="switchTab('predictive',this)">Preditiva</div>
@@ -3820,7 +3820,7 @@ document.addEventListener('DOMContentLoaded', () => updateCausalUI());
 
 def _empty_html() -> str:
     return """<!DOCTYPE html>
-<html><head><title>Quick Insights</title></head>
+<html><head><title>Fale com Seus Dados</title></head>
 <body style="background:#0a0c10;color:#8b949e;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <div style="text-align:center">
 <h2 style="color:#ff6347">Sem dados para análise</h2>

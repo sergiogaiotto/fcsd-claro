@@ -22,7 +22,7 @@ def build_eml(
 
     intro = (
         "<p>Prezado(a),</p>"
-        "<p>Segue em anexo os dados solicitados via Quick Insights.</p>"
+        "<p>Segue em anexo os dados solicitados via Fale com Seus Dados.</p>"
     )
     full_body = f"<html><body>{intro}{body_html}</body></html>"
     msg.attach(MIMEText(full_body, "html", "utf-8"))

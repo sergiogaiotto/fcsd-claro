@@ -1,5 +1,5 @@
 """
-Quick Insights — Deep Agent Service
+Fale com Seus Dados — Deep Agent Service
 
 Architecture based on deepagents/examples/text-to-sql-agent:
 - Uses OpenAI via langchain-openai

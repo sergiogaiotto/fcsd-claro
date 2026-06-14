@@ -1,5 +1,5 @@
 """
-Quick Insights — Data Catalog Service
+Fale com Seus Dados — Data Catalog Service
 
 Módulo de Catálogo de Dados com:
 - Profiling automático (estatísticas descritivas por coluna)
