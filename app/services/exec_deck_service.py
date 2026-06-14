@@ -90,6 +90,25 @@ def _llm_json(system: str, human: str, temperature: float = 0.2) -> dict | None:
         return None
 
 
+def _llm_text(system: str, human: str, temperature: float = 0.2) -> str | None:
+    """Invoca o modelo geral e devolve TEXTO simples (não JSON). Usado pela
+    explicação assistida do número ('Pergunte sobre este número'). None em falha."""
+    try:
+        from app.services.llm_factory import make_general_llm
+        from langchain_core.messages import HumanMessage, SystemMessage
+    except Exception:
+        return None
+    try:
+        llm = make_general_llm(temperature=temperature)
+        resp = llm.invoke([SystemMessage(content=system), HumanMessage(content=human)])
+        text = resp.content if hasattr(resp, "content") else str(resp)
+        if isinstance(text, list):
+            text = " ".join(str(t) for t in text)
+        return (text or "").strip() or None
+    except Exception:
+        return None
+
+
 def _catalog_text(accessible_tables: list[str] | None) -> str:
     try:
         from app.services.catalog_service import build_cockpit_catalog_context, get_catalog_context
@@ -490,6 +509,15 @@ def _assemble(question, plan, resolved, synthesis, governance, source_global) ->
                        "ritual": (governance.get("ritual") or [])[:3],
                        "donos": (governance.get("donos") or [])[:3]})
 
+    # Lastro por número (auditoria pré-save): cada achado resolvido, keyed por
+    # `key`. Inclui o panorama — cujo número vira callout na Síntese mas não vira
+    # slide — fechando a lacuna que antes deixava o número-manchete sem SQL.
+    provenance = {}
+    for r in resolved:
+        k = r.get("key")
+        if k:
+            provenance[k] = _provenance_entry(r)
+
     return {
         "title": plan.get("title") or question[:80],
         "subtitle": thesis,
@@ -499,6 +527,37 @@ def _assemble(question, plan, resolved, synthesis, governance, source_global) ->
         "source_footer": _source_footer(source_global),
         "slides": slides,
         "n_slides": len(slides),
+        "_provenance": provenance,
+    }
+
+
+def _provenance_entry(r: dict) -> dict:
+    """Lastro auditável de UM achado resolvido (panorama OU insight), keyed por
+    `key`. Torna TODO número do deck rastreável — inclusive o callout-manchete do
+    panorama, que hoje vira card na Síntese mas não vira slide (logo perdia o SQL).
+    Carrega o suficiente para o drawer 'Auditar' reconferir o número client-side:
+    SQL, tabelas-fonte/completude, amostra de linhas e coluna/agg do herói."""
+    h = r.get("hero") or {}
+    cd = r.get("chart_data") or {}
+    return {
+        "key": r.get("key"),
+        "title": r.get("title", ""),
+        "section": r.get("section", ""),
+        "nl_question": r.get("nl_question", ""),
+        "sql": r.get("sql", ""),
+        "source": r.get("source", {}),
+        "confidence": r.get("confidence", {}),
+        "row_count": r.get("row_count", 0),
+        # amostra suficiente p/ reconferência determinística (cap defensivo)
+        "chart_data": {"columns": cd.get("columns") or [],
+                       "rows": (cd.get("rows") or [])[:60],
+                       "row_count": cd.get("row_count")},
+        "hero": {
+            "column": h.get("column"), "agg": h.get("agg"),
+            "value_raw": h.get("value_raw"), "fmt": h.get("fmt"),
+            "label": h.get("label", ""), "value_formatted": h.get("value_formatted", "—"),
+            "is_numeric": h.get("is_numeric"),
+        },
     }
 
 
@@ -549,6 +608,52 @@ async def resolve_single_slide(question, user, accessible_tables, apply_login_fi
         "sql": r.get("sql", ""),
         "source": r.get("source", {}),
     }
+
+
+# ---------------------------------------------------------------------------
+# Auditoria assistida — "Pergunte sobre este número" (traduz o SQL p/ negócio)
+# ---------------------------------------------------------------------------
+
+def explain_number(question: str, ctx: dict) -> dict:
+    """Responde, em linguagem de negócio (PT-BR), de onde vem um número do deck —
+    lendo o SQL gerado, a amostra de linhas, as tabelas-fonte e o período aplicado.
+    NÃO toca no número (auditável): só explica/contextualiza. Honesto sobre o que
+    o SQL inclui/exclui e sobre o que não dá pra saber pela amostra."""
+    sql = (ctx.get("sql") or "").strip()
+    sample = ctx.get("sample_rows") or []
+    period = ctx.get("period") or []
+    period_txt = "; ".join(
+        f"{p.get('column','?')} de {p.get('start') or '…'} até {p.get('end') or '…'}"
+        for p in period if isinstance(p, dict)
+    ) or "sem filtro de período (todo o período disponível)"
+    sys = (
+        "Você é um analista de dados que EXPLICA, em português do Brasil e em "
+        "linguagem de negócio, de onde vem um número de um slide executivo, lendo o "
+        "SQL e uma amostra dos dados. Seja direto e honesto: diga o que a consulta "
+        "inclui e exclui (filtros, joins, agregação), o que o filtro de período faz, "
+        "e o que NÃO dá para afirmar só com a amostra. NUNCA invente valores que não "
+        "estejam no contexto; se um número não estiver ali, diga que não dá para "
+        "confirmar. Responda em 2 a 5 frases, sem markdown."
+    )
+    human = f"""Pergunta do usuário sobre o número: {question or 'De onde vem este número e o que ele inclui?'}
+
+Número exibido no card: {ctx.get('value_formatted', '—')} — {ctx.get('label', '')}
+Pergunta de negócio que originou o slide: {ctx.get('nl_question', '')}
+Coluna e agregação do número-herói: {ctx.get('hero_column', '?')} / {ctx.get('hero_agg', '?')}
+Período aplicado: {period_txt}
+Linhas no resultado: {ctx.get('row_count', '?')}
+Tabelas-fonte: {', '.join(ctx.get('tables') or []) or '—'}
+Completude mínima da fonte: {ctx.get('completeness', '—')}
+
+SQL executado:
+{sql or '(SQL indisponível)'}
+
+Amostra de linhas retornadas (até 15):
+{json.dumps(sample[:15], ensure_ascii=False, default=str)}
+
+Explique de onde vem esse número e responda à pergunta do usuário."""
+    answer = _llm_text(sys, human, temperature=0.2)
+    return {"answer": answer or "Não consegui explicar o número agora. Tente reformular a pergunta."}
 
 
 # ---------------------------------------------------------------------------
