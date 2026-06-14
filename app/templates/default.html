@@ -866,7 +866,8 @@
                         A imagem do Cockpit será copiada para a área de transferência —
                         cole com <kbd class="bg-fg-700 border border-fg-border rounded px-1 py-0.5
                                            font-mono text-[10px] text-fg-text">Ctrl+V</kbd>
-                        diretamente no chat.
+                        diretamente no chat. Se o navegador não permitir copiar, a imagem é
+                        baixada como <strong class="text-fg-text">cockpit.png</strong> para anexar manualmente.
                     </p>
                 </div>
      
@@ -11607,6 +11608,17 @@ function _teamsBtnHtml() {
         </svg> Abrir Teams`;
 }
     
+// Converte dataURL → Blob de forma SÍNCRONA (sem fetch/await) p/ preservar a
+// ativação do clique na escrita do clipboard.
+function _dataUrlToBlob(dataUrl) {
+    const comma = dataUrl.indexOf(',');
+    const head = dataUrl.slice(0, comma);
+    const mime = (head.match(/data:([^;]+)/) || [, 'image/png'])[1];
+    const bin = atob(dataUrl.slice(comma + 1));
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+}
 async function confirmShareTeams() {
     const btn       = document.getElementById('btnConfirmShareTeams');
     const status    = document.getElementById('shareStatusMsg');
@@ -11623,21 +11635,23 @@ async function confirmShareTeams() {
     status.textContent = '';
  
     // ── PASSO 1: Copiar imagem para a área de transferência ───────────────
+    // IMPORTANTE: o Blob é criado de forma SÍNCRONA (sem await fetch antes) e o
+    // navigator.clipboard.write é a 1ª operação assíncrona — preserva a "ativação
+    // transitória" do clique (senão o navegador rejeita a escrita). NÃO copiamos o
+    // texto depois: isso SOBRESCREVERIA a imagem (a mensagem já vai no link do Teams).
     let imageCopied = false;
     try {
-        // Converter dataURL → Blob → ClipboardItem
-        const res  = await fetch(_shareImageDataUrl);
-        const blob = await res.blob();
-        await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': blob })
-        ]);
-        imageCopied = true;
+        if (navigator.clipboard && window.ClipboardItem) {
+            const blob = _dataUrlToBlob(_shareImageDataUrl);
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            imageCopied = true;
+        }
     } catch(e) {
-        // Fallback: copiar o texto e baixar a imagem
-        console.warn('Clipboard API (imagem) não suportada:', e.message);
+        // Contexto não-seguro (HTTP fora de localhost) ou navegador sem suporte.
+        console.warn('Clipboard API (imagem) indisponível:', e && e.message);
     }
- 
-    // ── PASSO 2: Se não conseguiu copiar imagem, baixar PNG ───────────────
+
+    // ── PASSO 2: Se não conseguiu copiar imagem, baixar PNG (fallback) ─────
     if (!imageCopied) {
         const a    = document.createElement('a');
         a.href     = _shareImageDataUrl;
@@ -11646,12 +11660,7 @@ async function confirmShareTeams() {
         a.click();
         a.remove();
     }
- 
-    // ── PASSO 3: Copiar texto para clipboard (se imagem já foi) ──────────
-    if (imageCopied) {
-        try { await navigator.clipboard.writeText(msg); } catch(e) {}
-    }
- 
+
     // ── PASSO 4: Abrir Teams com mensagem pré-preenchida ─────────────────
     const encodedMsg = encodeURIComponent(msg);
     let teamsUrl;
