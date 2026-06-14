@@ -6386,7 +6386,7 @@ async function exportExcel() {
     URL.revokeObjectURL(url);
 }
 
-// function openEmailModal() { document.getElementById('emailSubject').value = lastQuestion || 'Quick Insights'; document.getElementById('emailModal').classList.remove('hidden'); document.getElementById('emailModal').classList.add('flex'); }
+// function openEmailModal() { document.getElementById('emailSubject').value = lastQuestion || 'Fale com Seus Dados'; document.getElementById('emailModal').classList.remove('hidden'); document.getElementById('emailModal').classList.add('flex'); }
 function openEmailModal() {
     document.getElementById('emailSubject').value = lastQuestion || 'Fale com Seus Dados';
     document.getElementById('emailModal').classList.remove('hidden');
@@ -11564,7 +11564,7 @@ function shareCockpitTeams() {
     const now    = new Date().toLocaleString('pt-BR');
  
     // Mensagem para o Teams
-    let msg  = `📊 *Cockpit — Quick Insights*\n`;
+    let msg  = `📊 *Cockpit — Fale com Seus Dados*\n`;
     msg     += `_Compartilhado em ${now}_\n\n`;
     if (incAI && aiText) {
         msg += aiText + '\n\n';
@@ -11727,7 +11727,7 @@ async function confirmShareEmail() {
     const status  = document.getElementById('shareStatusMsg');
     const to      = document.getElementById('shareEmailTo').value.trim();
     const subject = document.getElementById('shareEmailSubject').value.trim()
-                    || 'Cockpit — Quick Insights';
+                    || 'Cockpit — Fale com Seus Dados';
     const incAI   = document.getElementById('shareIncludeAI').checked;
  
     if (!to) {
@@ -11769,7 +11769,7 @@ async function confirmShareEmail() {
 <html>
 <head><meta charset="UTF-8"></head>
 <body style="font-family:Arial,sans-serif;margin:0;padding:24px;background:#fff;color:#222;">
-  <h1 style="font-size:20px;margin:0 0 4px 0;">QUICKINSIGHTS &mdash; Cockpit</h1>
+  <h1 style="font-size:20px;margin:0 0 4px 0;">FALE COM SEUS DADOS &mdash; Cockpit</h1>
   <p style="font-size:12px;color:#666;margin:0 0 16px 0;">
     Compartilhado por <strong>${_escapeHtmlEmail(senderName)}</strong>
   </p>
@@ -11779,7 +11779,7 @@ async function confirmShareEmail() {
   ${aiBlock}
   <hr style="border:none;border-top:1px solid #ddd;margin:24px 0">
   <p style="font-size:11px;color:#999;margin:0;">
-    Gerado automaticamente pelo Quick Insights &bull; Fale com Seus Dados
+    Gerado automaticamente pelo Fale com Seus Dados
   </p>
 </body>
 </html>`;

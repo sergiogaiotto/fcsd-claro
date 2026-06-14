@@ -1,5 +1,5 @@
 // ============================
-// Quick Insights v2.1 — New Features
+// Fale com Seus Dados v2.1 — New Features
 // ============================
 
 // --- DataMart state ---

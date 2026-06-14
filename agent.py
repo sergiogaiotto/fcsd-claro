@@ -1,5 +1,5 @@
 """
-Quick Insights — CLI Agent
+Fale com Seus Dados — CLI Agent
 
 Usage:
     python agent.py "Quais tabelas existem?"
@@ -26,7 +26,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def create_cli_agent():
-    """Create a standalone CLI Deep Agent for Quick Insights."""
+    """Create a standalone CLI Deep Agent for Fale com Seus Dados."""
     from sqlalchemy import create_engine
 
     db_path = os.path.join(BASE_DIR, "data", "quick_insights.db")
@@ -98,7 +98,7 @@ def create_cli_agent():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Quick Insights CLI — Deep Agent powered by OpenAI",
+        description="Fale com Seus Dados CLI — Deep Agent powered by OpenAI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos:

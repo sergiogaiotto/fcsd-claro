@@ -1,5 +1,5 @@
 """
-Quick Insights — JSON Import Service
+Fale com Seus Dados — JSON Import Service
 
 Busca dados de URLs JSON com suporte a:
 - Parâmetros de data {date_start} / {date_end}

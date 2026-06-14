@@ -1,5 +1,5 @@
 """
-Quick Insights — Visualization Service
+Fale com Seus Dados — Visualization Service
 
 - Explorar: PyGWalker (drag-and-drop) + AI Ask bar (OpenAI → Chart.js inline)
 - Gráfico: Chart.js interativo com seletores de campo X, Y, agregação e tipo
@@ -235,7 +235,7 @@ def _render_interactive_chart_html(data: dict, initial_config: dict | None = Non
 
     return f"""<!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Quick Insights — Gráfico</title>
+<title>Fale com Seus Dados — Gráfico</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -257,7 +257,7 @@ body{{background:#0d1117;color:#c9d1d9;font-family:'Space Grotesk',sans-serif;he
 </style>
 </head><body>
 <div class="qi-hdr">
-  <div class="qi-logo">QUICK<span>INSIGHTS</span> — Gráfico Interativo</div>
+  <div class="qi-logo">FALE COM <span>SEUS DADOS</span> — Gráfico Interativo</div>
   <div class="qi-nfo" id="rowInfo">{row_count} registros · {len(all_cols)} colunas</div>
 </div>
 <div class="qi-bar">
@@ -549,7 +549,7 @@ def generate_explore_html(data: dict) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quick Insights — Explorar</title>
+    <title>Fale com Seus Dados — Explorar</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;600&display=swap" rel="stylesheet">
@@ -598,7 +598,7 @@ def generate_explore_html(data: dict) -> str:
 </head>
 <body>
     <div class="qi-hdr">
-        <div class="qi-logo">QUICK<span>INSIGHTS</span> — Exploração de Dados</div>
+        <div class="qi-logo">FALE COM <span>SEUS DADOS</span> — Exploração de Dados</div>
         <div style="font-size:11px;color:#8b949e">PyGWalker · {row_count} registros · {col_count} colunas</div>
     </div>
 
@@ -748,7 +748,7 @@ def generate_explore_html(data: dict) -> str:
         function saveToGallery(){{document.getElementById('saveModal').style.display='flex';document.getElementById('saveTitle').focus()}}
         function closeSaveModal(){{document.getElementById('saveModal').style.display='none';document.getElementById('saveStatus').textContent=''}}
         async function confirmSave(){{
-            const t=document.getElementById('saveTitle').value.trim();if(!t){{alert('Título obrigatório.');return}}
+            const t=document.getElementById('saveTitle').value.trim();if(t.length<2){{alert('O título precisa ter ao menos 2 caracteres.');return}}
             const d=document.getElementById('saveDesc').value.trim(),s=document.getElementById('saveStatus');
             s.style.color='#8b949e';s.textContent='Capturando…';
             const tb=document.querySelector('.qi-tb'),md=document.getElementById('saveModal'),am=document.getElementById('attachModal');
@@ -758,7 +758,7 @@ def generate_explore_html(data: dict) -> str:
             const ls={{}};for(let i=0;i<localStorage.length;i++){{const k=localStorage.key(i);ls[k]=localStorage.getItem(k)}}
             s.textContent='Salvando…';
             try{{const r=await fetch('/api/gallery',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{title:t,description:d,query_data:_qd,page_html:ph,local_storage:ls}})}});
-                if(r.ok){{s.style.color='#39d353';s.textContent='Salvo.';setTimeout(closeSaveModal,1500)}}else{{s.style.color='#ff6347';s.textContent='Erro.'}}
+                if(r.ok){{s.style.color='#39d353';s.textContent='Salvo.';setTimeout(closeSaveModal,1500)}}else{{s.style.color='#ff6347';let m='Erro ao salvar.';try{{const e=await r.json();const d=e&&e.detail;if(typeof d==='string')m=d;else if(Array.isArray(d)&&d[0])m=(d[0].loc?d[0].loc.slice(-1)[0]+': ':'')+(d[0].msg||'inválido');}}catch(_e){{}}s.textContent=m}}
             }}catch(e){{s.style.color='#ff6347';s.textContent='Erro: '+e.message}}
         }}
     </script>
@@ -795,7 +795,7 @@ def generate_gallery_view_html(data: dict, chart_config: dict | None, title: str
 
 def _empty_html() -> str:
     return """<!DOCTYPE html>
-<html><head><title>Quick Insights</title></head>
+<html><head><title>Fale com Seus Dados</title></head>
 <body style="background:#0d1117;color:#8b949e;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0">
 <div style="text-align:center">
 <h2 style="color:#ff6347">Sem dados para visualizar</h2>
