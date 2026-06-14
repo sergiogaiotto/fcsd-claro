@@ -3629,8 +3629,42 @@ function _instantiateDeckCharts(deck, prefix, store) {
     });
 }
 function _destroyCharts(store) { while (store && store.length) { try { store.pop().destroy(); } catch (e) {} } }
-function _deltaBadge(d) { if (!d) return ''; var arrow = d.dir === 'up' ? '▲' : (d.dir === 'down' ? '▼' : '■'); return '<div class="text-[10px] text-fg-muted mt-1" title="comparado à versão anterior salva do deck">' + arrow + ' ' + escapeHtml(d.text) + '</div>'; }
-function _calcDelta(o, n) { if (!o || !n) return null; var a = Number(o.value_raw), b = Number(n.value_raw); if (!isFinite(a) || !isFinite(b)) return null; var diff = b - a; if (diff === 0) return { dir: 'flat', text: 'estável vs. anterior' }; var dir = diff > 0 ? 'up' : 'down'; if (a === 0) return { dir: dir, text: 'novo vs. anterior' }; var pct = Math.round(diff / Math.abs(a) * 100); return { dir: dir, text: (diff > 0 ? '+' : '') + pct + '% vs. anterior' }; }
+function _deltaBadge(d) {
+    if (!d) return '';
+    var arrow = d.dir === 'up' ? '▲' : (d.dir === 'down' ? '▼' : '■');
+    var rel = d.dir === 'up' ? 'maior que a versão anterior' : (d.dir === 'down' ? 'menor que a versão anterior' : 'igual à versão anterior');
+    var tip = (d.detail ? (d.detail + '  ·  ' + rel) : 'comparado à versão anterior salva do deck');
+    return '<div class="text-[10px] text-fg-muted mt-1 cursor-help underline decoration-dotted decoration-fg-muted/40 inline-block" title="' + escapeHtml(tip) + '">' + arrow + ' ' + escapeHtml(d.text) + '</div>';
+}
+function _calcDelta(o, n) {
+    if (!o || !n) return null;
+    var a = Number(o.value_raw), b = Number(n.value_raw);
+    if (!isFinite(a) || !isFinite(b)) return null;
+    var fromTxt = (o.value != null && o.value !== '') ? String(o.value) : String(a);
+    var toTxt = (n.value != null && n.value !== '') ? String(n.value) : String(b);
+    var detail = 'Antes: ' + fromTxt + '  →  Agora: ' + toTxt;
+    var diff = b - a;
+    if (diff === 0) return { dir: 'flat', text: 'igual à anterior', detail: detail };
+    var dir = diff > 0 ? 'up' : 'down';
+    if (a === 0) return { dir: dir, text: 'novo', detail: detail };
+    var pct = Math.round(diff / Math.abs(a) * 100);
+    return { dir: dir, text: Math.abs(pct) + '% vs. anterior', detail: detail };
+}
+function _deckHasDeltas(deck) {
+    return !!(deck && (deck.slides || []).some(function (s) {
+        return (s.hero && s.hero.delta) || (s.type === 'sintese' && (s.callouts || []).some(function (c) { return c.delta; }));
+    }));
+}
+function _deltaLegendHtml() {
+    return '<div class="text-[10px] text-fg-muted mb-3 bg-fg-700/30 border border-fg-border rounded-lg px-3 py-2 flex items-center gap-x-3 gap-y-1 flex-wrap">'
+        + '<span class="font-semibold text-fg-bright/80">Como ler os números:</span>'
+        + '<span>cada valor é comparado com a <strong>versão anterior</strong> deste deck —</span>'
+        + '<span><span class="text-fg-bright">▲</span> aumentou</span>'
+        + '<span><span class="text-fg-bright">▼</span> diminuiu</span>'
+        + '<span><span class="text-fg-bright">■</span> igual</span>'
+        + '<span class="text-fg-muted/60">· passe o mouse no indicador para ver <em>antes → agora</em></span>'
+        + '</div>';
+}
 function _applyDeckDelta(oldDeck, newDeck) { if (!oldDeck || !newDeck) return; var m = {}; (oldDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) m['i:' + s.key] = s.hero; if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) m['c:' + c.key] = c; }); }); (newDeck.slides || []).forEach(function (s) { if (s.type === 'insight' && s.key && s.hero) { var d = _calcDelta(m['i:' + s.key], s.hero); if (d) s.hero.delta = d; } if (s.type === 'sintese') (s.callouts || []).forEach(function (c) { if (c.key) { var d2 = _calcDelta(m['c:' + c.key], c); if (d2) c.delta = d2; } }); }); }
 
 let _execAudience = 'diretor';
@@ -3837,6 +3871,7 @@ function renderExecDeck(deck) {
       </div>
       ${_execAudience === 'ceo' ? `<div class="bg-fg-accent/10 border border-fg-accent/30 rounded-lg p-3 mb-3 text-sm font-semibold text-fg-bright">TL;DR — ${escapeHtml(deck.thesis || '')}</div>` : ''}
       ${_replayBannerHtml(deck)}
+      ${_deckHasDeltas(deck) ? _deltaLegendHtml() : ''}
       <div class="space-y-3">${slidesHtml}</div>
       <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${visible.length} de ${(deck.slides || []).length} slides${_execAudience !== 'diretor' ? ' · visão ' + _execAudience : ''}</p>`;
     _destroyCharts(_execCharts);
@@ -3857,7 +3892,7 @@ function _replayBannerHtml(deck) {
     const skipped = (r.slides_skipped || []).length;
     const skipNote = skipped ? ` · <span class="text-amber-400" title="Slides cujo SQL não pôde ser recortado/reexecutado — números originais mantidos">${skipped} slide(s) não reexecutado(s)</span>` : '';
     return `<div class="bg-fg-accent/10 border border-fg-accent/30 rounded-lg px-3 py-2 mb-3 flex items-center justify-between gap-2 flex-wrap">
-        <div class="text-[11px] text-fg-bright"><span class="font-semibold">🔁 Reexecutado:</span> ${desc} · <span class="text-fg-muted">▲/▼ vs. versão anterior</span>${skipNote}</div>
+        <div class="text-[11px] text-fg-bright"><span class="font-semibold">🔁 Reexecutado:</span> ${desc} · <span class="text-fg-muted">números comparados com a versão anterior (veja a legenda abaixo)</span>${skipNote}</div>
         <button onclick="saveReplayVersion()" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-3 py-1 rounded-lg text-[11px] font-semibold">💾 Salvar como nova versão</button>
     </div>`;
 }
