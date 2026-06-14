@@ -47,6 +47,15 @@
         .table-container table { border-collapse: collapse; width: 100%; }
         .table-container th { position: sticky; top: 0; z-index: 1; }
         .table-container tbody tr:last-child td { border-bottom: none; }
+        /* Preview de dados (#previewContent): tabela cresce até o conteúdo (não
+           espreme as colunas) e mostra um scrollbar horizontal NÍTIDO p/ navegar. */
+        #previewContent { overflow: auto; overflow-x: auto; overflow-y: auto; scrollbar-width: auto; scrollbar-color: #5b6470 transparent; }
+        #previewContent table { width: max-content; min-width: 100%; }
+        #previewContent th, #previewContent td { white-space: nowrap; }
+        #previewContent::-webkit-scrollbar { height: 12px; width: 12px; }
+        #previewContent::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 6px; }
+        #previewContent::-webkit-scrollbar-thumb { background: #5b6470; border-radius: 6px; }
+        #previewContent::-webkit-scrollbar-thumb:hover { background: #ff6347; }
         .tab-active { color: #ff6347; position: relative; }
         .tab-active::after { content: ''; position: absolute; bottom: -12px; left: 0; right: 0; height: 2px; background: #ff6347; border-radius: 1px; }
         .glow-accent { box-shadow: 0 0 20px rgba(255, 99, 71, 0.08); }
@@ -1006,6 +1015,46 @@
     
 <!-- ===================== TABLES TAB ===================== -->
 <section id="panel-tables" class="tab-panel hidden">
+
+<!-- Nota de orientação: Segurança por linha (RLS) -->
+<div class="mt-6">
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
+        <button onclick="var b=document.getElementById('rlsNoteBody'); b.classList.toggle('hidden'); document.getElementById('rlsNoteChev').style.transform = b.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(90deg)';" class="w-full flex items-center justify-between gap-3 text-left">
+            <div class="flex items-center gap-3">
+                <div class="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">🔒</div>
+                <div>
+                    <h2 class="text-xs font-bold text-amber-400 uppercase tracking-wider">Segurança por linha (RLS)</h2>
+                    <p class="text-[10px] text-fg-muted mt-0.5">Como restringir registros por usuário — clique para ver</p>
+                </div>
+            </div>
+            <span id="rlsNoteChev" class="text-fg-muted transition" style="transform:rotate(0deg)">▶</span>
+        </button>
+        <div id="rlsNoteBody" class="hidden mt-4 text-xs text-fg-text/90 leading-relaxed space-y-3">
+            <p>Uma tabela passa a mostrar <strong>apenas as linhas de cada usuário</strong> quando ela tem uma coluna chamada <code class="font-mono text-fg-accent">login</code>. Em cada linha, o valor de <code class="font-mono">login</code> deve ser <strong>o mesmo login que a pessoa usa para entrar</strong> no sistema. Quem não for <code class="font-mono">root</code> verá somente as linhas com o seu próprio login; o <code class="font-mono">root</code> vê todas.</p>
+            <div>
+                <div class="text-[10px] uppercase tracking-wider text-fg-muted mb-1">Ligar em uma tabela que já existe</div>
+                <pre class="bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green overflow-x-auto font-mono border border-fg-border leading-relaxed">-- 1) cria a coluna de dono (uma vez)
+ALTER TABLE minha_tabela ADD COLUMN login TEXT;
+
+-- 2) define o dono de cada linha (use o login exato de cada usuário)
+UPDATE minha_tabela SET login = 'maria.silva' WHERE regiao = 'Sudeste';
+UPDATE minha_tabela SET login = 'joao.souza'  WHERE regiao = 'Sul';
+
+-- 3) (opcional) acelera o filtro
+CREATE INDEX IF NOT EXISTS ix_minha_tabela_login ON minha_tabela (login);</pre>
+            </div>
+            <p><strong>Ao importar (CSV/Excel/JSON):</strong> basta incluir uma coluna <code class="font-mono text-fg-accent">login</code> com o dono em cada linha — a proteção liga sozinha.</p>
+            <p><strong>Para desligar</strong> (a tabela volta a ser visível a todos que têm acesso a ela): <code class="font-mono">ALTER TABLE minha_tabela DROP COLUMN login;</code></p>
+            <ul class="list-disc pl-4 space-y-1 text-fg-muted">
+                <li>O nome da coluna deve ser exatamente <code class="font-mono">login</code>; o valor precisa bater <strong>letra por letra</strong> com o login do usuário.</li>
+                <li><strong>1 linha = 1 dono</strong> (filtro de igualdade). Para uma linha visível a vários usuários, duplique-a por login ou deixe a tabela sem coluna <code class="font-mono">login</code>.</li>
+                <li>Linhas com <code class="font-mono">login</code> vazio ou que não corresponde a ninguém <strong>não aparecem</strong> para usuários não-root.</li>
+                <li>Tabelas <strong>sem</strong> a coluna <code class="font-mono">login</code> ficam visíveis a todos que têm acesso ao DataMart/DiamondLayer. Veja o selo <span class="text-fg-green">🔒</span>/<span class="text-fg-muted">🔓</span> em cada tabela abaixo.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
 <div class="mt-6" id="jsonSourcesPanel">
     <div class="bg-fg-800 border border-fg-border rounded-xl p-5">
         <div class="flex items-center justify-between mb-4">
@@ -1363,8 +1412,8 @@
                 <div class="mb-3" id="uploadDatamartGroup">
                     <label class="text-[10px] text-fg-muted uppercase tracking-wider block mb-1">DataMart</label>
                     <div class="flex gap-2">
-                        <select id="uploadDatamart" class="flex-1 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none"><option value="">Escolha o DataMart</option></select>
-                        <input id="uploadDatamartNew" type="text" placeholder="ou criar novo..." class="flex-1 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none">
+                        <select id="uploadDatamart" class="flex-1 min-w-0 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none"><option value="">Escolha o DataMart</option></select>
+                        <input id="uploadDatamartNew" type="text" placeholder="ou criar novo..." class="flex-1 min-w-0 bg-fg-900 border border-fg-border rounded-lg px-3 py-2 text-xs font-mono focus:border-fg-accent focus:outline-none">
                     </div>
                 </div>
                 <div class="mb-3 hidden" id="uploadDatamartAnalista">
@@ -7061,7 +7110,7 @@ function renderTablesList() {
         el.innerHTML = filtered.map(t => {
             const dmBadges = (t.datamarts || []).map(d => `<span class="text-[9px] bg-fg-blue/10 text-fg-blue px-1.5 py-0.5 rounded-full">${escapeHtml(d.name)}</span>`).join(' ');
             const canDrop = isAdmin || (isAnalista && (t.datamarts || []).some(d => d.name === analistaDmName));
-            return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border hover:border-fg-accent/30 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span><span class="ml-2">${dmBadges}</span></div><div class="flex items-center gap-2">${canDrop ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
+            return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border hover:border-fg-accent/30 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span>${_rlsBadge(t)}<span class="ml-2">${dmBadges}</span></div><div class="flex items-center gap-2">${canDrop ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
         }).join('');
     }
 
@@ -7076,7 +7125,7 @@ function renderTablesList() {
             techGroup.classList.remove('hidden');
             techListEl.innerHTML = techTables.map(t => {
                 const dmBadges = (t.datamarts || []).map(d => `<span class="text-[9px] bg-fg-accent/10 text-fg-accent px-1.5 py-0.5 rounded-full">${escapeHtml(d.name)}</span>`).join(' ');
-                return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-accent/20 hover:border-fg-accent/40 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-[9px] bg-fg-accent/15 text-fg-accent px-1.5 py-0.5 rounded mr-2 font-bold uppercase tracking-wider">tech</span><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span><span class="ml-2">${dmBadges}</span></div><div class="flex items-center gap-2">${isAdmin ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
+                return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-accent/20 hover:border-fg-accent/40 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-[9px] bg-fg-accent/15 text-fg-accent px-1.5 py-0.5 rounded mr-2 font-bold uppercase tracking-wider">tech</span><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span>${_rlsBadge(t)}<span class="ml-2">${dmBadges}</span></div><div class="flex items-center gap-2">${isAdmin ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
             }).join('');
         } else {
             techGroup.classList.add('hidden');
@@ -7102,7 +7151,7 @@ function renderTablesList() {
             diamondEl.innerHTML = filteredLayer.map(t => {
                 const dlBadges = (t.diamond_layers || []).map(l => `<span class="text-[9px] bg-fg-blue/10 text-fg-blue px-1.5 py-0.5 rounded-full">${escapeHtml(l.name)}</span>`).join(' ');
                 const canDrop = isAdmin;
-                return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border hover:border-fg-accent/30 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span><span class="ml-2">${dlBadges}</span></div><div class="flex items-center gap-2">${canDrop ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
+                return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border hover:border-fg-accent/30 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span>${_rlsBadge(t)}<span class="ml-2">${dlBadges}</span></div><div class="flex items-center gap-2">${canDrop ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
             }).join('');
         }
     }
@@ -7119,10 +7168,15 @@ function renderTablesList() {
                 const layerSelector = isAdmin
                     ? `<select onchange="assignDiamondLayer('${t.name}', this)" onclick="event.stopPropagation()" title="Atribuir DiamondLayer" class="bg-fg-700 border border-fg-border rounded px-1.5 py-0.5 text-[10px] font-mono focus:border-fg-blue focus:outline-none transition opacity-0 group-hover:opacity-100"><option value="">+ DiamondLayer</option>${layerOpts}<option value="__new__">criar nova...</option></select>`
                     : '';
-                return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border hover:border-fg-accent/30 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span></div><div class="flex items-center gap-2">${layerSelector}${canDrop ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
+                return `<div class="flex items-center justify-between bg-fg-900 rounded-lg px-3 py-2.5 border border-fg-border hover:border-fg-accent/30 transition-all group"><div class="cursor-pointer flex-1" onclick="previewTable('${t.name}')"><span class="text-sm text-fg-green font-mono font-bold">${escapeHtml(t.name)}</span><span class="text-[10px] text-fg-muted ml-2 font-mono">${t.row_count} reg · ${t.columns.length} col</span>${_rlsBadge(t)}</div><div class="flex items-center gap-2">${layerSelector}${canDrop ? `<button onclick="event.stopPropagation(); dropTable('${t.name}')" class="text-fg-muted hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''} <span class="text-xs text-fg-muted group-hover:text-fg-accent transition cursor-pointer" onclick="previewTable('${t.name}')">&rarr;</span></div></div>`;
             }).join('');
         }
     }
+}
+function _rlsBadge(t) {
+    return (t && t.has_login)
+        ? '<span class="text-[9px] px-1.5 py-0.5 rounded-full ml-1" style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.4);color:#22c55e" title="Segurança por linha ATIVA: a coluna login restringe cada registro ao seu usuário (root vê tudo).">🔒 RLS por linha</span>'
+        : '<span class="text-[9px] px-1.5 py-0.5 rounded-full ml-1 text-fg-muted border border-fg-border" title="Sem segurança por linha: visível a todos com acesso à tabela. Para restringir por usuário, adicione uma coluna login (veja a nota no topo).">🔓 visível a todos</span>';
 }
 async function dropTable(name) { if (!confirm(`Excluir "${name}"?`)) return; if (!confirm(`Confirme: DROP TABLE "${name}"`)) return; try { const res = await fetch(`/api/tables/${encodeURIComponent(name)}`, { method: 'DELETE' }); const data = await res.json(); if (!res.ok) { alert(_fmtApiError(data, 'Erro.')); return; } document.getElementById('tablePreview').classList.add('hidden'); loadTables(); } catch(e) { alert('Erro: ' + e.message); } }
 async function previewTable(name) { document.getElementById('previewTitle').textContent = `Preview: ${name}`; document.getElementById('tablePreview').classList.remove('hidden'); document.getElementById('previewContent').innerHTML = '<div class="shimmer h-32 rounded-lg"></div>'; const res = await fetch(`/api/tables/${encodeURIComponent(name)}/preview`); document.getElementById('previewContent').innerHTML = renderTable(await res.json()); }
