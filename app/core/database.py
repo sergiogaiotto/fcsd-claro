@@ -52,6 +52,10 @@ def _validate_select_only_sql(sql: str) -> str | None:
     forbidden = {
         "DROP", "DELETE", "UPDATE", "INSERT", "ALTER",
         "CREATE", "REPLACE", "TRUNCATE", "ATTACH", "DETACH",
+        # Funções perigosas (leitura de arquivo/rede/IO e DoS) — nunca aparecem em
+        # analytics legítimo; defense-in-depth p/ TODO caminho de leitura.
+        "PG_READ_FILE", "PG_READ_BINARY_FILE", "PG_LS_DIR", "PG_STAT_FILE",
+        "LO_IMPORT", "LO_EXPORT", "DBLINK", "PG_SLEEP",
     }
     tokens = re.findall(r"[A-Z_]+", upper)
     for token in tokens:
