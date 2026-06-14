@@ -102,6 +102,13 @@ class ExecNarrateRequest(BaseModel):
     slide: dict = Field(..., description="Slide insight com hero/chart_data atuais")
 
 
+class ExecExplainRequest(BaseModel):
+    """Auditoria assistida — explica, em linguagem de negócio, de onde vem um
+    número do deck (lê SQL + amostra + fonte + período). Não toca no número."""
+    question: str = Field("", max_length=500, description="Pergunta do usuário sobre o número")
+    context: dict = Field(..., description="Lastro do número {label,value_formatted,nl_question,sql,sample_rows,source,period,...}")
+
+
 class PlaybookCreate(BaseModel):
     """Cria um playbook (jogada curada) — coleção de perguntas de negócio."""
     title: str = Field(..., min_length=2, max_length=140)
