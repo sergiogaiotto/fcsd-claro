@@ -60,6 +60,32 @@ class ExecDeckUpdateRequest(BaseModel):
     deck_spec: Optional[dict] = None
 
 
+class ExecDeckParamsRequest(BaseModel):
+    """Analisa um deck_spec e devolve os 'botões' (janelas + dimensões de recorte)."""
+    deck_spec: dict = Field(..., description="Deck a analisar")
+    datamart_ids: Optional[list[int]] = None
+    diamond_layer_ids: Optional[list[int]] = None
+
+
+class ExecSegmentFilter(BaseModel):
+    column: str = Field(..., max_length=120)
+    values: list[str] = Field(default_factory=list)
+
+
+class ExecReplayRequest(BaseModel):
+    """Reexecuta determinístico um deck com recorte de segmento + janela."""
+    deck_spec: dict = Field(..., description="Deck a reexecutar")
+    segment_filters: list[ExecSegmentFilter] = Field(default_factory=list)
+    window: Optional[str] = Field(None, pattern="^(3m|6m|12m)$")
+    datamart_ids: Optional[list[int]] = None
+    diamond_layer_ids: Optional[list[int]] = None
+
+
+class ExecNarrateRequest(BaseModel):
+    """Re-narra UM slide a partir dos números atuais (não toca SQL/herói)."""
+    slide: dict = Field(..., description="Slide insight com hero/chart_data atuais")
+
+
 class PlaybookCreate(BaseModel):
     """Cria um playbook (jogada curada) — coleção de perguntas de negócio."""
     title: str = Field(..., min_length=2, max_length=140)
