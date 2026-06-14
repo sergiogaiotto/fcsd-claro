@@ -3072,6 +3072,9 @@ async function loadExecPlaybooks() {
         _playbooks = Array.isArray(data) ? data : [];
     } catch (_) { _playbooks = []; }
     _renderExecPlaybookChips();
+    // Os temas dos Decks salvos dependem dos playbooks (pergunta→playbook): se os
+    // decks já renderizaram antes, re-renderiza as linhas agora p/ aplicar os temas.
+    if (_execDecksGrouped && _execDecksAll && _execDecksAll.length) { try { _renderExecDeckRows(); } catch (e) {} }
 }
 let _playbooksExpanded = new Set();
 function _renderExecPlaybookChips() {
@@ -4623,6 +4626,8 @@ let _execDecksAll = [];
 let _execDecksSort = 'recent';   // 'recent' | 'az'
 let _execDecksQuery = '';
 let _execDecksCollapsed = (function () { try { return localStorage.getItem('execDecksCollapsed') === '1'; } catch (e) { return false; } })();
+let _execDecksGrouped = (function () { try { return localStorage.getItem('execDecksGrouped') !== '0'; } catch (e) { return true; } })();   // agrupar por tema — ON por padrão
+let _execDeckGroupCollapsed = (function () { try { return new Set(JSON.parse(localStorage.getItem('execDeckGroupsCollapsed') || '[]')); } catch (e) { return new Set(); } })();
 
 function _relTime(iso) {
     if (!iso) return '';
@@ -4671,14 +4676,68 @@ function _execDeckRow(d) {
         + '<button onclick="deleteExecDeck(' + d.id + ')" title="Excluir" class="text-fg-muted hover:text-fg-accent text-sm w-6 h-6 rounded hover:bg-fg-700">🗑</button>'
         + '</div></div>';
 }
+// Tema de um deck = Playbook a que a pergunta pertence (curado); sem playbook,
+// agrupa pela própria pergunta. Reusa a taxonomia existente (_playbooks).
+function _deckPlaybookMap() {
+    var map = {};
+    (typeof _playbooks !== 'undefined' ? _playbooks : []).forEach(function (p) {
+        (p.questions || []).forEach(function (q) {
+            var k = String(q || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            if (k && !map[k]) map[k] = { id: p.id, title: p.title || 'Playbook', emoji: p.emoji || '📊' };
+        });
+    });
+    return map;
+}
+function _deckThemeKey(d, map) {
+    var qk = String(d.question || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    var pb = qk ? map[qk] : null;
+    if (pb) return { key: 'pb:' + pb.id, title: pb.title, emoji: pb.emoji, order: 0 };
+    var title = (d.question || '').trim() || (d.name || 'Sem pergunta');
+    return { key: qk ? ('q:' + qk) : ('n:' + (d.id || '')), title: title, emoji: '📄', order: 1 };
+}
+function _setDecksGroupMode(on) { if (_execDecksGrouped === on) return; _execDecksGrouped = on; try { localStorage.setItem('execDecksGrouped', on ? '1' : '0'); } catch (e) {} renderExecDecksList(); }
+function _toggleDeckGroup(enc) {
+    var k = decodeURIComponent(enc);
+    if (_execDeckGroupCollapsed.has(k)) _execDeckGroupCollapsed.delete(k); else _execDeckGroupCollapsed.add(k);
+    try { localStorage.setItem('execDeckGroupsCollapsed', JSON.stringify(Array.from(_execDeckGroupCollapsed))); } catch (e) {}
+    _renderExecDeckRows();
+}
 function _execDeckRowsHtml() {
     var q = _execDecksQuery.trim().toLowerCase();
     var list = _execDecksAll.slice();
     if (q) list = list.filter(function (d) { return ((d.name || '') + ' ' + (d.question || '')).toLowerCase().indexOf(q) >= 0; });
-    if (_execDecksSort === 'az') list.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'pt-BR'); });
-    else list.sort(function (a, b) { return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')); });
+    var byRecent = function (a, b) { return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')); };
+    var byAz = function (a, b) { return (a.name || '').localeCompare(b.name || '', 'pt-BR'); };
+    list.sort(_execDecksSort === 'az' ? byAz : byRecent);
     if (!list.length) return '<div class="text-[11px] text-fg-muted px-1 py-2">Nenhum deck corresponde a "' + escapeHtml(_execDecksQuery) + '".</div>';
-    return '<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">' + list.map(_execDeckRow).join('') + '</div>';
+    if (!_execDecksGrouped) {
+        return '<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">' + list.map(_execDeckRow).join('') + '</div>';
+    }
+    // Agrupado por tema (Playbook da pergunta; senão pela própria pergunta).
+    var map = _deckPlaybookMap();
+    var groups = {}, order = [];
+    list.forEach(function (d) {
+        var t = _deckThemeKey(d, map);
+        if (!groups[t.key]) { groups[t.key] = { meta: t, decks: [] }; order.push(t.key); }
+        groups[t.key].decks.push(d);
+    });
+    order.sort(function (a, b) {
+        var ga = groups[a], gb = groups[b];
+        if (ga.meta.order !== gb.meta.order) return ga.meta.order - gb.meta.order;   // playbooks antes de "soltos"
+        if (_execDecksSort === 'az') return (ga.meta.title || '').localeCompare(gb.meta.title || '', 'pt-BR');
+        return byRecent(ga.decks[0], gb.decks[0]);                                    // por recência do mais novo do grupo
+    });
+    return order.map(function (k) {
+        var g = groups[k], collapsed = _execDeckGroupCollapsed.has(k), enc = encodeURIComponent(k);
+        var header = '<button onclick="_toggleDeckGroup(\'' + enc + '\')" class="w-full flex items-center gap-1.5 text-left mb-1.5">'
+            + '<span class="text-fg-accent w-3 inline-block text-center text-[10px] transition" style="transform:rotate(' + (collapsed ? '0' : '90') + 'deg)">▶</span>'
+            + '<span>' + escapeHtml(g.meta.emoji) + '</span>'
+            + '<span class="text-[11px] font-bold text-fg-bright/90 truncate max-w-[60ch]" title="' + escapeHtml(g.meta.title) + '">' + escapeHtml(g.meta.title) + '</span>'
+            + '<span class="text-[10px] text-fg-muted/70 shrink-0">(' + g.decks.length + ')</span>'
+            + '<span class="flex-1 border-b border-fg-border/40 ml-1"></span></button>';
+        var rows = collapsed ? '' : '<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">' + g.decks.map(_execDeckRow).join('') + '</div>';
+        return '<div class="mb-3">' + header + rows + '</div>';
+    }).join('');
 }
 function _renderExecDeckRows() { var r = document.getElementById('execDecksRows'); if (r) r.innerHTML = _execDeckRowsHtml(); }
 function _execDeckFilter(v) { _execDecksQuery = v; _renderExecDeckRows(); }
@@ -4721,6 +4780,10 @@ function renderExecDecksList() {
     const controls = _execDecksCollapsed ? '' :
         ('<div class="ml-auto flex items-center gap-2">'
             + '<input id="execDecksSearch" oninput="_execDeckFilter(this.value)" value="' + escapeHtml(_execDecksQuery) + '" placeholder="Buscar nome ou pergunta…" class="bg-fg-700 border border-fg-border rounded-lg px-2.5 py-1 text-[11px] w-44 focus:border-fg-accent focus:outline-none">'
+            + '<div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5" title="Agrupar por tema (Playbook da pergunta)">'
+            + '<button onclick="_setDecksGroupMode(true)" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksGrouped ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">Por tema</button>'
+            + '<button onclick="_setDecksGroupMode(false)" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (!_execDecksGrouped ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">Lista</button>'
+            + '</div>'
             + '<div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5" title="Ordenar">'
             + '<button onclick="_execDeckSort(\'recent\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'recent' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">Recentes</button>'
             + '<button onclick="_execDeckSort(\'az\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'az' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">A–Z</button>'
