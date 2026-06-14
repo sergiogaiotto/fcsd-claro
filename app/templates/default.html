@@ -1523,7 +1523,7 @@
             <span class="text-[10px] text-fg-muted">📚 Playbooks <span class="text-fg-muted/60">— jogadas curadas, clique numa pergunta</span></span>
             <button type="button" onclick="openPlaybookLibrary()" title="Criar, editar e organizar playbooks; admin pode copiar para outros usuários." class="text-[10px] bg-fg-700 border border-fg-border rounded-lg px-2.5 py-1 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition">📚 Biblioteca</button>
         </div>
-        <div id="execPlaybooks" class="flex flex-wrap items-start gap-x-3 gap-y-2">
+        <div id="execPlaybooks" class="space-y-1">
             <span class="text-[10px] text-fg-muted/60">Carregando…</span>
         </div>
     </div>
@@ -3024,6 +3024,7 @@ async function loadExecPlaybooks() {
     } catch (_) { _playbooks = []; }
     _renderExecPlaybookChips();
 }
+let _playbooksExpanded = new Set();
 function _renderExecPlaybookChips() {
     const box = document.getElementById('execPlaybooks');
     if (!box) return;
@@ -3032,16 +3033,46 @@ function _renderExecPlaybookChips() {
         box.innerHTML = '<span class="text-[10px] text-fg-muted/60">Nenhum playbook ainda — clique em "📚 Biblioteca" para criar.</span>';
         return;
     }
-    box.innerHTML = withQ.map(p => {
-        const chips = (p.questions || []).map(q => `<button type="button" onclick="_execSuggest(this)" class="text-[10px] bg-fg-700 border border-fg-border rounded-full px-2 py-0.5 text-fg-muted hover:text-fg-bright hover:border-fg-accent/40 transition text-left">${escapeHtml(q)}</button>`).join('');
+    const head = `<div class="flex items-center gap-2 mb-1">
+        <button type="button" onclick="_expandAllPlaybooks(true)" class="text-[10px] text-fg-muted hover:text-fg-bright transition">⊞ Expandir tudo</button>
+        <span class="text-fg-border text-[10px]">·</span>
+        <button type="button" onclick="_expandAllPlaybooks(false)" class="text-[10px] text-fg-muted hover:text-fg-bright transition">⊟ Recolher tudo</button>
+    </div>`;
+    const nodes = withQ.map(p => {
+        const open = _playbooksExpanded.has(p.id);
         const hasScope = (p.datamart_ids && p.datamart_ids.length) || (p.diamond_layer_ids && p.diamond_layer_ids.length);
-        const scopeLink = hasScope ? `<button type="button" onclick="_applyPlaybookScope(${p.id})" title="Pré-seleciona os DataMarts/DiamondLayers recomendados deste playbook" class="text-[10px] text-fg-accent hover:underline">aplicar escopo</button>` : '';
-        const org = p.visibility === 'shared' ? '<span class="text-[9px] text-fg-muted/70" title="Compartilhado com a organização">· org</span>' : '';
-        return `<div class="flex flex-col gap-1 bg-fg-800/40 border border-fg-border/60 rounded-lg px-2 py-1.5">
-            <div class="flex items-center gap-1.5 text-[10px] text-fg-bright/90 font-semibold">${escapeHtml(p.emoji || '📊')} <span class="truncate max-w-[240px]">${escapeHtml(p.title)}</span>${org}${scopeLink}</div>
-            <div class="flex flex-wrap gap-1">${chips}</div>
+        const scopeLink = hasScope ? `<button type="button" onclick="_applyPlaybookScope(${p.id})" title="Pré-seleciona os DataMarts/DiamondLayers recomendados deste playbook" class="text-[10px] text-fg-accent hover:underline shrink-0">aplicar escopo</button>` : '';
+        const org = p.visibility === 'shared' ? '<span class="text-[9px] text-fg-muted/70 shrink-0" title="Compartilhado com a organização">· org</span>' : '';
+        const count = (p.questions || []).length;
+        const chevron = open ? '▾' : '▸';
+        const children = open ? `<div class="mt-1 ml-2 pl-2 border-l border-fg-border/60 space-y-0.5">` + (p.questions || []).map(q =>
+            `<div class="flex items-start gap-1.5">
+                <span class="text-fg-muted/40 text-[10px] leading-5 select-none">└</span>
+                <button type="button" onclick="_execSuggest(this)" title="${escapeHtml(q).replace(/"/g, '&quot;')}" class="text-left text-[10px] text-fg-muted hover:text-fg-bright hover:bg-fg-700/40 rounded px-1.5 py-0.5 transition leading-snug">${escapeHtml(q)}</button>
+            </div>`).join('') + `</div>` : '';
+        return `<div class="bg-fg-800/40 border border-fg-border/60 rounded-lg px-2 py-1.5">
+            <div class="flex items-center gap-1.5">
+                <button type="button" onclick="_togglePlaybookNode(${p.id})" title="${open ? 'Recolher' : 'Expandir'}" class="flex items-center gap-1.5 flex-1 min-w-0 text-left text-[10px] text-fg-bright/90 font-semibold">
+                    <span class="text-fg-accent w-3 inline-block text-center">${chevron}</span>
+                    <span>${escapeHtml(p.emoji || '📊')}</span>
+                    <span class="truncate">${escapeHtml(p.title)}</span>
+                    <span class="text-[9px] text-fg-muted/60 font-normal shrink-0">(${count})</span>
+                    ${org}
+                </button>
+                ${scopeLink}
+            </div>
+            ${children}
         </div>`;
     }).join('');
+    box.innerHTML = head + '<div class="space-y-1">' + nodes + '</div>';
+}
+function _togglePlaybookNode(id) {
+    if (_playbooksExpanded.has(id)) _playbooksExpanded.delete(id); else _playbooksExpanded.add(id);
+    _renderExecPlaybookChips();
+}
+function _expandAllPlaybooks(open) {
+    _playbooksExpanded = new Set(open ? _playbooks.filter(p => (p.questions || []).length).map(p => p.id) : []);
+    _renderExecPlaybookChips();
 }
 function _applyPlaybookScope(id) {
     const p = _playbooks.find(x => x.id === id);
@@ -3387,7 +3418,7 @@ function _showDeckProgress() {
         + '<div id="execProgressDetail" class="text-[11px] text-fg-accent mt-1 min-h-[14px]"></div>'
         + '<div id="execProgressSteps" class="space-y-2 text-xs my-3"></div>'
         + '<div class="flex items-center justify-between text-[11px] text-fg-muted border-t border-fg-border pt-3">'
-        + '<span>⏱ <span id="execProgressElapsed">00:00</span> decorrido</span><span>costuma levar 1–2 min</span></div></div>';
+        + '<span>⏱ <span id="execProgressElapsed">00:00</span> decorrido</span><span>tempo estimado entre 3-4 min</span></div></div>';
     document.body.appendChild(ov);
     _renderDeckProgress();
     _deckProgTimer = setInterval(_renderDeckProgress, 1000);
@@ -3909,7 +3940,7 @@ async function refreshExecDeck(id) {
     const r = await fetch('/api/exec/decks/' + id);
     if (!r.ok) { alert('Deck não encontrado.'); return; }
     const rec = await r.json();
-    if (!confirm('Atualizar "' + rec.name + '" recompondo com os dados de hoje? (pode levar 1–2 min)')) return;
+    if (!confirm('Atualizar "' + rec.name + '" recompondo com os dados de hoje? (tempo estimado entre 3-4 min)')) return;
     const out = document.getElementById('execResult');
     out.innerHTML = ''; _showDeckProgress();
     try {
