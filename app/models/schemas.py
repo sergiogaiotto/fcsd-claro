@@ -109,6 +109,17 @@ class ExecExplainRequest(BaseModel):
     context: dict = Field(..., description="Lastro do número {label,value_formatted,nl_question,sql,sample_rows,source,period,...}")
 
 
+class ExecRerunSqlRequest(BaseModel):
+    """Re-executa um SQL EDITADO manualmente no drawer de auditoria, com as travas
+    do replay (read-only, autorização por tabela, RLS de login, SELECT simples) e
+    recompõe o herói sem LLM."""
+    sql: str = Field(..., min_length=8, max_length=20000, description="SQL editado a re-executar")
+    hero: dict = Field(default_factory=dict, description="Herói atual {column,agg,fmt,value_raw,label} p/ recompor o número")
+    chart_data: dict = Field(default_factory=dict, description="chart_data atual {columns,rows,row_count} (recuperação de herói legado)")
+    datamart_ids: Optional[list[int]] = None
+    diamond_layer_ids: Optional[list[int]] = None
+
+
 class PlaybookCreate(BaseModel):
     """Cria um playbook (jogada curada) — coleção de perguntas de negócio."""
     title: str = Field(..., min_length=2, max_length=140)
