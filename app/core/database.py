@@ -101,6 +101,7 @@ INTERNAL_TABLES = {
     "json_sources", "data_products", "shared_results", "reports", "exec_decks",
     "codegen_tables", "codegen_snippets", "codegen_runs",
     "codegen_techniques", "codegen_patterns", "codegen_chats",
+    "playbooks", "failures",
 }
 
 
