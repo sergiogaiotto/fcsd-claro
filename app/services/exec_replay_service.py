@@ -353,6 +353,42 @@ def apply_temporal_to_sql(sql: str, temporal_ranges, accessible_tables=None,
     return new_sql, data, None
 
 
+def apply_segment_filters_to_sql(sql: str, segment_filters, accessible_tables=None,
+                                 login: str = "", apply_login_filter: bool = True) -> tuple[str, bool]:
+    """Injeta filtros de segmento (col = 'v' / col IN (...)) num SQL salvo, com as
+    MESMAS travas do replay: só SELECT simples (sem UNION/CTE/subquery), predicado
+    parametrizado via sqlglot (sem SQLi), só em colunas que existem nas tabelas.
+    Retorna (novo_sql, aplicou). Se o SQL não for injetável ou nenhuma coluna casar,
+    devolve (sql, False) — o chamador roda o relatório como hoje (carga cheia +
+    filtro client-side como rede de segurança).
+
+    SEGURANÇA: como o VALOR do filtro vem do usuário e seria embutido no SQL salvo,
+    ele poderia furar o guard por substring de login do run_query. Por isso, quando
+    aplicamos, REINJETAMOS deterministicamente o login do PRÓPRIO usuário (removendo
+    qualquer predicado de login pré-existente) em tabelas com RLS — fechando o
+    bypass (espelha apply_temporal_to_sql)."""
+    if not segment_filters:
+        return sql, False
+    node = _parse(sql)
+    if node is None or not _is_simple_select(node):
+        return sql, False
+    valid = _valid_columns_for(node)
+    applied = False
+    for f in segment_filters:
+        col = (f.get("column") or "").strip() if isinstance(f, dict) else ""
+        vals = (f.get("values") or []) if isinstance(f, dict) else []
+        if _apply_filter(node, col, vals, valid):
+            applied = True
+    if not applied:
+        return sql, False
+    # RLS determinística: planta o login do viewer (o valor do filtro é do usuário).
+    login_tables = set()
+    if apply_login_filter and login:
+        login_tables = {str(t).lower() for t in (get_tables_with_login_column(accessible_tables) or [])}
+    _ensure_login_filter(node, login, login_tables)
+    return _regenerate(node), True
+
+
 def _ensure_login_filter(node, login: str, login_tables: set[str]) -> None:
     tabs = _slide_tables(node)
     if not (login and login_tables and (tabs & login_tables)):

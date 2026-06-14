@@ -29,7 +29,7 @@ from app.models.schemas import (
     SavedQuestionCreate, SavedQuestionUpdate,
     VisionCreate, VisionUpdate,
     ShareCreate,
-    ReportCreate, ReportUpdate, ReportPublish,
+    ReportCreate, ReportUpdate, ReportPublish, ReportRunRequest,
 )
 from app.core.database import (
     get_sync_connection, get_all_tables, execute_readonly_sql,
@@ -923,8 +923,10 @@ async def reports_delete(report_id: int, user: dict = Depends(get_current_user))
 
 
 @router.post("/reports/{report_id}/run")
-async def reports_run(report_id: int, user: dict = Depends(get_current_user)):
-    """Executa o report com a versão atualmente salva (draft ou published)."""
+async def reports_run(report_id: int, req: ReportRunRequest | None = None,
+                      user: dict = Depends(get_current_user)):
+    """Executa o report com a versão atualmente salva (draft ou published). Aceita
+    filtros de segmento do pré-voo (opcional) p/ escopar o SQL no servidor."""
     from app.services.report_service import render_report
     rep = get_report(report_id)
     if not rep:
@@ -933,12 +935,65 @@ async def reports_run(report_id: int, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Report não encontrado.")
     accessible = _accessible_tables_for(user, rep.get("datamart_ids"), rep.get("diamond_layer_ids"))
     apply_login_filter = not is_root(user) if user else False
+    seg = [f.model_dump() for f in req.segment_filters] if (req and req.segment_filters) else []
     try:
-        return await render_report(rep, user, accessible, apply_login_filter)
+        return await render_report(rep, user, accessible, apply_login_filter, segment_filters=seg)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao executar report: {e}")
+
+
+@router.get("/reports/{report_id}/filters")
+async def reports_filters(report_id: int, user: dict = Depends(get_current_user)):
+    """Pré-voo: colunas de agrupamento filtráveis + valores distintos (consulta
+    barata direto nas tabelas, sem rodar o relatório). Pula tabelas com RLS por
+    login p/ não-root (não vaza valores de outros usuários)."""
+    rep = get_report(report_id)
+    if not rep:
+        raise HTTPException(status_code=404, detail="Report não encontrado.")
+    if rep["status"] != "published" and not _can_edit_report(user, rep):
+        raise HTTPException(status_code=404, detail="Report não encontrado.")
+    definition = rep.get("definition") or {}
+    cols: list[str] = []
+    for g in (definition.get("group"), definition.get("sub_group")):
+        if isinstance(g, dict) and g.get("column") and g["column"] not in cols:
+            cols.append(g["column"])
+    out = []
+    if cols:
+        try:
+            from app.services.exec_replay_service import _parse, _slide_tables, _table_columns, _distinct_values
+            from app.core.database import get_tables_with_login_column
+            node = _parse(rep.get("sql_generated") or "")
+            tables = sorted(_slide_tables(node)) if node else []
+            nonroot = (not is_root(user)) if user else True
+            # Autorização: para não-root, só consulta distintos em tabelas que o
+            # usuário pode acessar (mesma regra do /run) — não vaza valores de
+            # datamarts a que ele não tem acesso. None = irrestrito (root).
+            allowed = None
+            if nonroot:
+                try:
+                    acc = _accessible_tables_for(user, rep.get("datamart_ids"), rep.get("diamond_layer_ids"))
+                    allowed = {str(t).lower() for t in acc} if acc is not None else set()
+                except Exception:
+                    allowed = set()
+            login_tables = {str(t).lower() for t in (get_tables_with_login_column(tables) or [])} if tables else set()
+            for col in cols:
+                values = []
+                for t in tables:
+                    try:
+                        if allowed is not None and t.lower() not in allowed:  # sem acesso → pula
+                            continue
+                        if col.lower() in {c.lower() for c in _table_columns(t)}:
+                            if not (nonroot and t.lower() in login_tables):  # RLS: não vaza distintos
+                                values = _distinct_values(t, col, limit=200)
+                            break
+                    except Exception:
+                        pass
+                out.append({"column": col, "values": values})
+        except Exception:
+            out = [{"column": c, "values": []} for c in cols]
+    return {"filters": out}
 
 
 @router.post("/reports/preview")

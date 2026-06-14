@@ -7366,6 +7366,9 @@ let _viewerRows = [];               // raw rows kept for client-side filtering
 let _viewerColumns = [];            // raw column keys
 let _viewerFilters = {};            // { col: Set<value> }  multiselects
 let _viewerSearch = '';             // free-text filter
+let _preflightReportId = null;      // pré-voo: id do relatório aberto
+let _preflightSel = {};             // pré-voo: { col: Set<value> } escolhidos
+let _lastSegmentFilters = [];       // últimos filtros aplicados (p/ Atualizar)
 let _editingReport = null;          // designer state (server-side row, or null for new)
 let _designerDirty = false;
 let _designerColumns = [];          // columns detected from "Testar consulta"
@@ -7639,16 +7642,99 @@ async function deleteReport(id) {
 }
 
 // ---- Viewer ----
+// Abrir o relatório agora é um PRÉ-VOO: mostra os filtros + botão "Gerar" ANTES
+// de executar a consulta (evita carga automática surpresa). Só ao clicar Gerar a
+// consulta roda — com modal de progresso — e os filtros escopam o SQL no servidor.
 async function openReportViewer(id) {
     document.getElementById('reportsListView').classList.add('hidden');
-    const v = document.getElementById('reportsViewerView');
-    v.classList.remove('hidden');
-    document.getElementById('reportsViewerContent').innerHTML = '<div class="report-preview report-dark report-print-area"><div class="rpt-empty">Executando consulta…</div></div>';
+    document.getElementById('reportsViewerView').classList.remove('hidden');
+    document.getElementById('reportsViewerStatus').textContent = '';
+    document.getElementById('reportsViewerFilters').classList.add('hidden');
+    _viewerRows = []; _viewerColumns = []; _viewerFilters = {}; _viewerSearch = '';
+    _preflightReportId = id; _preflightSel = {};
+    document.getElementById('reportsViewerContent').innerHTML = '<div class="report-preview report-dark report-print-area"><div class="rpt-empty">Carregando filtros…</div></div>';
+    let rep = null, filters = [];
+    try { const r = await fetch(`/api/reports/${id}`); if (r.ok) rep = await r.json(); } catch (e) {}
+    try { const rf = await fetch(`/api/reports/${id}/filters`); if (rf.ok) filters = (await rf.json()).filters || []; } catch (e) {}
+    _currentReport = { report: rep || { id: id } };  // mínimo p/ a toolbar funcionar
+    const myId = currentUser ? currentUser.id : null;
+    const editBtn = document.getElementById('btnEditReport');
+    if (editBtn) editBtn.classList.toggle('hidden', !(rep && rep.owner_id === myId));
+    _renderReportPreflight(rep, filters);
+}
+function _renderReportPreflight(rep, filters) {
+    _preflightSel = {};
+    const host = document.getElementById('reportsViewerContent');
+    const name = (rep && rep.name) || 'Relatório';
+    const desc = (rep && rep.description) || '';
+    let filtersHtml = '';
+    const usable = (filters || []).filter(f => (f.values || []).length);
+    if (usable.length) {
+        filtersHtml = '<div class="flex flex-wrap gap-3 mt-4">' + usable.map(f => {
+            const col = f.column, vals = f.values || [];
+            const opts = vals.map(v => { const sv = String(v); return '<label class="flex items-center gap-1.5 text-xs py-0.5 cursor-pointer hover:bg-fg-800 rounded px-1"><input type="checkbox" value="' + escapeHtml(sv) + '" onchange="_pfToggle(' + JSON.stringify(col) + ', this.value, this.checked)" class="accent-fg-blue w-3 h-3"><span class="truncate">' + escapeHtml(sv) + '</span></label>'; }).join('');
+            return '<div class="flex flex-col gap-1 min-w-[200px]"><label class="text-[10px] text-fg-muted uppercase tracking-wider font-semibold">' + escapeHtml(col) + '</label>'
+                + '<details class="relative"><summary id="pfSum-' + escapeHtml(col) + '" class="bg-fg-900 border border-fg-border rounded-lg px-3 py-1.5 text-xs cursor-pointer hover:border-fg-blue/40 transition list-none">Todos <span class="text-fg-muted ml-1">▾</span></summary>'
+                + '<div class="absolute z-10 mt-1 left-0 bg-fg-900 border border-fg-border rounded-lg p-2 max-h-60 overflow-y-auto min-w-[220px] shadow-xl">' + opts + '</div></details></div>';
+        }).join('') + '</div>';
+    } else {
+        filtersHtml = '<div class="text-xs text-fg-muted mt-3">Este relatório não tem filtros configuráveis — clique em Gerar para executar.</div>';
+    }
+    host.innerHTML = '<div class="bg-fg-800/60 border border-fg-border rounded-xl p-5 max-w-3xl">'
+        + '<div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1">Configurar e gerar</div>'
+        + '<div class="text-base font-bold text-fg-bright">' + escapeHtml(name) + '</div>'
+        + (desc ? '<div class="text-[11px] text-fg-muted mt-0.5">' + escapeHtml(desc) + '</div>' : '')
+        + '<div class="text-[11px] text-fg-muted mt-3 flex items-start gap-1.5"><span>💡</span><span>Escolha os filtros para limitar o volume e clique em <strong>Gerar relatório</strong>. Sem filtro, o relatório carrega <strong>todos</strong> os registros (pode demorar em bases grandes).</span></div>'
+        + filtersHtml
+        + '<div class="mt-5"><button onclick="runReportFromPreflight()" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">▶ Gerar relatório</button></div>'
+        + '</div>';
+}
+function _pfToggle(col, val, checked) {
+    if (!_preflightSel[col]) _preflightSel[col] = new Set();
+    if (checked) _preflightSel[col].add(val); else _preflightSel[col].delete(val);
+    const sum = document.getElementById('pfSum-' + col);
+    if (sum) { const n = _preflightSel[col].size; sum.innerHTML = (n === 0 ? 'Todos' : (n === 1 ? escapeHtml(Array.from(_preflightSel[col])[0]) : (n + ' selecionados'))) + ' <span class="text-fg-muted ml-1">▾</span>'; }
+}
+async function runReportFromPreflight() {
+    const segs = Object.keys(_preflightSel)
+        .map(c => ({ column: c, values: Array.from(_preflightSel[c]) }))
+        .filter(s => s.values.length);
+    _lastSegmentFilters = segs;
+    await _executeReport(_preflightReportId, segs);
+}
+let _reportProgTimer = null, _reportProgT0 = 0;
+function _showReportProgress() {
+    _hideReportProgress();
+    _reportProgT0 = Date.now();
+    const ov = document.createElement('div');
+    ov.id = 'reportProgressModal';
+    ov.className = 'fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+    ov.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-2xl px-8 py-7 shadow-2xl text-center max-w-sm">'
+        + '<div class="animate-spin h-8 w-8 border-2 border-fg-accent border-t-transparent rounded-full mx-auto mb-4"></div>'
+        + '<div class="text-sm font-bold text-fg-bright">Gerando relatório…</div>'
+        + '<div class="text-[11px] text-fg-muted mt-1">Executando a consulta e montando os agrupamentos. Em bases grandes isso pode levar alguns segundos.</div>'
+        + '<div id="reportProgressElapsed" class="text-[11px] text-fg-accent font-mono mt-3">0:00</div></div>';
+    document.body.appendChild(ov);
+    _reportProgTimer = setInterval(function () {
+        const s = Math.floor((Date.now() - _reportProgT0) / 1000);
+        const el = document.getElementById('reportProgressElapsed');
+        if (el) el.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }, 1000);
+}
+function _hideReportProgress() {
+    if (_reportProgTimer) { clearInterval(_reportProgTimer); _reportProgTimer = null; }
+    const ov = document.getElementById('reportProgressModal'); if (ov) ov.remove();
+}
+async function _executeReport(id, segs) {
+    _showReportProgress();
     document.getElementById('reportsViewerStatus').textContent = '';
     document.getElementById('reportsViewerFilters').classList.add('hidden');
     _viewerRows = []; _viewerColumns = []; _viewerFilters = {}; _viewerSearch = '';
     try {
-        const res = await fetch(`/api/reports/${id}/run`, { method: 'POST' });
+        const res = await fetch(`/api/reports/${id}/run`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ segment_filters: segs || [] }),
+        });
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             document.getElementById('reportsViewerContent').innerHTML = `<div class="report-preview report-dark report-print-area"><div class="rpt-error">${escapeHtml(err.detail || 'Erro ao executar.')}</div></div>`;
@@ -7659,12 +7745,20 @@ async function openReportViewer(id) {
         const myId = currentUser ? currentUser.id : null;
         const editBtn = document.getElementById('btnEditReport');
         if (editBtn) editBtn.classList.toggle('hidden', !(payload.report && payload.report.owner_id === myId));
-        document.getElementById('reportsViewerStatus').textContent = `${payload.row_count} registro(s) · executado em ${(new Date()).toLocaleString('pt-BR')}`;
+        const scoped = (segs && segs.length) ? ' · filtros aplicados' : '';
+        document.getElementById('reportsViewerStatus').textContent = `${payload.row_count} registro(s) · executado em ${(new Date()).toLocaleString('pt-BR')}${scoped}`;
         document.getElementById('reportsViewerContent').innerHTML = renderReportPayload(payload, false);
-        // Fetch raw rows so we can apply client-side filters (multiselect on group/sub_group + free-text)
+        // Pré-seleciona o filtro client-side com a escolha do pré-voo (rede de
+        // segurança: se o servidor não pôde escopar, o client filtra; se escopou,
+        // é idempotente).
+        _viewerFilters = {};
+        (segs || []).forEach(s => { _viewerFilters[s.column] = new Set((s.values || []).map(String)); });
         await _viewerFetchRawRows(payload);
-    } catch(e) {
+        if (segs && segs.length) { try { _applyViewerFilters(); } catch (e) {} }
+    } catch (e) {
         document.getElementById('reportsViewerContent').innerHTML = `<div class="report-preview report-dark report-print-area"><div class="rpt-error">Erro: ${escapeHtml(e.message)}</div></div>`;
+    } finally {
+        _hideReportProgress();
     }
 }
 
@@ -7813,8 +7907,12 @@ function closeReportViewer() {
 }
 
 function refreshReportViewer() {
-    if (!_currentReport || !_currentReport.report) return;
-    openReportViewer(_currentReport.report.id);
+    // Atualizar = re-roda com os MESMOS filtros do último Gerar (com modal de
+    // progresso). Se ainda não gerou (está no pré-voo), reabre o pré-voo.
+    const id = _preflightReportId || (_currentReport && _currentReport.report && _currentReport.report.id);
+    if (!id) return;
+    if (_currentReport && _currentReport.bands) _executeReport(id, _lastSegmentFilters || []);
+    else openReportViewer(id);
 }
 
 function editCurrentReport() {
