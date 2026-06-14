@@ -15,6 +15,7 @@ from datetime import date as _date
 from app.models.schemas import (
     QueryRequest, ExecHeroRequest, ExecDeckRequest, ExecDeckSaveRequest, ExecDeckUpdateRequest,
     ExecDeckParamsRequest, ExecReplayRequest, ExecNarrateRequest, ExecTemporalColumnsRequest,
+    ExecExplainRequest,
     PlaybookCreate, PlaybookUpdate, PlaybookCopyRequest,
     FailureCreate, FailureArtifact, FailureStatusUpdate,
     AnalysisTypeCreate, AnalysisTypeUpdate,
@@ -1137,6 +1138,23 @@ async def exec_slide_narrate(req: ExecNarrateRequest, user: dict = Depends(get_c
     except Exception as e:
         _record_exec_failure(user, "exec/slide/narrate", "(re-narração de slide)", e)
         raise HTTPException(status_code=500, detail="Erro ao re-narrar slide. O detalhe foi registrado em Falhas.")
+
+
+@router.post("/exec/number/explain")
+async def exec_number_explain(req: ExecExplainRequest, user: dict = Depends(get_current_user)):
+    """Auditoria assistida — explica em linguagem de negócio de onde vem um número
+    do deck (lê o SQL gerado + amostra + fonte + período). Não recomputa o número:
+    o valor permanece o auditável; a IA só traduz/contextualiza."""
+    from app.services.exec_deck_service import explain_number
+    if not isinstance(req.context, dict):
+        raise HTTPException(status_code=400, detail="context inválido.")
+    try:
+        return explain_number(req.question, req.context)
+    except HTTPException:
+        raise
+    except Exception as e:
+        _record_exec_failure(user, "exec/number/explain", req.question or "(explicar número)", e)
+        raise HTTPException(status_code=500, detail="Erro ao explicar o número. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/deck/pptx")
