@@ -3387,7 +3387,7 @@ function _showDeckProgress() {
         + '<div id="execProgressDetail" class="text-[11px] text-fg-accent mt-1 min-h-[14px]"></div>'
         + '<div id="execProgressSteps" class="space-y-2 text-xs my-3"></div>'
         + '<div class="flex items-center justify-between text-[11px] text-fg-muted border-t border-fg-border pt-3">'
-        + '<span>⏱ <span id="execProgressElapsed">00:00</span> decorrido</span><span>costuma levar 1–2 min</span></div></div>';
+        + '<span>⏱ <span id="execProgressElapsed">00:00</span> decorrido</span><span>tempo estimado entre 3-4 min</span></div></div>';
     document.body.appendChild(ov);
     _renderDeckProgress();
     _deckProgTimer = setInterval(_renderDeckProgress, 1000);
@@ -3909,7 +3909,7 @@ async function refreshExecDeck(id) {
     const r = await fetch('/api/exec/decks/' + id);
     if (!r.ok) { alert('Deck não encontrado.'); return; }
     const rec = await r.json();
-    if (!confirm('Atualizar "' + rec.name + '" recompondo com os dados de hoje? (pode levar 1–2 min)')) return;
+    if (!confirm('Atualizar "' + rec.name + '" recompondo com os dados de hoje? (tempo estimado entre 3-4 min)')) return;
     const out = document.getElementById('execResult');
     out.innerHTML = ''; _showDeckProgress();
     try {
