@@ -397,13 +397,28 @@ async def render_report(
     user: dict,
     accessible_tables: list[str] | None = None,
     apply_login_filter: bool = True,
+    segment_filters: list | None = None,
 ) -> dict:
     """Executes the report's query and returns a fully-rendered band structure.
 
     Published reports use the saved SQL fast-path; drafts re-run the question
-    through the agent so the designer reflects schema changes."""
+    through the agent so the designer reflects schema changes.
+
+    *segment_filters* (do pré-voo) escopam o SQL no servidor quando possível
+    (relatório publicado + SELECT simples) — reduz o volume lido. Se não der p/
+    injetar com segurança, roda como antes (o front filtra client-side)."""
     saved_sql = rep.get("sql_generated") if rep.get("status") == "published" else None
     user_login = user.get("login", "") if user else ""
+    if saved_sql and segment_filters:
+        try:
+            from app.services.exec_replay_service import apply_segment_filters_to_sql
+            new_sql, applied = apply_segment_filters_to_sql(
+                saved_sql, segment_filters, accessible_tables=accessible_tables,
+                login=user_login, apply_login_filter=apply_login_filter)
+            if applied:
+                saved_sql = new_sql
+        except Exception:
+            pass  # fallback: roda o SQL salvo inteiro (filtro client-side cobre)
     result = await run_query(
         question=rep.get("question") or rep.get("name", ""),
         analysis_type_id=None,

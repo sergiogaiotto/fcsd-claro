@@ -390,6 +390,15 @@ class ReportUpdate(BaseModel):
 class ReportPublish(BaseModel):
     sql_generated: str = Field(..., description="SQL definitivo capturado pelo designer")
 
+class ReportSegmentFilter(BaseModel):
+    """Filtro de segmento escolhido no pré-voo (coluna de agrupamento → valores)."""
+    column: str = Field(..., max_length=120)
+    values: list[str] = Field(default_factory=list)
+
+class ReportRunRequest(BaseModel):
+    """Filtros do pré-voo para escopar o relatório no servidor (opcional)."""
+    segment_filters: list[ReportSegmentFilter] = Field(default_factory=list)
+
 class ShareCreate(BaseModel):
     recipient_id: int = Field(..., description="ID do usuário destinatário")
     question: str = Field(..., min_length=1, description="Pergunta original em linguagem natural")
