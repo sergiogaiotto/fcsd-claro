@@ -430,6 +430,37 @@ async def get_users_with_access(
     )
 
 
+@router.get("/share/recipients")
+async def get_share_recipients(
+    datamart_ids: str = Query("", description="IDs dos DataMarts da consulta (csv)"),
+    diamond_layer_ids: str = Query("", description="IDs das DiamondLayers da consulta (csv)"),
+    q: str = Query("", description="Filtro por login ou display_name"),
+    limit: int = Query(20, ge=1, le=100),
+    user: dict = Depends(get_current_user),
+):
+    """Destinatários elegíveis p/ "Enviar por aqui": usuários ativos com acesso ao(s)
+    DataMart(s) OU à(s) DiamondLayer(s) da consulta (UNIÃO do escopo). Dedup por id."""
+    def _ints(s: str) -> list[int]:
+        try:
+            return [int(x) for x in (s or "").split(",") if x.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ids inválido — use inteiros separados por vírgula.")
+    dm_ids, dl_ids = _ints(datamart_ids), _ints(diamond_layer_ids)
+    if not dm_ids and not dl_ids:
+        return []
+    by_id: dict[int, dict] = {}
+    # Busca uma folga (2x) quando há dois escopos, p/ a união ainda render ~limit.
+    fetch = limit * 2 if (dm_ids and dl_ids) else limit
+    if dm_ids:
+        for u in get_users_with_access_to_datamarts(datamart_ids=dm_ids, exclude_user_id=user["id"], query=q, limit=fetch):
+            by_id[u["id"]] = u
+    if dl_ids:
+        for u in get_users_with_access_to_diamond_layers(layer_ids=dl_ids, exclude_user_id=user["id"], query=q, limit=fetch):
+            by_id.setdefault(u["id"], u)
+    out = sorted(by_id.values(), key=lambda u: (str(u.get("display_name") or u.get("login") or "").lower()))
+    return out[:limit]
+
+
 # ---------------------------------------------------------------------------
 # DiamondLayer Management (mirror of DataMart, with table ownership)
 # ---------------------------------------------------------------------------
@@ -688,23 +719,25 @@ async def delete_system_prompt(prompt_id: str, user: dict = Depends(require_root
 
 @router.post("/shares")
 async def create_share(req: ShareCreate, user: dict = Depends(get_current_user)):
-    """Cria um compartilhamento interno. Valida estritamente que o destinatário
-    tem acesso a TODOS os datamart_ids da consulta."""
+    """Cria um compartilhamento interno. Valida que o destinatário tem acesso ao(s)
+    DataMart(s) OU à(s) DiamondLayer(s) da consulta (união do escopo)."""
     if req.recipient_id == user["id"]:
         raise HTTPException(status_code=400, detail="Não é possível compartilhar consigo mesmo.")
     recipient = get_user_by_id(req.recipient_id)
     if not recipient or not recipient.get("is_active", 1):
         raise HTTPException(status_code=404, detail="Destinatário não encontrado ou inativo.")
-    if req.datamart_ids:
-        allowed_users = get_users_with_access_to_datamarts(
-            datamart_ids=req.datamart_ids,
-            limit=10000,
-        )
-        allowed_ids = {u["id"] for u in allowed_users}
+    if req.datamart_ids or req.diamond_layer_ids:
+        allowed_ids: set[int] = set()
+        if req.datamart_ids:
+            allowed_ids |= {u["id"] for u in get_users_with_access_to_datamarts(
+                datamart_ids=req.datamart_ids, limit=10000)}
+        if req.diamond_layer_ids:
+            allowed_ids |= {u["id"] for u in get_users_with_access_to_diamond_layers(
+                layer_ids=req.diamond_layer_ids, limit=10000)}
         if req.recipient_id not in allowed_ids:
             raise HTTPException(
                 status_code=403,
-                detail="Destinatário não tem acesso a todos os DataMarts desta consulta.",
+                detail="Destinatário não tem acesso ao DataMart nem à DiamondLayer desta consulta.",
             )
     created = create_shared_result(
         sender_id=user["id"],

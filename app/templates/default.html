@@ -2698,7 +2698,7 @@ CREATE INDEX IF NOT EXISTS ix_minha_tabela_login ON minha_tabela (login);</pre>
                 </div>
                 <div>
                     <h3 class="text-sm font-bold text-purple-300 uppercase tracking-wider">Enviar por aqui</h3>
-                    <p class="text-[10px] text-fg-muted mt-0.5">Apenas usuários com acesso a todos os DataMarts da consulta</p>
+                    <p class="text-[10px] text-fg-muted mt-0.5">Apenas usuários com acesso ao DataMart ou DiamondLayer da consulta</p>
                 </div>
             </div>
             <button onclick="closeShareInternal()" class="text-fg-muted hover:text-fg-bright transition" title="Fechar">
@@ -2706,7 +2706,7 @@ CREATE INDEX IF NOT EXISTS ix_minha_tabela_login ON minha_tabela (login);</pre>
             </button>
         </div>
         <div id="shareInternalNoDm" class="hidden mb-3 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-[11px] text-amber-300">
-            A consulta atual não está vinculada a nenhum DataMart, então o autocomplete pode listar qualquer usuário ativo. Considere selecionar um DataMart no card de Consultar antes de enviar.
+            A consulta atual não está vinculada a nenhum DataMart ou DiamondLayer. Selecione um no card de Consultar para listar os destinatários elegíveis.
         </div>
         <div class="space-y-3">
             <div>
@@ -2906,9 +2906,11 @@ let allSkillsList = [];
 let currentUser = null;
 let lastSqlNoLimit = '';
 let lastFullData = null;
-// DataMart ids the last sent query referenced — used by the internal share flow
-// so the recipient autocomplete can enforce strict datamart access.
+// DataMart/DiamondLayer ids the last sent query referenced — usados pelo fluxo de
+// compartilhamento interno: o autocomplete lista quem tem acesso ao DataMart OU à
+// DiamondLayer da consulta.
 let lastDatamartIds = [];
+let lastDiamondLayerIds = [];
 
 function resetConversation() {
     conversationContext = '';
@@ -2918,6 +2920,7 @@ function resetConversation() {
     lastSqlNoLimit = '';
     lastFullData = null;
     lastDatamartIds = [];
+    lastDiamondLayerIds = [];
     selectedSkillIds = [];
     if (typeof updateSelectedSkillBadge === 'function') updateSelectedSkillBadge();
     const chat = document.getElementById('chatArea');
@@ -5180,6 +5183,7 @@ async function sendQuery() {
         // Capture the datamart_ids actually sent to the agent so the share flow
         // can later enforce strict access on the recipient.
         lastDatamartIds = (typeof getSelectedDatamartIds === 'function') ? (getSelectedDatamartIds() || []) : [];
+        lastDiamondLayerIds = (typeof getSelectedDiamondLayerIds === 'function') ? (getSelectedDiamondLayerIds() || []) : [];
         // Trim history to last N user/assistant pairs before sending
         const historyToSend = conversationHistory.slice(-CONVERSATION_MAX_TURNS * 2);
         const res = await fetch('/api/query', {
@@ -6461,7 +6465,8 @@ function shareViaInternal() {
     document.getElementById('btnConfirmShareInternal').disabled = true;
     // Warning when no datamart selected
     const noDmEl = document.getElementById('shareInternalNoDm');
-    if (!lastDatamartIds || lastDatamartIds.length === 0) noDmEl.classList.remove('hidden');
+    const hasScope = (lastDatamartIds && lastDatamartIds.length) || (lastDiamondLayerIds && lastDiamondLayerIds.length);
+    if (!hasScope) noDmEl.classList.remove('hidden');
     else noDmEl.classList.add('hidden');
     // Show modal
     const m = document.getElementById('shareInternalModal');
@@ -6492,21 +6497,23 @@ function onShareRecipientInput() {
 async function _searchShareRecipients() {
     const q = document.getElementById('shareInternalRecipient').value.trim();
     const sug = document.getElementById('shareInternalSuggestions');
-    const ids = (lastDatamartIds || []).join(',');
-    if (!ids) {
-        // No datamart context — backend returns []. Show a soft message instead of nothing.
-        sug.innerHTML = '<div class="px-3 py-2 text-[11px] text-fg-muted">Selecione ao menos um DataMart na consulta para listar destinatários.</div>';
+    const dmIds = (lastDatamartIds || []).join(',');
+    const dlIds = (lastDiamondLayerIds || []).join(',');
+    if (!dmIds && !dlIds) {
+        // Sem escopo (nem DataMart nem DiamondLayer) — não há como listar destinatários.
+        sug.innerHTML = '<div class="px-3 py-2 text-[11px] text-fg-muted">Selecione um DataMart ou DiamondLayer na consulta para listar destinatários.</div>';
         sug.classList.remove('hidden');
         return;
     }
     try {
-        const url = '/api/datamarts/users-with-access?ids=' + encodeURIComponent(ids)
+        const url = '/api/share/recipients?datamart_ids=' + encodeURIComponent(dmIds)
+            + '&diamond_layer_ids=' + encodeURIComponent(dlIds)
             + '&q=' + encodeURIComponent(q) + '&limit=20';
         const res = await fetch(url);
         if (!res.ok) { sug.classList.add('hidden'); return; }
         const users = await res.json();
         if (!users.length) {
-            sug.innerHTML = '<div class="px-3 py-2 text-[11px] text-fg-muted">Nenhum usuário com acesso a todos os DataMarts da consulta.</div>';
+            sug.innerHTML = '<div class="px-3 py-2 text-[11px] text-fg-muted">Nenhum usuário com acesso ao DataMart ou DiamondLayer da consulta.</div>';
             sug.classList.remove('hidden');
             return;
         }
@@ -6545,6 +6552,7 @@ async function confirmShareInternal() {
             question: lastQuestion,
             sql_generated: lastSqlGenerated || '',
             datamart_ids: lastDatamartIds || [],
+            diamond_layer_ids: lastDiamondLayerIds || [],
             label: document.getElementById('shareInternalLabel').value.trim(),
             message: document.getElementById('shareInternalMessage').value.trim(),
         };
