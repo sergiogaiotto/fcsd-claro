@@ -4569,30 +4569,115 @@ async function exportExecPptx() {
 }
 
 // ---- Deck vivo: salvar / listar / reabrir / atualizar ----
+// ---- Biblioteca de Decks salvos: busca + ordenação + recolher + metadados ----
+let _execDecksAll = [];
+let _execDecksSort = 'recent';   // 'recent' | 'az'
+let _execDecksQuery = '';
+let _execDecksCollapsed = (function () { try { return localStorage.getItem('execDecksCollapsed') === '1'; } catch (e) { return false; } })();
+
+function _relTime(iso) {
+    if (!iso) return '';
+    var d = new Date(String(iso).replace(' ', 'T'));
+    if (isNaN(d.getTime())) return '';
+    var diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 0) diff = 0;                                   // tolera skew de fuso (UTC vs local)
+    if (diff < 90) return 'agora';
+    if (diff < 3600) return 'há ' + Math.floor(diff / 60) + ' min';
+    if (diff < 86400) { var h = Math.floor(diff / 3600); return 'há ' + h + (h === 1 ? ' hora' : ' horas'); }
+    var days = Math.floor(diff / 86400);
+    if (days === 1) return 'ontem';
+    if (days < 7) return 'há ' + days + ' dias';
+    if (days < 30) { var w = Math.floor(days / 7); return 'há ' + w + (w === 1 ? ' semana' : ' semanas'); }
+    return d.toLocaleDateString('pt-BR');
+}
+function _execDeckScopeChips(d) {
+    var names = [];
+    (d.datamart_ids || []).forEach(function (id) { var m = _execDatamarts.find(function (x) { return x.id === id; }); if (m) names.push(m.name); });
+    (d.diamond_layer_ids || []).forEach(function (id) { var l = _execDiamondLayers.find(function (x) { return x.id === id; }); if (l) names.push(l.name); });
+    if (!names.length) return '';
+    var shown = names.slice(0, 2).map(function (n) { return escapeHtml(n); }).join(', ');
+    return '🗃 ' + shown + (names.length > 2 ? ' +' + (names.length - 2) : '');
+}
+function _execDeckRow(d) {
+    var when = _relTime(d.updated_at || d.created_at);
+    var abs = (d.updated_at || d.created_at) ? ('Salvo/atualizado: ' + String(d.updated_at || d.created_at).replace('T', ' ').slice(0, 16)) : '';
+    var scope = _execDeckScopeChips(d);
+    var isReplay = /reexec/i.test(d.name || '');
+    var q = (d.question || '').trim();
+    return '<div class="group bg-fg-800 border border-fg-border rounded-lg px-3 py-2.5 flex items-start gap-2 hover:border-fg-accent/50 transition">'
+        + '<button onclick="openExecDeck(' + d.id + ')" class="flex-1 text-left min-w-0">'
+        + '<div class="flex items-center gap-1.5 flex-wrap">'
+        + '<span class="text-xs font-semibold text-fg-bright truncate max-w-[26ch]" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</span>'
+        + (isReplay ? '<span class="text-[9px] text-fg-muted border border-fg-border rounded px-1 shrink-0" title="Deck reexecutado (replay determinístico)">🔁 reexecutado</span>' : '')
+        + '</div>'
+        + (q ? '<div class="text-[11px] text-fg-muted mt-0.5" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + escapeHtml(q) + '</div>' : '')
+        + '<div class="flex items-center gap-x-2 gap-y-0.5 flex-wrap mt-1 text-[10px] text-fg-muted/80">'
+        + '<span>🗂 ' + (d.n_slides || 0) + ' slides</span>'
+        + (when ? '<span title="' + escapeHtml(abs) + '">· 🕑 ' + when + '</span>' : '')
+        + (scope ? '<span class="truncate max-w-[22ch]" title="' + escapeHtml(scope.replace('🗃 ', '')) + '">· ' + scope + '</span>' : '')
+        + '</div></button>'
+        + '<div class="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition shrink-0">'
+        + '<button onclick="renameExecDeck(' + d.id + ')" title="Renomear" class="text-fg-muted hover:text-fg-accent text-sm w-6 h-6 rounded hover:bg-fg-700">✎</button>'
+        + '<button onclick="refreshExecDeck(' + d.id + ')" title="Atualizar com dados de hoje (recompõe)" class="text-fg-muted hover:text-fg-accent text-sm w-6 h-6 rounded hover:bg-fg-700">↻</button>'
+        + '<button onclick="deleteExecDeck(' + d.id + ')" title="Excluir" class="text-fg-muted hover:text-fg-accent text-sm w-6 h-6 rounded hover:bg-fg-700">🗑</button>'
+        + '</div></div>';
+}
+function _execDeckRowsHtml() {
+    var q = _execDecksQuery.trim().toLowerCase();
+    var list = _execDecksAll.slice();
+    if (q) list = list.filter(function (d) { return ((d.name || '') + ' ' + (d.question || '')).toLowerCase().indexOf(q) >= 0; });
+    if (_execDecksSort === 'az') list.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'pt-BR'); });
+    else list.sort(function (a, b) { return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')); });
+    if (!list.length) return '<div class="text-[11px] text-fg-muted px-1 py-2">Nenhum deck corresponde a "' + escapeHtml(_execDecksQuery) + '".</div>';
+    return '<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">' + list.map(_execDeckRow).join('') + '</div>';
+}
+function _renderExecDeckRows() { var r = document.getElementById('execDecksRows'); if (r) r.innerHTML = _execDeckRowsHtml(); }
+function _execDeckFilter(v) { _execDecksQuery = v; _renderExecDeckRows(); }
+function _execDeckSort(s) { _execDecksSort = s; renderExecDecksList(); }
+function _toggleExecDecks() { _execDecksCollapsed = !_execDecksCollapsed; try { localStorage.setItem('execDecksCollapsed', _execDecksCollapsed ? '1' : '0'); } catch (e) {} renderExecDecksList(); }
+async function renameExecDeck(id) {
+    var cur = (_execDecksAll.find(function (x) { return x.id === id; }) || {}).name || '';
+    var name = prompt('Renomear deck:', cur);
+    if (name === null) return;
+    name = name.trim();
+    if (name.length < 2) { alert('O nome precisa ter ao menos 2 caracteres.'); return; }
+    try {
+        var res = await fetch('/api/exec/decks/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) });
+        if (!res.ok) { var e = await res.json().catch(function () { return {}; }); alert('Falha ao renomear: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
+        loadExecDecks();
+    } catch (e) { alert('Erro ao renomear: ' + e); }
+}
 async function loadExecDecks() {
     const box = document.getElementById('execSavedDecks');
     if (!box) return;
     try {
         const r = await fetch('/api/exec/decks');
         const list = await r.json();
-        renderExecDecksList(Array.isArray(list) ? list : []);
-    } catch (_) { box.innerHTML = ''; }
+        _execDecksAll = Array.isArray(list) ? list : [];
+    } catch (_) { _execDecksAll = []; }
+    renderExecDecksList();
 }
-function renderExecDecksList(list) {
+function renderExecDecksList() {
     const box = document.getElementById('execSavedDecks');
     if (!box) return;
-    if (!list.length) { box.innerHTML = ''; return; }
-    const cards = list.map(d => `
-      <div class="bg-fg-800 border border-fg-border rounded-lg px-3 py-2 flex items-center gap-2">
-        <button onclick="openExecDeck(${d.id})" class="flex-1 text-left min-w-0">
-          <div class="text-xs font-semibold text-fg-bright truncate">${escapeHtml(d.name)}</div>
-          <div class="text-[10px] text-fg-muted truncate">${d.n_slides || 0} slides · ${escapeHtml((d.question || '').slice(0, 70))}</div>
-        </button>
-        <button onclick="refreshExecDeck(${d.id})" title="Atualizar com dados de hoje" class="text-fg-muted hover:text-fg-accent text-sm">↻</button>
-        <button onclick="deleteExecDeck(${d.id})" title="Excluir" class="text-fg-muted hover:text-fg-accent text-sm">✕</button>
-      </div>`).join('');
-    box.innerHTML = `<div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1.5">Decks salvos</div>
-       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${cards}</div>`;
+    const n = _execDecksAll.length;
+    const chev = '<span id="execDecksChevron" class="inline-block transition" style="transform:rotate(' + (_execDecksCollapsed ? '0' : '90') + 'deg)">▶</span>';
+    const head = '<button onclick="_toggleExecDecks()" class="text-[10px] text-fg-muted uppercase tracking-wider flex items-center gap-1 hover:text-fg-bright">'
+        + chev + ' Decks salvos' + (n ? ' <span class="text-fg-muted/60 normal-case">(' + n + ')</span>' : '') + '</button>';
+    if (!n) {
+        box.innerHTML = '<div class="flex items-center gap-2 mb-1.5">' + head + '</div>'
+            + (_execDecksCollapsed ? '' : '<div class="text-[11px] text-fg-muted bg-fg-800/60 border border-dashed border-fg-border rounded-lg px-3 py-2">Você ainda não salvou nenhum deck. Gere um deck e clique em 💾 Salvar para guardá-lo aqui.</div>');
+        return;
+    }
+    const controls = _execDecksCollapsed ? '' :
+        ('<div class="ml-auto flex items-center gap-2">'
+            + '<input id="execDecksSearch" oninput="_execDeckFilter(this.value)" value="' + escapeHtml(_execDecksQuery) + '" placeholder="Buscar nome ou pergunta…" class="bg-fg-700 border border-fg-border rounded-lg px-2.5 py-1 text-[11px] w-44 focus:border-fg-accent focus:outline-none">'
+            + '<div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5" title="Ordenar">'
+            + '<button onclick="_execDeckSort(\'recent\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'recent' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">Recentes</button>'
+            + '<button onclick="_execDeckSort(\'az\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'az' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">A–Z</button>'
+            + '</div></div>');
+    box.innerHTML = '<div class="flex items-center gap-2 mb-2 flex-wrap">' + head + controls + '</div>'
+        + (_execDecksCollapsed ? '' : '<div id="execDecksRows">' + _execDeckRowsHtml() + '</div>');
 }
 async function saveExecDeck() {
     if (!_execDeck) return;
