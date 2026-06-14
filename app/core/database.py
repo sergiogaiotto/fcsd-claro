@@ -3155,15 +3155,21 @@ def delete_failure(failure_id: int) -> bool:
 # ---------------------------------------------------------------------------
 
 def get_query_history(user_login: str, limit: int = 50) -> list[dict]:
-    """Histórico de consultas do usuário, mais recentes primeiro."""
+    """Histórico de consultas da tela Consultar, mais recentes primeiro. Esconde
+    entradas legadas cuja 'pergunta' é SQL cru (poluição de fluxos internos antigos
+    como a Análise Executiva). Fluxos novos nem registram — só a tela Consultar
+    grava (run_query log_history). O \\b evita esconder palavras PT (Selecione/Within)."""
     conn = get_sync_connection()
     try:
+        # Folga no LIMIT p/ manter ~limit itens após filtrar as legadas SQL.
         rows = conn.execute(
             "SELECT id, question, sql_generated, result_summary, created_at "
             "FROM query_history WHERE user_login = ? ORDER BY created_at DESC LIMIT ?",
-            (user_login or "", int(limit)),
+            (user_login or "", int(limit) * 2 + 20),
         ).fetchall()
-        return [dict(r) for r in rows]
+        out = [dict(r) for r in rows
+               if not re.match(r"^\s*(select|with)\b", r["question"] or "", re.IGNORECASE)]
+        return out[: int(limit)]
     finally:
         conn.close()
 

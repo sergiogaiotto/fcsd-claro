@@ -1660,6 +1660,7 @@ async def query_nl(req: QueryRequest, request: Request):
             accessible_tables=accessible_tables_list,
             saved_sql=saved_sql,
             apply_login_filter=not is_root(user) if user else False,
+            log_history=True,  # só a tela Consultar registra no Histórico
         )
         # Registra a falha (mesmo quando auto-corrigida) e devolve o id para o
         # front anexar o print/snapshot. Best-effort: nunca quebra a resposta.
