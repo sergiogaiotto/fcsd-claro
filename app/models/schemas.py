@@ -88,6 +88,29 @@ class PlaybookCopyRequest(BaseModel):
     target_user_ids: list[int] = Field(..., min_length=1)
 
 
+class FailureCreate(BaseModel):
+    """Falha originada no front (erro de conexão/JS) — registro para troubleshooting."""
+    source: str = Field("frontend", max_length=40)
+    question: str = Field("", max_length=2000)
+    sql_generated: str = Field("", max_length=8000)
+    error_message: str = Field("", max_length=4000)
+    error_type: str = Field("", max_length=120)
+    response_text: str = Field("", max_length=8000)
+    snapshot_html: str = Field("", max_length=300000)
+    screenshot: str = Field("", max_length=1400000)
+    model: str = Field("", max_length=120)
+
+
+class FailureArtifact(BaseModel):
+    """Print (data URL JPEG) e snapshot HTML do bloco da resposta."""
+    screenshot: str = ""
+    snapshot_html: str = ""
+
+
+class FailureStatusUpdate(BaseModel):
+    status: str = Field("open", pattern="^(open|resolved)$")
+
+
 class AnalysisTypeCreate(BaseModel):
     name: str = Field(..., min_length=2)
     system_prompt: str = ""

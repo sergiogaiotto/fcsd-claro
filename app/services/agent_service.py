@@ -211,7 +211,11 @@ def _get_analysis_config(analysis_type_id: int | None) -> dict:
     default = {
         "system_prompt": (
             "Você é um analista de dados especialista. Responda em português do Brasil. "
-            "Gere SQL ANSI compatível com SQLite. Explique os resultados de forma clara."
+            "Gere SQL compatível com PostgreSQL. Regras de dialeto PostgreSQL: "
+            "para arredondar com casas decimais use ROUND(valor::numeric, N) — o ROUND de dois "
+            "argumentos NÃO aceita double precision; para divisão decimal use (a::numeric / NULLIF(b, 0)); "
+            "concatene texto com ||; busca case-insensitive com ILIKE; conversões com ::numeric, ::int, ::date. "
+            "Explique os resultados de forma clara."
         ),
         "guardrails_input": "",
         "guardrails_output": "",
@@ -429,6 +433,78 @@ def _apply_limit(sql: str, limit: int | None) -> str:
 # Run query
 # ---------------------------------------------------------------------------
 
+def _model_label() -> str:
+    """Best-effort rótulo provedor/modelo do LLM de SQL, para registro de falhas."""
+    try:
+        prov = getattr(settings, "llm_sql_provider", "") or getattr(settings, "llm_provider", "") or ""
+        model = (
+            getattr(settings, "azure_openai_chat_deployment", "")
+            or getattr(settings, "openai_model", "")
+            or getattr(settings, "oss120b_model", "")
+            or ""
+        )
+        label = "/".join([p for p in (prov, model) if p])
+        return label or prov or model
+    except Exception:
+        return ""
+
+
+def _strip_sql_fences(text: str) -> str:
+    """Extrai a SQL de uma resposta do LLM (remove cercas ``` e ponto-e-vírgula final)."""
+    t = (text or "").strip()
+    m = _re.search(r"```(?:sql)?\s*(.+?)```", t, _re.DOTALL | _re.IGNORECASE)
+    if m:
+        t = m.group(1).strip()
+    return t.strip().rstrip(";").strip()
+
+
+def _autocorrect_sql(failed_sql: str, error_msg: str,
+                     login_filter_user: str = "",
+                     login_filter_tables: list | None = None) -> str:
+    """Auto-correção 1-shot: devolve ao LLM a SQL que falhou + o erro REAL do Postgres
+    e pede a versão corrigida. Retorna a SQL corrigida (SELECT) ou '' se não der.
+    Preserva colunas/tabelas/filtros — corrige só o que causou o erro.
+
+    Quando há RLS por login ativo, instrui o modelo a NUNCA remover o filtro
+    obrigatório ``login = '<user>'`` (o chamador ainda valida isso por segurança)."""
+    if not failed_sql or not error_msg:
+        return ""
+    try:
+        llm = make_sql_llm(temperature=0)
+    except Exception as exc:
+        import sys
+        print(f"[autocorrect] LLM indisponível: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        return ""
+    rls_rule = ""
+    if login_filter_user and login_filter_tables:
+        safe_login = login_filter_user.replace("'", "''")
+        tables_csv = ", ".join(f'"{t}"' for t in login_filter_tables)
+        rls_rule = (
+            f"\nSEGURANÇA OBRIGATÓRIA (RLS): as tabelas {tables_csv} EXIGEM o filtro "
+            f"login = '{safe_login}'. A query corrigida DEVE manter esse filtro para essas "
+            f"tabelas — NUNCA o remova."
+        )
+    sys_msg = SystemMessage(content=(
+        "Você corrige SQL para PostgreSQL. Receberá uma query SELECT que FALHOU e o erro exato do "
+        "banco. Devolva APENAS a query SELECT corrigida — sem explicação, sem markdown, sem comentários. "
+        "Preserve EXATAMENTE as colunas, tabelas, agregações e TODOS os filtros WHERE; corrija somente o "
+        "que causou o erro. Regras comuns: ROUND com casas decimais exige numeric -> ROUND(x::numeric, N); "
+        "divisão decimal -> (a::numeric / NULLIF(b, 0)); conversões -> ::numeric/::int/::date. "
+        "NUNCA use DROP/DELETE/UPDATE/INSERT/ALTER." + rls_rule
+    ))
+    human = HumanMessage(content=(
+        f"ERRO DO POSTGRES:\n{error_msg}\n\nSQL QUE FALHOU:\n{failed_sql}\n\nSQL CORRIGIDA:"
+    ))
+    try:
+        resp = llm.invoke([sys_msg, human])
+        content = resp.content if isinstance(resp.content, str) else str(resp.content)
+    except Exception as exc:
+        import sys
+        print(f"[autocorrect] invoke falhou: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        return ""
+    return _strip_sql_fences(content)
+
+
 async def run_query(
     question: str,
     analysis_type_id: int | None = None,
@@ -504,6 +580,9 @@ async def run_query(
                 "sql_no_limit": saved_sql,
                 "explanation": "Consulta executada com o SQL salvo anteriormente.",
                 "data": data,
+                "failure": None,
+                "auto_corrected": False,
+                "model": _model_label(),
             }
         # If saved SQL failed, fall through to the normal agent flow
         # (schema may have changed since the SQL was saved)
@@ -605,14 +684,52 @@ async def run_query(
                     ai_response = msg.content
 
     data = {}
+    failure_info = None
     if sql_generated:
-        sql_to_run = _apply_limit(sql_generated, result_limit)
-        data = execute_readonly_sql(sql_to_run)
+        original_sql = _apply_limit(sql_generated, result_limit)
+        data = execute_readonly_sql(original_sql)
         # Não mascarar erro — front exibe banner com data.error e o SQL
         # tentado (data.attempted_sql), em vez de cair em "tabela vazia"
-        # silenciosa.
+        # silenciosa. Com o erro REAL em mãos, tenta UMA auto-correção.
         if isinstance(data, dict) and "error" in data:
-            data = {"error": data.get("error"), "attempted_sql": sql_to_run}
+            original_error = data.get("error") or ""
+            original_type = data.get("error_type") or ""
+            # Só auto-corrige erros REAIS de execução do banco — pular rejeições de
+            # validação (SELECT-only etc.), onde o LLM não tem o que consertar.
+            corrected = ""
+            if original_type and original_type != "ValidationError":
+                corrected = _autocorrect_sql(
+                    original_sql, original_error,
+                    login_filter_user=login_filter_user,
+                    login_filter_tables=login_filter_tables,
+                )
+                # RLS: jamais executar uma correção que tenha removido o filtro
+                # obrigatório por login (evita vazamento entre usuários).
+                if corrected and login_filter_user and login_filter_tables:
+                    safe_login = login_filter_user.replace("'", "''").lower()
+                    if safe_login not in corrected.lower():
+                        corrected = ""
+            retried_ok = False
+            retry_error = ""
+            if corrected and corrected.strip() and corrected.strip() != original_sql.strip():
+                retry_data = execute_readonly_sql(_apply_limit(corrected, result_limit))
+                if isinstance(retry_data, dict) and "error" not in retry_data:
+                    retried_ok = True
+                    data = retry_data
+                    sql_generated = corrected  # UI passa a mostrar a SQL que funciona
+                else:
+                    retry_error = retry_data.get("error", "") if isinstance(retry_data, dict) else ""
+            if not retried_ok:
+                data = {"error": original_error, "attempted_sql": original_sql, "error_type": original_type}
+            # A falha original é SEMPRE registrada (mesmo quando auto-corrigida).
+            failure_info = {
+                "error": original_error,
+                "error_type": original_type,
+                "attempted_sql": original_sql,
+                "auto_corrected": retried_ok,
+                "corrected_sql": corrected if retried_ok else "",
+                "retry_error": retry_error,
+            }
 
     conn = get_sync_connection()
     try:
@@ -634,4 +751,7 @@ async def run_query(
         "explanation": ai_response,
         "data": data,
         "auto_skill_ids": auto_skill_ids,
+        "failure": failure_info,
+        "auto_corrected": bool(failure_info and failure_info.get("auto_corrected")),
+        "model": _model_label(),
     }

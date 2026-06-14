@@ -529,6 +529,33 @@ _DDL_STATEMENTS: list[str] = [
         FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS failures (
+        id BIGSERIAL PRIMARY KEY,
+        user_id INTEGER,
+        user_login TEXT NOT NULL DEFAULT '',
+        user_name TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL DEFAULT 'query',
+        question TEXT NOT NULL DEFAULT '',
+        sql_generated TEXT NOT NULL DEFAULT '',
+        error_message TEXT NOT NULL DEFAULT '',
+        error_type TEXT NOT NULL DEFAULT '',
+        traceback TEXT NOT NULL DEFAULT '',
+        response_text TEXT NOT NULL DEFAULT '',
+        snapshot_html TEXT NOT NULL DEFAULT '',
+        screenshot TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        analysis_type_id INTEGER,
+        datamart_ids TEXT NOT NULL DEFAULT '[]',
+        diamond_layer_ids TEXT NOT NULL DEFAULT '[]',
+        auto_corrected INTEGER NOT NULL DEFAULT 0,
+        corrected_sql TEXT NOT NULL DEFAULT '',
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','resolved')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+    """,
 ]
 
 # Indexes — created AFTER all CREATE TABLE statements have run, so an
@@ -565,6 +592,9 @@ _INDEX_STATEMENTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_codegen_chats_owner ON codegen_chats(owner_id, updated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_playbooks_owner ON playbooks(owner_id, updated_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_playbooks_visibility ON playbooks(visibility)",
+    "CREATE INDEX IF NOT EXISTS idx_failures_created ON failures(created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_failures_user ON failures(user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_failures_status ON failures(status)",
 ]
 
 # Per-table list of (column_name, column_definition) tuples added in
@@ -1514,7 +1544,7 @@ def execute_readonly_sql(sql: str) -> dict:
     """Execute a read-only SQL statement and return results."""
     validation_error = _validate_select_only_sql(sql)
     if validation_error:
-        return {"error": validation_error}
+        return {"error": validation_error, "error_type": "ValidationError"}
 
     conn = get_sync_connection()
     try:
@@ -1533,8 +1563,16 @@ def execute_readonly_sql(sql: str) -> dict:
         else:
             rows = [dict(zip(columns, row)) for row in raw_rows]
         return {"columns": columns, "rows": rows, "row_count": len(rows)}
-    except Exception:
-        return {"error": "Erro ao executar consulta de leitura."}
+    except Exception as exc:
+        # Expõe o erro REAL do banco (antes era mascarado por uma mensagem
+        # genérica). Habilita troubleshooting, auto-correção e registro de
+        # falhas com o motivo exato (ex.: "function round(double precision,
+        # integer) does not exist").
+        msg = str(exc).strip()
+        return {
+            "error": msg or "Erro ao executar consulta de leitura.",
+            "error_type": type(exc).__name__,
+        }
     finally:
         conn.close()
 
@@ -2961,6 +2999,141 @@ def delete_playbook(playbook_id: int, owner_id: int | None = None) -> bool:
             cur = conn.execute("DELETE FROM playbooks WHERE id = ? AND owner_id = ?", (playbook_id, owner_id))
         else:
             cur = conn.execute("DELETE FROM playbooks WHERE id = ?", (playbook_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Failures — registro de falhas para troubleshooting (Configurações › Falhas)
+# ---------------------------------------------------------------------------
+
+# Colunas pesadas omitidas na listagem para manter a grade leve.
+_FAILURE_HEAVY_COLS = ("traceback", "snapshot_html", "screenshot")
+_FAILURE_LIST_COLS = (
+    "id, user_id, user_login, user_name, source, question, sql_generated, "
+    "error_message, error_type, model, analysis_type_id, datamart_ids, "
+    "diamond_layer_ids, auto_corrected, corrected_sql, duration_ms, status, created_at"
+)
+
+
+def _row_to_failure(row, include_heavy: bool = True) -> dict | None:
+    if row is None:
+        return None
+    d = dict(row)
+    for k in ("datamart_ids", "diamond_layer_ids"):
+        try:
+            d[k] = json.loads(d.get(k) or "[]")
+        except Exception:
+            d[k] = []
+    if not include_heavy:
+        for k in _FAILURE_HEAVY_COLS:
+            d.pop(k, None)
+    return d
+
+
+def create_failure(user_id: int | None = None, user_login: str = "", user_name: str = "",
+                   source: str = "query", question: str = "", sql_generated: str = "",
+                   error_message: str = "", error_type: str = "", traceback: str = "",
+                   response_text: str = "", snapshot_html: str = "", screenshot: str = "",
+                   model: str = "", analysis_type_id: int | None = None,
+                   datamart_ids: list[int] | None = None,
+                   diamond_layer_ids: list[int] | None = None,
+                   auto_corrected: int = 0, corrected_sql: str = "",
+                   duration_ms: int = 0, status: str = "open") -> int:
+    """Grava uma falha. Retorna o id (para anexar print/snapshot depois).
+
+    ``status`` permite gravar falhas auto-corrigidas já como 'resolved', para
+    não poluir a lista de falhas abertas (a falha continua registrada/auditável)."""
+    st = status if status in ("open", "resolved") else "open"
+    conn = get_sync_connection()
+    try:
+        fid = _exec_returning_id(
+            conn,
+            "INSERT INTO failures (user_id, user_login, user_name, source, question, "
+            "sql_generated, error_message, error_type, traceback, response_text, "
+            "snapshot_html, screenshot, model, analysis_type_id, datamart_ids, "
+            "diamond_layer_ids, auto_corrected, corrected_sql, duration_ms, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (user_id, user_login or "", user_name or "", source or "query", question or "",
+             sql_generated or "", error_message or "", error_type or "", traceback or "",
+             response_text or "", snapshot_html or "", screenshot or "", model or "",
+             analysis_type_id, json.dumps(datamart_ids or []), json.dumps(diamond_layer_ids or []),
+             1 if auto_corrected else 0, corrected_sql or "", int(duration_ms or 0), st),
+        )
+        conn.commit()
+        return fid
+    finally:
+        conn.close()
+
+
+def get_failure(failure_id: int) -> dict | None:
+    conn = get_sync_connection()
+    try:
+        row = conn.execute("SELECT * FROM failures WHERE id = ?", (failure_id,)).fetchone()
+        return _row_to_failure(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_failures(limit: int = 300, status: str | None = None) -> list[dict]:
+    """Lista falhas (sem colunas pesadas), mais recentes primeiro."""
+    conn = get_sync_connection()
+    try:
+        if status in ("open", "resolved"):
+            rows = conn.execute(
+                f"SELECT {_FAILURE_LIST_COLS} FROM failures WHERE status = ? "
+                "ORDER BY created_at DESC LIMIT ?",
+                (status, int(limit)),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"SELECT {_FAILURE_LIST_COLS} FROM failures ORDER BY created_at DESC LIMIT ?",
+                (int(limit),),
+            ).fetchall()
+        return [_row_to_failure(r, include_heavy=False) for r in rows]
+    finally:
+        conn.close()
+
+
+def update_failure_artifact(failure_id: int, screenshot: str | None = None,
+                           snapshot_html: str | None = None) -> bool:
+    """Anexa o print (data URL) e/ou o snapshot HTML a uma falha já gravada."""
+    sets: list[str] = []
+    params: list = []
+    if screenshot is not None:
+        sets.append("screenshot = ?"); params.append(screenshot)
+    if snapshot_html is not None:
+        sets.append("snapshot_html = ?"); params.append(snapshot_html)
+    if not sets:
+        return False
+    params.append(failure_id)
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute(f"UPDATE failures SET {', '.join(sets)} WHERE id = ?", params)
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def update_failure_status(failure_id: int, status: str) -> bool:
+    if status not in ("open", "resolved"):
+        return False
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute("UPDATE failures SET status = ? WHERE id = ?", (status, failure_id))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_failure(failure_id: int) -> bool:
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute("DELETE FROM failures WHERE id = ?", (failure_id,))
         conn.commit()
         return cur.rowcount > 0
     finally:

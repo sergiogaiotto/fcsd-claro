@@ -477,6 +477,15 @@
                         </svg>
                         Usuários
                     </button>
+                    <button onclick="showCfgTab('falhas')" id="cfg-tab-falhas" class="hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/>
+                            <line x1="12" y1="17" x2="12.01" y2="17"/>
+                        </svg>
+                        Falhas
+                    </button>
                 </div>
             </div>
             <!-- IDs mantidos para compatibilidade com showTab() -->
@@ -488,7 +497,8 @@
             <span id="tab-sysprompts"   class="hidden"></span>
             <span id="tab-api"          class="hidden"></span>
             <span id="tab-users"        class="hidden"></span>
-            
+            <span id="tab-falhas"       class="hidden"></span>
+
             <!-- TDIA-CodeGen — copiloto de programação: ícone ao lado do usuário. id mantido p/ o gating por papel (JS) -->
             <a href="/codegen" id="nav-codegen" class="hidden text-fg-accent hover:text-fg-accent-hover transition-colors" title="TDIA-CodeGen — Copiloto de Programação (SQL / Engenharia de Dados)" aria-label="TDIA-CodeGen">
                 <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
@@ -2515,6 +2525,52 @@
         <div id="usersTableContainer" class="table-container rounded-lg border border-fg-border overflow-y-auto"><table class="min-w-full"><thead><tr class="bg-fg-700 text-fg-muted text-[10px] uppercase tracking-wider"><th class="px-4 py-2.5 text-left">Login</th><th class="px-4 py-2.5 text-left">Nome</th><th class="px-4 py-2.5 text-left">Tipo</th><th class="px-4 py-2.5 text-left">DataMarts</th><th class="px-4 py-2.5 text-center">Status</th><th class="px-4 py-2.5 text-left">Criado em</th><th class="px-4 py-2.5 text-center">Ações</th></tr></thead><tbody id="usersTableBody" class="text-sm divide-y divide-fg-border"></tbody></table></div>
     </div>
 </section>
+
+<!-- ===================== FALHAS TAB ===================== -->
+<section id="panel-falhas" class="tab-panel hidden">
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5 glow-accent">
+        <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+            <div>
+                <h2 class="text-xs font-bold text-fg-accent uppercase tracking-wider">Falhas — diagnóstico e correção</h2>
+                <p class="text-[11px] text-fg-muted mt-0.5">Erros capturados em detalhe (erro real do banco, SQL, pergunta, modelo, print e contexto) para troubleshooting e correção da aplicação.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <select id="failuresFilter" onchange="loadFailures()" class="bg-fg-700 border border-fg-border rounded-lg px-2 py-1.5 text-xs focus:border-fg-accent focus:outline-none">
+                    <option value="open">Abertas</option>
+                    <option value="resolved">Resolvidas</option>
+                    <option value="">Todas</option>
+                </select>
+                <button onclick="loadFailures()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs font-semibold transition">↻ Atualizar</button>
+            </div>
+        </div>
+        <div id="failuresTableContainer" class="table-container rounded-lg border border-fg-border overflow-y-auto mt-3">
+            <table class="min-w-full">
+                <thead><tr class="bg-fg-700 text-fg-muted text-[10px] uppercase tracking-wider">
+                    <th class="px-3 py-2.5 text-left">Quando</th>
+                    <th class="px-3 py-2.5 text-left">Usuário</th>
+                    <th class="px-3 py-2.5 text-left">Origem</th>
+                    <th class="px-3 py-2.5 text-left">Pergunta</th>
+                    <th class="px-3 py-2.5 text-left">Erro</th>
+                    <th class="px-3 py-2.5 text-left">Modelo</th>
+                    <th class="px-3 py-2.5 text-center">Status</th>
+                    <th class="px-3 py-2.5 text-center">Ações</th>
+                </tr></thead>
+                <tbody id="failuresTableBody" class="text-sm divide-y divide-fg-border"></tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- ===================== FAILURE DETAIL MODAL ===================== -->
+<div id="failureDetailModal" class="fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm hidden items-center justify-center p-4" onclick="if(event.target===this)closeFailureDetail()">
+    <div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-fg-border">
+            <div class="text-sm font-bold text-fg-bright">⚠ Detalhe da falha</div>
+            <button onclick="closeFailureDetail()" class="text-fg-muted hover:text-fg-accent">✕</button>
+        </div>
+        <div id="failureDetailBody" class="overflow-auto px-5 py-4 flex-1 text-sm"></div>
+    </div>
+</div>
 </main>
 
 <!-- ===================== SHARE CURTAIN MODAL ===================== -->
@@ -2827,6 +2883,7 @@ function showTab(name) {
     if (name === 'api') loadApiKeys();
     if (name === 'sysprompts') loadSystemPrompts();
     if (name === 'users') loadUsers();
+    if (name === 'falhas') loadFailures();
     if (name === 'skills') loadSkills();
     if (name === 'visions') loadVisionsTab();
     if (name === 'cockpit') loadCockpit();
@@ -4104,8 +4161,11 @@ async function _rerunChatSql(key) {
         const hasError = !!(data.data && data.data.error);
         const showRunBtn = !hasError && rowCount > 0;
         html += _renderChatSqlBlock(data.sql_generated || sql, newKey, wasEdited ? 'SQL Executado (editado)' : 'SQL Re-executado', showRunBtn, true);
+        if (data.auto_corrected) {
+            html += `<div class="mt-1 mb-1 text-[10px] text-fg-green flex items-center gap-1"><span>✓</span> O SQL falhou e foi corrigido automaticamente. A falha foi registrada em Configurações › Falhas.</div>`;
+        }
         if (data.data && data.data.error) {
-            html += `<div class="mt-2 mb-1 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2 text-xs text-red-300"><div class="font-semibold uppercase tracking-wider text-[10px] text-red-400 mb-1">Falha ao executar</div><div class="font-mono leading-relaxed break-words whitespace-pre-wrap">${escapeHtml(String(data.data.error))}</div></div>`;
+            html += _renderFailureBox(data.data.error, { label: 'Falha ao executar', attemptedSql: data.data.attempted_sql, question: sql });
         } else if (data.data && Array.isArray(data.data.rows) && data.data.rows.length === 0) {
             html += `<div class="mt-2 mb-1 bg-fg-700/40 border border-fg-border rounded-lg px-3 py-2 text-xs text-fg-muted">Consulta retornou <strong>0 registros</strong>.</div>`;
             html += renderActions();
@@ -4113,10 +4173,12 @@ async function _rerunChatSql(key) {
             html += renderTable(data.data);
             html += renderActions();
         }
-        appendMessage('assistant', html, true);
+        const _msgEl = appendMessage('assistant', html, true);
+        if (data.failure_id) _attachFailureArtifact(data.failure_id, _msgEl);
     } catch (e) {
         removeLoading();
         appendMessage('error', 'Erro ao executar: ' + e.message);
+        _recordClientFailure({ source: 'frontend', question: '(re-execução de SQL)', sql_generated: sql, error_message: String((e && e.message) || e), error_type: 'ClientError' });
     }
 }
 
@@ -4205,14 +4267,16 @@ async function sendQuery() {
                 false,
             );
         }
+        if (data.auto_corrected) {
+            html += `<div class="mt-1 mb-1 text-[10px] text-fg-green flex items-center gap-1"><span>✓</span> O SQL inicial falhou e foi corrigido automaticamente. A falha foi registrada em Configurações › Falhas.</div>`;
+        }
         if (data.explanation) {
             let parsed = marked.parse(data.explanation);
             parsed = linkifySuggestions(parsed);
             html += `<div class="prose-custom text-sm leading-relaxed">${parsed}</div>`;
         }
         if (data.data && data.data.error) {
-            const errMsg = String(data.data.error);
-            html += `<div class="mt-2 mb-1 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2 text-xs text-red-300"><div class="font-semibold uppercase tracking-wider text-[10px] text-red-400 mb-1">Falha ao executar a consulta</div><div class="font-mono leading-relaxed break-words whitespace-pre-wrap">${escapeHtml(errMsg)}</div></div>`;
+            html += _renderFailureBox(data.data.error, { label: 'Falha ao executar a consulta', attemptedSql: data.data.attempted_sql, question: lastQuestion });
         } else if (data.data && Array.isArray(data.data.rows) && data.data.rows.length === 0) {
             html += `<div class="mt-2 mb-1 bg-fg-700/40 border border-fg-border rounded-lg px-3 py-2 text-xs text-fg-muted">Consulta executada com sucesso, mas <strong>0 registros</strong> foram retornados.</div>`;
             html += renderActions();
@@ -4224,10 +4288,15 @@ async function sendQuery() {
             inlineReport = _maybeBuildInlineReport(lastQuestion, data.data);
             if (inlineReport) html += inlineReport.cardHtml;
         }
-        appendMessage('assistant', html, true);
+        const _msgEl = appendMessage('assistant', html, true);
         if (inlineChart) inlineChart.render();
         if (inlineReport) inlineReport.render();
-    } catch (e) { removeLoading(); appendMessage('error', 'Erro de conexão: ' + e.message); }
+        if (data.failure_id) _attachFailureArtifact(data.failure_id, _msgEl);
+    } catch (e) {
+        removeLoading();
+        appendMessage('error', 'Erro de conexão: ' + e.message);
+        _recordClientFailure({ source: 'frontend', question: q, error_message: String((e && e.message) || e), error_type: 'ClientError' });
+    }
 }
 
 // ============================
@@ -5075,8 +5144,174 @@ function appendMessage(role, content, isHtml = false) {
     else if (role === 'error') { div.innerHTML = `<div class="bg-red-900/15 border border-red-800/40 rounded-xl px-4 py-2.5 text-sm text-red-400">${escapeHtml(content)}</div>`; }
     else { div.innerHTML = `<div class="bg-fg-700/50 border border-fg-border rounded-xl px-4 py-3 text-sm max-w-full overflow-x-auto">${isHtml ? content : escapeHtml(content)}</div>`; }
     chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
+    return div;
 }
 function removeLoading() { const el = document.getElementById('loadingMsg'); if (el) el.remove(); }
+
+// ---- Falhas: caixa de erro expansível + captura de print/snapshot ----
+let _failBoxSeq = 0;
+function _renderFailureBox(errMsg, opts) {
+    opts = opts || {};
+    const id = 'failbox-' + (++_failBoxSeq);
+    const label = opts.label || 'Falha ao executar a consulta';
+    const full = String(errMsg == null ? '' : errMsg);
+    const summary = (full.split('\n')[0] || '').slice(0, 240);
+    const parts = [];
+    if (opts.attemptedSql) parts.push('-- SQL que falhou --\n' + opts.attemptedSql);
+    parts.push('-- Erro do banco --\n' + full);
+    if (opts.question) parts.push('-- Pergunta --\n' + opts.question);
+    const detail = parts.join('\n\n');
+    return `<div class="mt-2 mb-1 bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2 text-xs text-red-300">
+        <div class="flex items-center justify-between gap-2">
+            <div class="font-semibold uppercase tracking-wider text-[10px] text-red-400">${escapeHtml(label)}</div>
+            <button type="button" onclick="_toggleFailDetail('${id}', this)" class="text-[10px] text-red-300 hover:text-red-200 underline whitespace-nowrap">ver detalhes ▾</button>
+        </div>
+        <div class="font-mono leading-relaxed break-words whitespace-pre-wrap mt-1">${escapeHtml(summary)}</div>
+        <div id="${id}" class="hidden mt-2 border-t border-red-800/40 pt-2">
+            <pre class="font-mono text-[11px] text-red-200 whitespace-pre-wrap break-words max-h-72 overflow-auto">${escapeHtml(detail)}</pre>
+            <div class="text-[10px] text-red-400/70 mt-1.5">Esta falha foi registrada em Configurações › Falhas (com print e contexto) para troubleshooting.</div>
+        </div>
+    </div>`;
+}
+function _toggleFailDetail(id, btn) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('hidden');
+    if (btn) btn.textContent = el.classList.contains('hidden') ? 'ver detalhes ▾' : 'ocultar ▴';
+}
+async function _attachFailureArtifact(failureId, el) {
+    if (!failureId) return;
+    try {
+        let snapshot_html = '';
+        try { snapshot_html = el ? String(el.innerHTML || '').slice(0, 280000) : ''; } catch (_) {}
+        let screenshot = '';
+        try {
+            if (el) {
+                if (typeof html2canvas === 'undefined') await _loadHtml2Canvas();
+                if (typeof html2canvas !== 'undefined') {
+                    const canvas = await html2canvas(el, { backgroundColor: '#0d1117', scale: 0.6, logging: false, useCORS: true });
+                    screenshot = canvas.toDataURL('image/jpeg', 0.55);
+                    if (screenshot.length > 1350000) screenshot = '';  // teto: pula print grande demais
+                }
+            }
+        } catch (_) { screenshot = ''; }
+        await fetch('/api/failures/' + failureId + '/artifact', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ screenshot, snapshot_html }),
+        });
+    } catch (_) { /* best-effort: nunca atrapalha o usuário */ }
+}
+async function _recordClientFailure(info) {
+    try {
+        await fetch('/api/failures', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(info || {}),
+        });
+    } catch (_) {}
+}
+
+// ---- Configurações › Falhas: grade + detalhe (admin) ----
+let _failures = [];
+function _failWhen(ts) { if (!ts) return '—'; try { return String(ts).slice(0, 16).replace('T', ' '); } catch (_) { return String(ts); } }
+function _failTrunc(s, n) { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n) + '…' : s; }
+async function loadFailures() {
+    const tbody = document.getElementById('failuresTableBody');
+    if (!tbody) return;
+    const filter = (document.getElementById('failuresFilter') || {}).value || '';
+    tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-xs text-fg-muted">Carregando…</td></tr>';
+    try {
+        const res = await fetch('/api/failures' + (filter ? ('?status=' + encodeURIComponent(filter)) : ''));
+        if (!res.ok) { tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-xs text-fg-muted">Sem acesso ou erro ao carregar.</td></tr>'; return; }
+        _failures = await res.json();
+        _renderFailuresTable();
+    } catch (e) { tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-4 text-xs text-fg-muted">Erro ao carregar.</td></tr>'; }
+}
+function _renderFailuresTable() {
+    const tbody = document.getElementById('failuresTableBody');
+    if (!tbody) return;
+    if (!_failures.length) { tbody.innerHTML = '<tr><td colspan="8" class="px-3 py-6 text-center text-xs text-fg-muted">Nenhuma falha registrada. 🎉</td></tr>'; return; }
+    tbody.innerHTML = _failures.map(f => {
+        const statusBadge = f.status === 'resolved'
+            ? '<span class="text-fg-green text-[11px]">Resolvida</span>'
+            : '<span class="text-red-400 text-[11px]">Aberta</span>';
+        const corrected = f.auto_corrected ? '<span class="text-[9px] text-fg-green ml-1" title="Corrigida automaticamente">✓auto</span>' : '';
+        const srcLabel = { query: 'Consulta', frontend: 'Front', other: 'Outro' }[f.source] || (f.source || '—');
+        return `<tr class="hover:bg-fg-700/40 transition-colors align-top">
+            <td class="px-3 py-2 text-[11px] text-fg-muted font-mono whitespace-nowrap">${escapeHtml(_failWhen(f.created_at))}</td>
+            <td class="px-3 py-2 text-[11px] text-fg-text whitespace-nowrap">${escapeHtml(f.user_name || f.user_login || '—')}</td>
+            <td class="px-3 py-2 text-[11px] text-fg-muted whitespace-nowrap">${escapeHtml(srcLabel)}${corrected}</td>
+            <td class="px-3 py-2 text-[11px] text-fg-text max-w-[220px]"><div class="truncate" title="${escapeHtml(f.question || '')}">${escapeHtml(_failTrunc(f.question || '—', 90))}</div></td>
+            <td class="px-3 py-2 text-[11px] text-red-300 max-w-[260px]"><div class="truncate font-mono" title="${escapeHtml(f.error_message || '')}">${escapeHtml(_failTrunc(f.error_message || '—', 110))}</div></td>
+            <td class="px-3 py-2 text-[11px] text-fg-muted whitespace-nowrap">${escapeHtml(f.model || '—')}</td>
+            <td class="px-3 py-2 text-center whitespace-nowrap">${statusBadge}</td>
+            <td class="px-3 py-2 text-center whitespace-nowrap">
+                <div class="flex items-center justify-center gap-1.5 text-[11px]">
+                    <button onclick="openFailureDetail(${f.id})" class="text-fg-muted hover:text-fg-blue">Ver</button>
+                    <span class="text-fg-border">·</span>
+                    ${f.status === 'resolved'
+                        ? `<button onclick="setFailureStatus(${f.id}, 'open')" class="text-fg-muted hover:text-fg-accent">Reabrir</button>`
+                        : `<button onclick="setFailureStatus(${f.id}, 'resolved')" class="text-fg-muted hover:text-fg-green">Resolver</button>`}
+                    <span class="text-fg-border">·</span>
+                    <button onclick="deleteFailureItem(${f.id})" class="text-fg-muted hover:text-red-400">Excluir</button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+async function openFailureDetail(id) {
+    const modal = document.getElementById('failureDetailModal');
+    const body = document.getElementById('failureDetailBody');
+    if (!modal || !body) return;
+    body.innerHTML = '<div class="text-xs text-fg-muted">Carregando…</div>';
+    modal.classList.remove('hidden'); modal.classList.add('flex');
+    try {
+        const f = await (await fetch('/api/failures/' + id)).json();
+        if (f.detail) { body.innerHTML = '<div class="text-xs text-red-400">' + escapeHtml(f.detail) + '</div>'; return; }
+        const field = (label, value, mono) => value ? `<div class="mb-3"><div class="text-[10px] text-fg-muted uppercase tracking-wider mb-0.5">${escapeHtml(label)}</div><div class="${mono ? 'font-mono text-[11px]' : 'text-xs'} text-fg-text whitespace-pre-wrap break-words bg-fg-900 border border-fg-border rounded-lg px-3 py-2 max-h-60 overflow-auto">${escapeHtml(String(value))}</div></div>` : '';
+        const ctx = [];
+        if (f.user_name || f.user_login) ctx.push('Usuário: ' + (f.user_name || '') + ' (' + (f.user_login || '') + ')');
+        ctx.push('Quando: ' + _failWhen(f.created_at));
+        if (f.model) ctx.push('Modelo: ' + f.model);
+        ctx.push('Origem: ' + (f.source || '—'));
+        if (f.duration_ms) ctx.push('Duração: ' + f.duration_ms + ' ms');
+        if (f.analysis_type_id) ctx.push('Tipo de análise: ' + f.analysis_type_id);
+        if (Array.isArray(f.datamart_ids) && f.datamart_ids.length) ctx.push('DataMarts: ' + f.datamart_ids.join(', '));
+        if (Array.isArray(f.diamond_layer_ids) && f.diamond_layer_ids.length) ctx.push('DiamondLayers: ' + f.diamond_layer_ids.join(', '));
+        if (f.auto_corrected) ctx.push('Auto-corrigida: sim');
+        let html = '';
+        html += `<div class="text-[11px] text-fg-muted mb-3">${escapeHtml(ctx.join('  ·  '))}</div>`;
+        html += field('Pergunta', f.question);
+        html += field('Erro real do banco', f.error_message + (f.error_type ? ('  [' + f.error_type + ']') : ''), true);
+        html += field('SQL gerado / tentado', f.sql_generated, true);
+        if (f.auto_corrected && f.corrected_sql) html += field('SQL corrigido (auto)', f.corrected_sql, true);
+        html += field('Resposta / observações', f.response_text);
+        if (f.traceback) html += field('Traceback', f.traceback, true);
+        if (f.screenshot) html += `<div class="mb-3"><div class="text-[10px] text-fg-muted uppercase tracking-wider mb-0.5">Print da tela</div><img src="${f.screenshot}" class="rounded-lg border border-fg-border max-w-full" alt="print da falha"></div>`;
+        html += `<div class="flex gap-2 mt-3 border-t border-fg-border pt-3">
+            ${f.status === 'resolved'
+                ? `<button onclick="setFailureStatus(${f.id}, 'open'); closeFailureDetail();" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Reabrir</button>`
+                : `<button onclick="setFailureStatus(${f.id}, 'resolved'); closeFailureDetail();" class="bg-fg-green/20 text-fg-green border border-fg-green/30 px-3 py-1.5 rounded-lg text-xs font-semibold">Marcar como resolvida</button>`}
+            <button onclick="deleteFailureItem(${f.id}); closeFailureDetail();" class="bg-fg-700 border border-fg-border text-fg-muted hover:text-red-400 px-3 py-1.5 rounded-lg text-xs ml-auto">Excluir</button>
+        </div>`;
+        body.innerHTML = html;
+    } catch (e) { body.innerHTML = '<div class="text-xs text-red-400">Erro: ' + escapeHtml(e.message) + '</div>'; }
+}
+function closeFailureDetail() { const m = document.getElementById('failureDetailModal'); if (m) { m.classList.add('hidden'); m.classList.remove('flex'); } }
+async function setFailureStatus(id, status) {
+    try {
+        const res = await fetch('/api/failures/' + id + '/status', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+        if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; }
+        loadFailures();
+    } catch (e) { alert('Erro: ' + e.message); }
+}
+async function deleteFailureItem(id) {
+    if (!confirm('Excluir esta falha?')) return;
+    try {
+        const res = await fetch('/api/failures/' + id, { method: 'DELETE' });
+        if (!res.ok) { let e = {}; try { e = await res.json(); } catch (_) {} alert(_fmtApiError(e)); return; }
+        loadFailures();
+    } catch (e) { alert('Erro: ' + e.message); }
+}
 
 function linkifySuggestions(html) {
     const tmp = document.createElement('div'); tmp.innerHTML = html;
@@ -7711,6 +7946,8 @@ async function loadCurrentUser() { try { const res = await fetch('/api/auth/me')
     if (['root','superuser','admin'].includes(currentUser.user_type)) {
         document.getElementById('tab-users').classList.remove('hidden');
         document.getElementById('cfg-tab-users').classList.remove('hidden');
+        const fb = document.getElementById('cfg-tab-falhas');
+        if (fb) fb.classList.remove('hidden');
     }
     // "Prompts de Sistema" é exclusivo do Root
     if (currentUser.user_type === 'root') {
@@ -11012,7 +11249,7 @@ function showCfgTab(name) {
     if (tr) tr.classList.remove('cfg-trigger-active');
     document.removeEventListener('click', _closeCfgOnOutsideClick);
 
-    ['tables', 'catalog', 'dataproducts', 'sysprompts', 'api', 'users'].forEach(n => {
+    ['tables', 'catalog', 'dataproducts', 'sysprompts', 'api', 'users', 'falhas'].forEach(n => {
         const btn = document.getElementById('cfg-tab-' + n);
         if (btn) btn.classList.toggle('cfg-active', n === name);
     });

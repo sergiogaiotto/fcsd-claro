@@ -1,6 +1,8 @@
 import json
 import re
 import uuid
+import time as _time
+import traceback as _tb
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Header, Query, Request, Response, Depends
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
@@ -13,6 +15,7 @@ from datetime import date as _date
 from app.models.schemas import (
     QueryRequest, ExecHeroRequest, ExecDeckRequest, ExecDeckSaveRequest, ExecDeckUpdateRequest,
     PlaybookCreate, PlaybookUpdate, PlaybookCopyRequest,
+    FailureCreate, FailureArtifact, FailureStatusUpdate,
     AnalysisTypeCreate, AnalysisTypeUpdate,
     EmailRequest, ApiKeyCreate, ApiQueryRequest, GallerySaveRequest, PredictionRequest,
     CausalRequest,
@@ -115,6 +118,8 @@ from app.core.database import (
     update_exec_deck, delete_exec_deck,
     create_playbook, get_playbook, list_playbooks_for_user,
     list_all_playbooks, update_playbook, delete_playbook,
+    create_failure, get_failure, list_failures,
+    update_failure_artifact, update_failure_status, delete_failure,
 )
 
 router = APIRouter(prefix="/api")
@@ -1184,6 +1189,76 @@ async def playbooks_copy(playbook_id: int, req: PlaybookCopyRequest, user: dict 
     return {"copied": copied}
 
 
+# --- Falhas (troubleshooting — Configurações › Falhas) ---
+
+# Tetos de tamanho para os artefatos enviados pelo navegador.
+_FAILURE_SCREENSHOT_MAX = 1_400_000  # ~1MB de imagem em base64
+_FAILURE_SNAPSHOT_MAX = 300_000
+
+
+@router.get("/failures")
+async def failures_list(status: str = Query("", description="Filtro: open | resolved"),
+                       user: dict = Depends(require_admin)):
+    """Lista as falhas (sem colunas pesadas), mais recentes primeiro."""
+    return list_failures(status=status if status in ("open", "resolved") else None)
+
+
+@router.get("/failures/{failure_id}")
+async def failures_get(failure_id: int, user: dict = Depends(require_admin)):
+    fail = get_failure(failure_id)
+    if not fail:
+        raise HTTPException(status_code=404, detail="Falha não encontrada.")
+    return fail
+
+
+@router.post("/failures")
+async def failures_create(req: FailureCreate, user: dict = Depends(get_current_user)):
+    """Registra uma falha originada no front (ex.: erro de conexão/JS)."""
+    fid = create_failure(
+        user_id=user["id"],
+        user_login=user.get("login") or "",
+        user_name=user.get("display_name") or "",
+        source=req.source or "frontend",
+        question=req.question or "",
+        sql_generated=req.sql_generated or "",
+        error_message=req.error_message or "",
+        error_type=req.error_type or "",
+        response_text=req.response_text or "",
+        snapshot_html=(req.snapshot_html or "")[:_FAILURE_SNAPSHOT_MAX],
+        screenshot=(req.screenshot or "")[:_FAILURE_SCREENSHOT_MAX],
+        model=req.model or "",
+    )
+    return {"id": fid}
+
+
+@router.patch("/failures/{failure_id}/artifact")
+async def failures_attach_artifact(failure_id: int, req: FailureArtifact, user: dict = Depends(get_current_user)):
+    """Anexa o print (data URL) e o snapshot HTML do bloco da resposta.
+    Permitido ao autor da falha ou a um admin."""
+    fail = get_failure(failure_id)
+    if not fail:
+        raise HTTPException(status_code=404, detail="Falha não encontrada.")
+    if fail.get("user_id") != user["id"] and not is_admin(user):
+        raise HTTPException(status_code=403, detail="Sem permissão para anexar a esta falha.")
+    shot = (req.screenshot or "")[:_FAILURE_SCREENSHOT_MAX]
+    snap = (req.snapshot_html or "")[:_FAILURE_SNAPSHOT_MAX]
+    update_failure_artifact(failure_id, screenshot=shot, snapshot_html=snap)
+    return {"ok": True}
+
+
+@router.patch("/failures/{failure_id}/status")
+async def failures_set_status(failure_id: int, req: FailureStatusUpdate, user: dict = Depends(require_admin)):
+    if not update_failure_status(failure_id, req.status):
+        raise HTTPException(status_code=404, detail="Falha não encontrada.")
+    return {"ok": True}
+
+
+@router.delete("/failures/{failure_id}")
+async def failures_delete(failure_id: int, user: dict = Depends(require_admin)):
+    delete_failure(failure_id)
+    return {"ok": True}
+
+
 # --- Tables ---
 
 @router.get("/tables")
@@ -1416,6 +1491,7 @@ async def query_nl(req: QueryRequest, request: Request):
     # run_query expects a list (or None)
     accessible_tables_list = sorted(accessible_tables) if accessible_tables is not None else None
 
+    _t0 = _time.perf_counter()
     try:
         result = await run_query(
             question=question,
@@ -1429,11 +1505,61 @@ async def query_nl(req: QueryRequest, request: Request):
             saved_sql=saved_sql,
             apply_login_filter=not is_root(user) if user else False,
         )
+        # Registra a falha (mesmo quando auto-corrigida) e devolve o id para o
+        # front anexar o print/snapshot. Best-effort: nunca quebra a resposta.
+        fi = result.get("failure") if isinstance(result, dict) else None
+        if fi:
+            try:
+                fid = create_failure(
+                    user_id=(user["id"] if user else None),
+                    user_login=user_login,
+                    user_name=((user.get("display_name") if user else "") or ""),
+                    source="query",
+                    question=question,
+                    sql_generated=fi.get("attempted_sql") or (result.get("sql_generated") or ""),
+                    error_message=fi.get("error") or "",
+                    error_type=fi.get("error_type") or "",
+                    response_text=result.get("explanation") or "",
+                    model=result.get("model") or "",
+                    analysis_type_id=analysis_type_id,
+                    datamart_ids=datamart_ids,
+                    diamond_layer_ids=diamond_layer_ids,
+                    auto_corrected=1 if fi.get("auto_corrected") else 0,
+                    corrected_sql=fi.get("corrected_sql") or "",
+                    duration_ms=int((_time.perf_counter() - _t0) * 1000),
+                    # Auto-corrigida já entra como 'resolved' (registrada, mas
+                    # fora da lista de abertas).
+                    status="resolved" if fi.get("auto_corrected") else "open",
+                )
+                result["failure_id"] = fid
+            except Exception:
+                pass
+            result.pop("failure", None)  # metadado interno, não vaza pro front
         return result
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(500, "Erro na consulta.")
+    except Exception as e:
+        try:
+            create_failure(
+                user_id=(user["id"] if user else None),
+                user_login=user_login,
+                user_name=((user.get("display_name") if user else "") or ""),
+                source="query",
+                question=question,
+                error_message=str(e),
+                error_type=type(e).__name__,
+                traceback=_tb.format_exc(),
+                model="",
+                analysis_type_id=analysis_type_id,
+                datamart_ids=datamart_ids,
+                diamond_layer_ids=diamond_layer_ids,
+                duration_ms=int((_time.perf_counter() - _t0) * 1000),
+            )
+        except Exception:
+            pass
+        # Mensagem genérica ao cliente; o detalhe completo (com traceback) fica
+        # registrado em Configurações › Falhas (admin) para troubleshooting.
+        raise HTTPException(500, "Erro na consulta. O detalhe foi registrado em Falhas.")
 
 
 # --- Analysis Types ---
