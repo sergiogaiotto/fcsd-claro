@@ -142,6 +142,36 @@ def _conf_seal(slide, conf):
     _txt(slide, SW - M - 2.6, 0.34, 2.6, 0.3, f"Confiança: {level}", size=10, bold=True, color=col, align="r")
 
 
+def _pct_display(value, obj):
+    """Garante o símbolo "%" em valores percentuais no PPTX (espelha _pctDisplay
+    do front), p/ decks gerados ANTES do guard de geração. Recomputa do value_raw
+    quando o fmt é percentual ou quando rótulo/coluna indicam percentual e o valor
+    está numa faixa plausível; senão devolve a string original inalterada."""
+    s = "" if value is None else str(value)
+    if "%" in s:
+        return s
+    obj = obj or {}
+    fmt = obj.get("fmt") or ""
+    vr = obj.get("value_raw")
+    try:
+        from app.services.report_service import _format_value, _coerce_number
+        from app.services.exec_analysis_service import _looks_percent
+    except Exception:
+        return s
+    if fmt.startswith("percent"):
+        return _format_value(vr, fmt) if vr is not None else s
+    if vr is None or not _looks_percent(obj.get("label"), obj.get("column"), obj.get("caption")):
+        return s
+    n = _coerce_number(vr)
+    if n is None:
+        return s
+    if -1.0 <= n <= 1.0:
+        return _format_value(vr, "percent_2")
+    if abs(n) <= 150.0:
+        return _format_value(vr, "percent_raw")
+    return s
+
+
 # ---------------------------------------------------------------------------
 # Builders por tipo de slide
 # ---------------------------------------------------------------------------
@@ -176,7 +206,7 @@ def _sintese(prs, sp, deck, page):
         for i, c in enumerate(callouts):
             x = M + i * (cw + gap)
             _rect(s, x, 2.45, cw, 1.25, fill=LIGHT)
-            _txt(s, x + 0.1, 2.58, cw - 0.2, 0.7, c.get("value", ""), size=30, bold=True, color=RED, align="c")
+            _txt(s, x + 0.1, 2.58, cw - 0.2, 0.7, _pct_display(c.get("value", ""), c), size=30, bold=True, color=RED, align="c")
             _txt(s, x + 0.1, 3.28, cw - 0.2, 0.35, c.get("label", ""), size=10, color=MUTED, align="c")
     colw = (SW - 2 * M - 0.4) / 2
     y = 4.1
@@ -255,7 +285,7 @@ def _insight(prs, sp, deck, page):
         _txt(s, M, 1.85, left_w, 1.05, _short(sp["narrative"], 240 if has_chart else 360), size=11, color=INK)
     # número-herói
     hero = sp.get("hero") or {}
-    _txt(s, M, 3.0, left_w, 1.1, hero.get("value", "—"), size=52, bold=True, color=RED)
+    _txt(s, M, 3.0, left_w, 1.1, _pct_display(hero.get("value", "—"), hero), size=52, bold=True, color=RED)
     _txt(s, M, 4.15, left_w, 0.35, hero.get("label", ""), size=13, bold=True, color=INK)
     if hero.get("caption"):
         _txt(s, M, 4.5, left_w, 0.35, hero["caption"], size=11, color=MUTED)
@@ -277,10 +307,22 @@ def _insight(prs, sp, deck, page):
         _bullets(s, M, ay + 0.35, left_w, 1.0, actions, size=11, color=INK, space_after=3)
     foot = _src_footer_for(sp) or deck.get("source_footer", "")
     _footer(s, foot, page)
-    # SQL nas speaker notes (auditabilidade)
+    # SQL + fundamento da confiança nas speaker notes (auditabilidade; PPTX não
+    # tem tooltip, então o critério/motivo da confiança vai para as notas).
+    note_parts = []
+    _cf = sp.get("confidence") or {}
+    if _cf.get("level"):
+        _crit = ("Criterios — Alta: fonte catalogada, completude >=90% e qualidade "
+                 ">=70%; Media: sem catalogo ou completude 70-90%/qualidade <70%; "
+                 "Baixa: completude <70%, 0 linhas ou sem numero-heroi.")
+        note_parts.append(f"Confianca: {_cf.get('level')}"
+                          + (f" — {_cf.get('reason')}" if _cf.get("reason") else "")
+                          + "\n" + _crit)
     if sp.get("sql"):
+        note_parts.append("SQL do número-chave:\n" + sp["sql"])
+    if note_parts:
         try:
-            s.notes_slide.notes_text_frame.text = "SQL do número-herói:\n" + sp["sql"]
+            s.notes_slide.notes_text_frame.text = "\n\n".join(note_parts)
         except Exception:
             pass
 

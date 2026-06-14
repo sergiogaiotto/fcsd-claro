@@ -111,13 +111,14 @@ def _format_value(value: Any, fmt: str) -> str:
             n = _coerce_number(value)
             if n is None:
                 return str(value)
-            return _br_number(n, 0) + "%"
+            # já em escala 0-100: mantém 2 casas quando não é inteiro (8.40 -> 8,40%)
+            return _br_number(n, 0 if float(n).is_integer() else 2) + "%"
         if fmt == "percent_raw_sign":
             n = _coerce_number(value)
             if n is None:
                 return str(value)
             sign = "+" if n > 0 else ""
-            return sign + _br_number(n, 0) + "%"
+            return sign + _br_number(n, 0 if float(n).is_integer() else 2) + "%"
         if fmt == "date_br":
             return _format_date_br(value)
     except Exception:

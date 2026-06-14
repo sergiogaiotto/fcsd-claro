@@ -357,12 +357,13 @@ def _ensure_login_filter(node, login: str, login_tables: set[str]) -> None:
     tabs = _slide_tables(node)
     if not (login and login_tables and (tabs & login_tables)):
         return
-    # já tem filtro de login?
-    for c in _existing_where_conditions(node):
-        if _pred_on_column(c, "login"):
-            return
+    # NÃO confie em predicado de login pré-existente: no re-run o WHERE é
+    # controlado pelo usuário, que poderia escrever `login = '<vítima>'`. Sempre
+    # remove qualquer predicado na coluna `login` e reinjeta o do próprio usuário
+    # (mesmo padrão de _apply_filter/_apply_temporal_range com drop_column).
+    kept = _existing_where_conditions(node, drop_column="login")
     pred = exp.EQ(this=exp.column("login"), expression=exp.Literal.string(login))
-    _set_where(node, _existing_where_conditions(node) + [pred])
+    _set_where(node, kept + [pred])
 
 
 def _swap_window(node, window: str, valid_columns: set[str]) -> bool:
@@ -579,6 +580,74 @@ def _recompute_insight(slide: dict, data: dict, new_sql: str) -> bool:
     return True
 
 
+def rerun_edited_sql(sql: str, hero: dict, chart_data: dict, *, user=None,
+                     accessible_tables=None, apply_login_filter: bool = True) -> dict:
+    """Executa um SQL EDITADO MANUALMENTE no drawer de auditoria, com EXATAMENTE as
+    mesmas travas do replay determinístico (passou pela revisão adversarial do #49):
+      - read-only (execute_readonly_sql valida: 1 statement, SELECT/WITH, sem DDL/DML);
+      - autorização por tabela p/ não-root (não pode tocar tabela não autorizada);
+      - SELECT simples (sem UNION/CTE/subquery) quando há RLS de login → injeta
+        `login = '<user>'` determinístico; SQL complexo sobre tabela com login é
+        recusado (não dá p/ garantir o filtro); complexo sem login roda verbatim.
+    Recompõe o herói SEM LLM (anti-alucinação) reusando _recompute_insight: só
+    devolve número se reproduzível com confiança a partir das linhas frescas."""
+    _TABLE_COLS_CACHE.clear()
+    if not (sql and sql.strip()):
+        return {"error": "SQL vazio."}
+    node = _parse(sql)
+    if node is None:
+        return {"error": "SQL não pôde ser parseado (verifique a sintaxe)."}
+    # Guards específicos do re-run (SQL é controlado pelo usuário, não gerado):
+    # exige ao menos UMA tabela real — bloqueia fontes só-função (pg_read_file,
+    # generate_series, dblink) que escapariam da autorização baseada em tabelas e
+    # serviriam p/ leitura de arquivo/DoS — e proíbe tabelas internas (users,
+    # sessions, api_keys, catálogo…), fechando o vazamento mesmo p/ root.
+    tabs = _slide_tables(node)
+    if not tabs:
+        return {"error": "O SQL precisa consultar ao menos uma tabela real (fontes baseadas apenas em funções não são permitidas aqui)."}
+    try:
+        from app.core.database import INTERNAL_TABLES
+        internal = {str(t).lower() for t in INTERNAL_TABLES}
+    except Exception:
+        internal = set()
+    bad = tabs & internal
+    if bad:
+        return {"error": "Consulta a tabela(s) interna(s) do sistema não é permitida: " + ", ".join(sorted(bad)) + "."}
+    # Deny-by-default p/ não-root sem nenhum grant: None = irrestrito vale só p/
+    # root; um não-root sem datamarts/diamond layers recebe allowlist vazia (tudo
+    # é recusado), em vez de acesso irrestrito.
+    if apply_login_filter and accessible_tables is None:
+        accessible_tables = []
+    login = (user or {}).get("login", "") if user else ""
+    login_tables = set()
+    if apply_login_filter and login:
+        login_tables = {str(t).lower() for t in (get_tables_with_login_column(accessible_tables) or [])}
+    allowed_tables = ({str(t).lower() for t in accessible_tables}
+                      if accessible_tables is not None else None)
+    # Sem transforms (segment/window/temporal): só roda o SQL editado com segurança.
+    new_sql, data, _applied, err = _replay_one_sql(
+        sql, [], None, login, login_tables, allowed_tables, temporal_ranges=[])
+    if err or data is None:
+        return {"error": err or "Sem dados após a re-execução."}
+    slide = {"hero": dict(hero or {}), "chart_data": chart_data or {}}
+    if not _recompute_insight(slide, data, new_sql):
+        return {"error": "O número-chave não pôde ser recomposto com segurança a "
+                         "partir do SQL editado (a coluna do número-chave não voltou "
+                         "no resultado, ou o resultado é grande demais para reconferir)."}
+    h = slide.get("hero") or {}
+    h["value_formatted"] = h.get("value")  # drawer/herói-modal leem value_formatted
+    return {
+        "sql": slide.get("sql") or new_sql,
+        "hero": h,
+        "chart": slide.get("chart"),
+        "chart_data": slide.get("chart_data") or {},
+        "source": slide.get("source") or {},
+        "confidence": slide.get("confidence") or {},
+        "row_count": slide.get("row_count"),
+        "edited": (new_sql.strip() != sql.strip()),
+    }
+
+
 def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, temporal_ranges=None,
                 user=None, accessible_tables=None, apply_login_filter: bool = True) -> dict:
     """Reexecuta o deck determinístico com recorte/janela/período. Muta uma cópia
@@ -608,7 +677,7 @@ def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, temporal_
             skipped.append({"key": s.get("key"), "title": s.get("title"), "reason": s["replay_error"]})
             continue
         if not _recompute_insight(s, data, new_sql):
-            s["replay_error"] = "Número-herói não pôde ser recomposto com segurança (resultado original truncado)."
+            s["replay_error"] = "Número-chave não pôde ser recomposto com segurança (resultado original truncado)."
             skipped.append({"key": s.get("key"), "title": s.get("title"), "reason": s["replay_error"]})
             continue
         # Causal: reaplica transforms ao SQL causal e reexecuta (best-effort).
@@ -719,7 +788,7 @@ def narrate_slide(slide: dict) -> dict:
         human = (
             f"Título: {slide.get('title','')}\n"
             f"Pergunta: {slide.get('nl_question','')}\n"
-            f"Número-herói: {hero.get('value','')} ({hero.get('label','')})\n"
+            f"Número-chave: {hero.get('value','')} ({hero.get('label','')})\n"
             f"Colunas: {cd.get('columns', [])}\n"
             f"Amostra (até 12 linhas): {_json.dumps(sample, ensure_ascii=False, default=str)}\n\n"
             "Devolva JSON: {\"narrative\":\"<2-3 frases, max ~320 chars, fiel aos números>\","

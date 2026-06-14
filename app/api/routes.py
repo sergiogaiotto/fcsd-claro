@@ -15,7 +15,7 @@ from datetime import date as _date
 from app.models.schemas import (
     QueryRequest, ExecHeroRequest, ExecDeckRequest, ExecDeckSaveRequest, ExecDeckUpdateRequest,
     ExecDeckParamsRequest, ExecReplayRequest, ExecNarrateRequest, ExecTemporalColumnsRequest,
-    ExecExplainRequest,
+    ExecExplainRequest, ExecRerunSqlRequest,
     PlaybookCreate, PlaybookUpdate, PlaybookCopyRequest,
     FailureCreate, FailureArtifact, FailureStatusUpdate,
     AnalysisTypeCreate, AnalysisTypeUpdate,
@@ -1155,6 +1155,28 @@ async def exec_number_explain(req: ExecExplainRequest, user: dict = Depends(get_
     except Exception as e:
         _record_exec_failure(user, "exec/number/explain", req.question or "(explicar número)", e)
         raise HTTPException(status_code=500, detail="Erro ao explicar o número. O detalhe foi registrado em Falhas.")
+
+
+@router.post("/exec/number/rerun-sql")
+async def exec_number_rerun_sql(req: ExecRerunSqlRequest, user: dict = Depends(get_current_user)):
+    """Re-executa um SQL EDITADO no drawer de auditoria com as travas do replay
+    (read-only, autorização por tabela, RLS de login, SELECT simples) e recompõe o
+    herói sem LLM. Devolve {error} (HTTP 200) p/ falhas de SQL/estrutura — o front
+    mostra a mensagem inline; 500 só p/ erro inesperado (registrado em Falhas)."""
+    from app.services.exec_replay_service import rerun_edited_sql
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    apply_login_filter = not is_root(user)
+    try:
+        return rerun_edited_sql(
+            req.sql, req.hero or {}, req.chart_data or {},
+            user=user, accessible_tables=accessible, apply_login_filter=apply_login_filter,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        _record_exec_failure(user, "exec/number/rerun-sql", "(re-executar SQL editado)", e,
+                             req.datamart_ids, req.diamond_layer_ids)
+        raise HTTPException(status_code=500, detail="Erro ao re-executar o SQL. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/deck/pptx")

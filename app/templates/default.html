@@ -3298,7 +3298,7 @@ async function runExecHero() {
     const out = document.getElementById('execResult');
     const oldLabel = btn.textContent;
     btn.disabled = true; btn.textContent = 'Analisando…';
-    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">⏳ Consultando seus dados e selecionando o número-herói…</div>';
+    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">⏳ Consultando seus dados e selecionando o número-chave…</div>';
     try {
         const dmIds = getSelectedExecDatamartIds();
         const dlIds = getSelectedExecDiamondLayerIds();
@@ -3340,13 +3340,13 @@ function renderExecResult(data) {
     <div class="bg-fg-800 border border-fg-border rounded-xl p-6 fade-in">
         <div class="flex items-start justify-between flex-wrap gap-4">
             <div class="min-w-[220px]">
-                <div style="font-size:72px;line-height:1;font-weight:800" class="text-fg-accent">${escapeHtml(hero.value_formatted || '—')}</div>
+                <div style="font-size:72px;line-height:1;font-weight:800" class="text-fg-accent">${escapeHtml(_pctDisplay(hero.value_formatted || '—', hero))}</div>
                 <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}</div>
                 ${hero.caption ? `<div class="text-xs text-fg-muted mt-1 max-w-md">${escapeHtml(hero.caption)}</div>` : ''}
                 ${thesisFlag}
             </div>
             <div class="text-right">
-                <span class="inline-block text-[11px] font-semibold rounded-full px-3 py-1" style="background:${c.bg};border:1px solid ${c.bd};color:${c.fg}">Confiança: ${escapeHtml(conf.level)}</span>
+                <span class="inline-block text-[11px] font-semibold rounded-full px-3 py-1 cursor-help" title="${_confTitleAttr(conf)}" style="background:${c.bg};border:1px solid ${c.bd};color:${c.fg}">Confiança: ${escapeHtml(conf.level)}</span>
                 <div class="text-[10px] text-fg-muted mt-1.5 max-w-[220px]">${escapeHtml(conf.reason || '')}</div>
             </div>
         </div>
@@ -3355,7 +3355,7 @@ function renderExecResult(data) {
             <summary class="text-[10px] text-fg-muted cursor-pointer hover:text-fg-accent transition uppercase tracking-wider font-mono">Ver lastro — SQL, fonte e completude</summary>
             <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Linhas no resultado</div><div class="text-fg-bright font-semibold mt-0.5">${data.row_count != null ? data.row_count : '—'}</div></div>
-                <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude (mín.)</div><div class="text-fg-bright font-semibold mt-0.5">${comp}</div></div>
+                <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border cursor-help" title="${_compTitleAttr(src)}"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude (mín.)</div><div class="text-fg-bright font-semibold mt-0.5">${comp}</div></div>
                 <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Qualidade catálogo</div><div class="text-fg-bright font-semibold mt-0.5">${qual}</div></div>
             </div>
             <div class="mt-2 text-[11px] text-fg-muted">Tabelas-fonte: <span class="text-fg-text">${escapeHtml(tables)}</span></div>
@@ -3594,7 +3594,7 @@ function _deckSlideHtml(s, i, prefix) {
             const _au = (prefix === '' && c.key) ? ` onclick="openExecAudit('${c.key}')" title="Auditar — SQL, campos e conferência deste número" style="cursor:pointer"` : '';
             const _mag = (prefix === '' && c.key) ? ` <span class="text-fg-muted/50">🔍</span>` : '';
             return `<div class="text-center px-3 flex-1 min-w-[110px] rounded-lg hover:bg-fg-700/30 transition"${_au}>
-            <div class="text-fg-accent font-extrabold" style="font-size:30px;line-height:1">${escapeHtml(c.value)}</div>
+            <div class="text-fg-accent font-extrabold" style="font-size:30px;line-height:1">${escapeHtml(_pctDisplay(c.value, c))}</div>
             <div class="text-[10px] text-fg-muted mt-1">${escapeHtml(c.label || '')}${_mag}</div>${c.delta ? _deltaBadge(c.delta) : ''}</div>`;
         }).join('');
         return card(`${tag}${title}
@@ -3618,7 +3618,8 @@ function _deckSlideHtml(s, i, prefix) {
         const hero = s.hero || {};
         const conf = s.confidence || {};
         const cc = _execConfColor(conf.level || 'Média');
-        const confChip = conf.level ? `<span class="text-[10px] font-semibold rounded-full px-2 py-0.5" style="background:${cc.bg};border:1px solid ${cc.bd};color:${cc.fg}">Confiança: ${escapeHtml(conf.level)}</span>` : '';
+        const confChip = conf.level ? `<span class="text-[10px] font-semibold rounded-full px-2 py-0.5 cursor-help" title="${_confTitleAttr(conf)}" style="background:${cc.bg};border:1px solid ${cc.bd};color:${cc.fg}">Confiança: ${escapeHtml(conf.level)}</span>` : '';
+        const editedChip = s._sqlEdited ? `<span class="text-[10px] text-amber-400" title="SQL editado manualmente — fora do fluxo gerado automaticamente">✏️ SQL editado</span>` : '';
         const chartHtml = s.chart ? `<div class="flex-1 min-w-[260px]"><div style="position:relative;height:240px"><canvas id="${prefix}Chart${i}"></canvas></div></div>` : '';
         const cz = s.causal;
         const czDegraded = (cz && cz._degraded) ? `<span class="ml-2 text-[10px] text-amber-400" title="${escapeHtml(cz._degraded_reason || '')}">⚠ efeito da versão anterior (não reexecutado no recorte)</span>` : '';
@@ -3626,16 +3627,16 @@ function _deckSlideHtml(s, i, prefix) {
         const czDrivers = (cz && cz.drivers && cz.drivers.length) ? `<div class="mt-1 text-[10px] text-fg-muted">📈 Drivers do modelo: ${cz.drivers.map(function (d) { return escapeHtml(d.name) + (d.coeff > 0 ? ' ↑' : ' ↓'); }).join(' · ')}</div>` : '';
         const _cd = s.chart_data || {};
         const chartBtn = (prefix === '' && _cd.rows && _cd.rows.length >= 2) ? `<button onclick="openChartStudio(${i})" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">${s.chart ? '📊 Editar gráfico' : '➕ Adicionar gráfico'}</button>` : '';
-        const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-herói)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
+        const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-chave)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
         // Auditar — disponível para TODOS os públicos (tira o lastro do antigo gate só-Gerente).
         const auditBtn = (prefix === '') ? `<button onclick="openExecAuditForSlide(${i})" title="Auditar este número — SQL, campos, conferência automática e explicação assistida" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">🔍 Auditar</button>` : '';
         const _auditHero = (prefix === '') ? ` onclick="openExecAuditForSlide(${i})" title="Auditar este número — clique para ver SQL, campos e conferência" style="cursor:pointer"` : '';
         const _magHero = (prefix === '') ? ` <span class="text-fg-muted/50">🔍</span>` : '';
-        return card(`<div class="flex items-center justify-between gap-2">${tag}${confChip}</div>${title}
+        return card(`<div class="flex items-center justify-between gap-2">${tag}<div class="flex items-center gap-2">${confChip}${editedChip}</div></div>${title}
             ${s.subtitle ? `<div class="text-xs text-fg-muted italic mt-0.5">${escapeHtml(s.subtitle)}</div>` : ''}
             <div class="flex gap-5 flex-wrap mt-3 items-start">
               <div class="min-w-[180px] rounded-lg hover:bg-fg-700/20 transition"${_auditHero}>
-                <div class="text-fg-accent font-extrabold" style="font-size:48px;line-height:1">${escapeHtml(hero.value || '—')}</div>
+                <div class="text-fg-accent font-extrabold" style="font-size:48px;line-height:1">${escapeHtml(_pctDisplay(hero.value || '—', hero))}</div>
                 <div class="text-sm font-semibold text-fg-bright mt-1">${escapeHtml(hero.label || '')}${_magHero}</div>
                 ${hero.delta ? _deltaBadge(hero.delta) : ''}
                 ${hero.caption ? `<div class="text-xs text-fg-muted mt-1 max-w-xs">${escapeHtml(hero.caption)}</div>` : ''}
@@ -3875,7 +3876,7 @@ async function openChartStudio(i) {
         + _csSel('csOrder', 'Ordem', [['original', 'Original'], ['desc', 'Maior→menor'], ['asc', 'Menor→maior']], 'desc')
         + '</div>'
         + '<div class="px-5 py-4"><div style="position:relative;height:300px"><canvas id="csCanvas"></canvas></div></div>'
-        + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">Re-pivot sobre os dados do insight — o número-herói não muda. Aplicar atualiza o slide e o export PPTX.</span>'
+        + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">Re-pivot sobre os dados do insight — o número-chave não muda. Aplicar atualiza o slide e o export PPTX.</span>'
         + (s.chart ? '<button onclick="removeChartStudio()" class="bg-fg-700 border border-fg-border text-fg-muted hover:text-fg-accent px-3 py-1.5 rounded-lg text-xs">Remover gráfico</button>' : '')
         + '<button onclick="closeChartStudio()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Cancelar</button>'
         + '<button onclick="applyChartStudio()" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold">Aplicar</button></div></div>';
@@ -3974,6 +3975,7 @@ function renderExecDeck(deck) {
 // O número permanece o do SQL (auditável); aqui só verificamos e explicamos.
 // ============================
 let _execAuditCtx = null;
+let _execAuditProv = null;
 
 // --- Formatadores BR (espelham report_service._format_value) ---
 function _execBrNumber(n, dec) {
@@ -3998,8 +4000,8 @@ function _execFmtValue(raw, fmt) {
         case 'number_k': return isNum ? _execBrNumberK(n) : String(raw);
         case 'percent_2': return isNum ? _execBrNumber(n * 100, 2) + '%' : String(raw);
         case 'percent_0': return isNum ? _execBrNumber(n * 100, 0) + '%' : String(raw);
-        case 'percent_raw': return isNum ? _execBrNumber(n, 0) + '%' : String(raw);
-        case 'percent_raw_sign': return isNum ? (n > 0 ? '+' : '') + _execBrNumber(n, 0) + '%' : String(raw);
+        case 'percent_raw': return isNum ? _execBrNumber(n, Number.isInteger(n) ? 0 : 2) + '%' : String(raw);
+        case 'percent_raw_sign': return isNum ? (n > 0 ? '+' : '') + _execBrNumber(n, Number.isInteger(n) ? 0 : 2) + '%' : String(raw);
         default: return String(raw);
     }
 }
@@ -4025,6 +4027,59 @@ function _execAggValue(rows, column, agg) {
 }
 function _aggLabel(a) { return ({ first: 'o primeiro valor', sum: 'a soma', avg: 'a média', count: 'a contagem', min: 'o mínimo', max: 'o máximo' })[a] || a; }
 
+// --- Garantia do símbolo "%" em valores percentuais (inclui decks já gerados) ---
+// Casamento por TOKEN (palavra inteira), espelhando o backend (_looks_percent):
+// evita falsos positivos por substring (percentil/percurso/liftoff).
+var _PCT_TOKENS = ['taxa', 'percent', 'percentual', 'percentuais', 'pct', 'share', 'captura', 'conversao', 'conversão', 'churn', 'uplift', 'lift', 'participacao', 'participação', 'penetracao', 'penetração'];
+function _looksPercent() {
+    var blob = Array.prototype.slice.call(arguments).filter(Boolean).join(' ');
+    if (blob.indexOf('%') >= 0) return true;
+    var toks = blob.toLowerCase().split(/[^0-9a-zà-ú]+/);
+    return toks.some(function (t) { return _PCT_TOKENS.indexOf(t) >= 0; });
+}
+// frozen = string já formatada (value/value_formatted); o = objeto com fmt/label/column/caption/value_raw.
+function _pctDisplay(frozen, o) {
+    o = o || {};
+    var s = (frozen == null ? '' : String(frozen));
+    if (s.indexOf('%') >= 0) return s;                       // já tem %
+    var numRe = /^[-+]?[\d.,\s]+$/;
+    var fmt = o.fmt || '';
+    if (fmt.indexOf('percent') === 0) {                       // fmt percentual mas string sem %
+        return (o.value_raw != null) ? _execFmtValue(o.value_raw, fmt) : (numRe.test(s) ? s + '%' : s);
+    }
+    if (!_looksPercent(o.label, o.column, o.caption)) return s; // sem intenção percentual → não mexe
+    if (o.value_raw != null) {                                // recomputa do bruto (decks antigos: number_2 → percent)
+        var n = Number(String(o.value_raw).replace(',', '.'));
+        if (!isFinite(n)) return s;
+        if (n >= -1 && n <= 1) return _execFmtValue(o.value_raw, 'percent_2');     // proporção 0-1
+        if (Math.abs(n) <= 150) return _execFmtValue(o.value_raw, 'percent_raw');  // já em escala 0-100
+        return s;                                            // contagem/escala grande → não coage
+    }
+    return numRe.test(s) ? s + '%' : s;                      // sem bruto: só anexa % se for número puro
+}
+
+// --- Tooltip de critérios da Confiança (fonte única; espelha _confidence) ---
+function _confTooltip(conf) {
+    conf = conf || {};
+    var crit = 'Como definimos a Confiança: Alta = fonte catalogada com completude ≥90% e qualidade ≥70%; Média = fonte sem catálogo, ou completude entre 70% e 90%, ou qualidade <70%; Baixa = completude <70%, 0 linhas, ou sem um número-chave.';
+    return (conf.reason ? ('Neste número: ' + conf.reason + ' — ') : '') + crit;
+}
+function _confTitleAttr(conf) { return escapeHtml(_confTooltip(conf)).replace(/"/g, '&quot;'); }
+
+// --- Tooltip de critérios da Completude (fonte única; espelha _source_quality) ---
+function _compTooltip(src) {
+    src = src || {};
+    var crit = 'Completude = % de valores preenchidos (não-nulos) nas colunas das tabelas-fonte, conforme o Catálogo de Dados; usamos a MENOR completude entre elas. Critérios: ≥90% alta · 70–90% média · <70% baixa (rebaixa a Confiança). "Não verificada" = fonte sem catálogo.';
+    var pts = [];
+    (src.details || []).forEach(function (d) {
+        if (d && d.table && d.completeness != null) pts.push(d.table + ': ' + Math.round(d.completeness) + '%');
+    });
+    var ap = pts.length ? (' Por tabela — ' + pts.join('; ') + '.') : '';
+    if (src.pii) ap += ' Contém colunas marcadas como PII (atenção à LGPD).';
+    return crit + ap;
+}
+function _compTitleAttr(src) { return escapeHtml(_compTooltip(src)).replace(/"/g, '&quot;'); }
+
 // Lastro de um número, keyed por `key`. Prefere a proveniência de geração
 // (deck._provenance — inclui o panorama/manchete); cai no slide insight (estado
 // atual, pós-edição) e tolera decks antigos sem _provenance.
@@ -4041,7 +4096,7 @@ function _provFromSlide(s, i) {
     return {
         key: s.key || ('slide' + i), title: s.title || ('Slide ' + (i + 1)), section: s.section || 'INSIGHT',
         nl_question: s.nl_question || '', sql: s.sql || '', source: s.source || {}, confidence: s.confidence || {},
-        row_count: cd.row_count, chart_data: cd, hero: s.hero || {},
+        row_count: cd.row_count, chart_data: cd, hero: s.hero || {}, _sqlEdited: s._sqlEdited,
     };
 }
 
@@ -4050,7 +4105,7 @@ function _provFromSlide(s, i) {
 function _execReconcile(prov) {
     var h = prov.hero || {}, cd = prov.chart_data || {}, rows = cd.rows || [];
     var col = h.column, agg = h.agg || 'first', fmt = h.fmt || 'raw', expRaw = h.value_raw;
-    if (expRaw === null || expRaw === undefined || expRaw === '') return { status: 'na', note: 'Sem número-herói numérico para reconferir.' };
+    if (expRaw === null || expRaw === undefined || expRaw === '') return { status: 'na', note: 'Sem um número para reconferir (o valor deste card não é numérico).' };
     if (!col || !rows.length) return { status: 'na', note: 'Sem amostra de linhas para reconferir o cálculo (o número permanece o do SQL).' };
     var total = cd.row_count;
     var truncated = (typeof total === 'number') && rows.length < total;
@@ -4059,13 +4114,15 @@ function _execReconcile(prov) {
     }
     var rec = _execAggValue(rows, col, agg);
     if (rec === null || rec === undefined) return { status: 'na', note: 'Não foi possível recalcular a partir da amostra.' };
-    var expN = Number(String(expRaw).replace(',', '.')), recN = Number(rec), recFmt = _execFmtValue(rec, fmt);
+    var expN = Number(String(expRaw).replace(',', '.')), recN = Number(rec);
+    var recFmt = _pctDisplay(_execFmtValue(rec, fmt), { fmt: fmt, label: h.label, column: col, caption: h.caption, value_raw: rec });
+    var cardFmt = _pctDisplay(h.value_formatted || String(expRaw), h);
     if (isFinite(expN) && isFinite(recN)) {
         var tol = Math.max(1e-6, Math.abs(expN) * 0.005);
         if (Math.abs(recN - expN) <= tol) {
-            return { status: 'ok', note: _aggLabel(agg) + ' de "' + col + '" em ' + rows.length + ' linha(s) = ' + recFmt + ' — confere com o card (' + (h.value_formatted || expRaw) + ').' };
+            return { status: 'ok', note: _aggLabel(agg) + ' de "' + col + '" em ' + rows.length + ' linha(s) = ' + recFmt + ' — confere com o card (' + cardFmt + ').' };
         }
-        return { status: 'mismatch', note: 'Recalculei ' + _aggLabel(agg) + ' de "' + col + '" = ' + recFmt + ', mas o card mostra ' + (h.value_formatted || expRaw) + '. Verifique a coluna/agregação ou reexecute.' };
+        return { status: 'mismatch', note: 'Recalculei ' + _aggLabel(agg) + ' de "' + col + '" = ' + recFmt + ', mas o card mostra ' + cardFmt + '. Verifique a coluna/agregação ou reexecute.' };
     }
     if (String(rec) === String(expRaw)) return { status: 'ok', note: 'O valor exibido corresponde ao primeiro registro da amostra.' };
     return { status: 'na', note: 'Número não numérico — exibido: ' + String(expRaw) + '.' };
@@ -4079,7 +4136,7 @@ function _execReconcileHtml(rec) {
 function _execAuditFlags(prov) {
     var flags = [], src = prov.source || {};
     var comp = src.min_completeness;
-    if (typeof comp === 'number' && comp < 70) flags.push({ lvl: 'warn', txt: 'Completude do dado-fonte baixa (' + Math.round(comp) + '%).' });
+    if (typeof comp === 'number' && comp < 70) flags.push({ lvl: 'warn', txt: 'Completude do dado-fonte baixa (' + Math.round(comp) + '%).', tip: _compTooltip(src) });
     if (src.pii) flags.push({ lvl: 'info', txt: 'Fonte contém colunas marcadas como PII — atenção à LGPD ao compartilhar.' });
     var per = (_execDeck && _execDeck._period) || [];
     if (per.length && prov.sql) {
@@ -4093,7 +4150,9 @@ function _execFlagsHtml(flags) {
     if (!flags.length) return '';
     return '<div class="flex flex-wrap gap-1.5">' + flags.map(function (f) {
         var col = f.lvl === 'warn' ? '#f59e0b' : '#8b949e';
-        return '<span class="text-[10px] rounded px-2 py-0.5" style="border:1px solid ' + col + '55;color:' + col + '">' + (f.lvl === 'warn' ? '⚠ ' : '· ') + escapeHtml(f.txt) + '</span>';
+        var tip = f.tip ? (' title="' + escapeHtml(f.tip).replace(/"/g, '&quot;') + '" ') : '';
+        var help = f.tip ? ' cursor-help' : '';
+        return '<span class="text-[10px] rounded px-2 py-0.5' + help + '"' + tip + 'style="border:1px solid ' + col + '55;color:' + col + '">' + (f.lvl === 'warn' ? '⚠ ' : '· ') + escapeHtml(f.txt) + '</span>';
     }).join('') + '</div>';
 }
 function _execAuditSampleTable(cd, heroCol) {
@@ -4115,13 +4174,19 @@ function _execAuditSampleTable(cd, heroCol) {
 }
 
 function openExecAudit(key) {
+    // Prefere o slide insight (estado atual, editável); senão usa a proveniência
+    // (panorama/manchete da Síntese só existe como callout).
+    var idx = ((_execDeck && _execDeck.slides) || []).findIndex(function (s) { return s.type === 'insight' && s.key === key; });
+    if (idx >= 0) { openExecAuditForSlide(idx); return; }
     var prov = _provFor(key);
     if (!prov) { alert('Lastro indisponível para este número. Gere o deck novamente para auditar a Síntese.'); return; }
+    prov._kind = 'callout'; prov._key = key;
     _openExecAuditWith(prov);
 }
 function openExecAuditForSlide(i) {
     var s = ((_execDeck && _execDeck.slides) || [])[i]; if (!s) return;
-    _openExecAuditWith(_provFromSlide(s, i));
+    var prov = _provFromSlide(s, i); prov._kind = 'slide'; prov._idx = i;
+    _openExecAuditWith(prov);
 }
 function closeExecAudit() { var ov = document.getElementById('execAuditModal'); if (ov) ov.remove(); }
 function _openExecAuditWith(prov) {
@@ -4132,13 +4197,15 @@ function _openExecAuditWith(prov) {
     var qual = (src.min_quality != null) ? Math.round(src.min_quality) + '%' : '—';
     var rowCount = (cd.row_count != null ? cd.row_count : prov.row_count);
     var rec = _execReconcile(prov), flags = _execAuditFlags(prov), cc = _execConfColor(conf.level || 'Média');
+    _execAuditProv = prov;
     _execAuditCtx = {
-        label: h.label || '', value_formatted: h.value_formatted || '—', nl_question: prov.nl_question || '',
+        label: h.label || '', value_formatted: _pctDisplay(h.value_formatted || '—', h), nl_question: prov.nl_question || '',
         sql: prov.sql || '', hero_column: h.column || '', hero_agg: h.agg || '',
         period: (_execDeck && _execDeck._period) || [], row_count: rowCount,
         tables: src.tables || [], completeness: comp, sample_rows: (cd.rows || []).slice(0, 15),
     };
-    var confChip = conf.level ? '<span class="text-[10px] font-semibold rounded-full px-2 py-0.5" style="background:' + cc.bg + ';border:1px solid ' + cc.bd + ';color:' + cc.fg + '">Confiança: ' + escapeHtml(conf.level) + '</span>' : '';
+    var confChip = conf.level ? '<span class="text-[10px] font-semibold rounded-full px-2 py-0.5 cursor-help" title="' + _confTitleAttr(conf) + '" style="background:' + cc.bg + ';border:1px solid ' + cc.bd + ';color:' + cc.fg + '">Confiança: ' + escapeHtml(conf.level) + '</span>' : '';
+    var editedNote = prov._sqlEdited ? ' <span class="text-amber-400" title="SQL editado manualmente — fora do fluxo gerado automaticamente">✏️ editado</span>' : '';
     var ov = document.createElement('div');
     ov.id = 'execAuditModal';
     ov.className = 'fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
@@ -4150,8 +4217,8 @@ function _openExecAuditWith(prov) {
         + '<button onclick="closeExecAudit()" class="text-fg-muted hover:text-fg-accent">✕</button></div>'
         + '<div class="overflow-auto px-5 py-4 space-y-4">'
         + '<div class="flex items-end justify-between gap-3 flex-wrap">'
-        + '<div><div class="text-fg-accent font-extrabold" style="font-size:40px;line-height:1">' + escapeHtml(h.value_formatted || '—') + '</div>'
-        + '<div class="text-xs font-semibold text-fg-bright mt-1">' + escapeHtml(h.label || '') + '</div></div>' + confChip + '</div>'
+        + '<div><div class="text-fg-accent font-extrabold" style="font-size:40px;line-height:1">' + escapeHtml(_pctDisplay(h.value_formatted || '—', h)) + '</div>'
+        + '<div class="text-xs font-semibold text-fg-bright mt-1">' + escapeHtml(h.label || '') + editedNote + '</div></div>' + confChip + '</div>'
         + '<div><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Conferência automática</div>' + _execReconcileHtml(rec) + '</div>'
         + (flags.length ? ('<div>' + _execFlagsHtml(flags) + '</div>') : '')
         + '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">'
@@ -4159,11 +4226,17 @@ function _openExecAuditWith(prov) {
         + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Como o número é calculado</div><div class="text-fg-bright mt-0.5">' + escapeHtml(_aggLabel(h.agg || 'first')) + ' de <span style="color:#e30613">' + escapeHtml(h.column || '—') + '</span></div></div></div>'
         + '<div class="grid grid-cols-3 gap-3 text-xs">'
         + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Linhas</div><div class="text-fg-bright font-semibold mt-0.5">' + (rowCount != null ? rowCount : '—') + '</div></div>'
-        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude</div><div class="text-fg-bright font-semibold mt-0.5">' + comp + '</div></div>'
+        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border cursor-help" title="' + _compTitleAttr(src) + '"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude</div><div class="text-fg-bright font-semibold mt-0.5">' + comp + '</div></div>'
         + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Qualidade</div><div class="text-fg-bright font-semibold mt-0.5">' + qual + '</div></div></div>'
         + '<div class="text-[11px] text-fg-muted">Tabelas-fonte: <span class="text-fg-text">' + escapeHtml(tables) + '</span></div>'
         + '<div><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Dados que geraram o número (amostra)</div>' + _execAuditSampleTable(cd, h.column) + '</div>'
-        + '<div><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">SQL executado</div><pre class="bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green overflow-x-auto font-mono border border-fg-border leading-relaxed">' + escapeHtml(prov.sql || '(sem SQL)') + '</pre></div>'
+        + '<div><div class="flex items-center justify-between mb-1"><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono">SQL executado</div>'
+        + '<button id="execAuditEditSqlBtn" onclick="_auditEditSql()" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✏️ Editar SQL</button></div>'
+        + '<pre id="execAuditSqlPre" class="bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green overflow-x-auto font-mono border border-fg-border leading-relaxed">' + escapeHtml(prov.sql || '(sem SQL)') + '</pre>'
+        + '<div id="execAuditSqlEdit" class="hidden"><textarea id="execAuditSqlText" spellcheck="false" class="w-full bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green font-mono border border-fg-border focus:border-fg-accent focus:outline-none" style="height:11rem"></textarea>'
+        + '<div class="flex items-center gap-2 mt-1 flex-wrap"><span id="execAuditSqlMsg" class="text-[10px] text-fg-muted mr-auto">Re-executa com segurança: read-only, sua RLS por login, só SELECT simples. O número-chave é recomputado a partir dos dados.</span>'
+        + '<button onclick="_auditCancelSql()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1 rounded-lg text-[11px]">Cancelar</button>'
+        + '<button id="execAuditRerunBtn" onclick="_auditRerunSql()" class="bg-fg-accent text-white px-3 py-1 rounded-lg text-[11px] font-semibold">▶ Re-executar</button></div></div></div>'
         + '<div class="border-t border-fg-border pt-3"><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Pergunte sobre este número</div>'
         + '<div class="flex gap-2"><input id="execAuditAsk" type="text" placeholder="ex.: esse total inclui pós-pago? por que parece alto?" class="flex-1 bg-fg-700 border border-fg-border rounded-lg px-3 py-1.5 text-xs focus:border-fg-accent focus:outline-none" onkeydown="if(event.key===\'Enter\')askAboutNumber()">'
         + '<button id="execAuditAskBtn" onclick="askAboutNumber()" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap">Explicar</button></div>'
@@ -4193,6 +4266,79 @@ async function askAboutNumber() {
         ans.innerHTML = '<span style="color:#f85149">' + (aborted ? 'A explicação demorou demais e foi cancelada.' : 'Não foi possível explicar agora (a falha foi registrada em Configurações › Falhas).') + '</span>';
         _recordClientFailure({ source: 'exec', question: 'Auditar número: ' + q, error_message: String((e && e.message) || e), error_type: (e && e.name) || 'ClientError', model: '' });
     } finally { clearTimeout(to); if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
+// --- Editar e re-executar o SQL (com as travas do replay; herói recomputado) ---
+function _auditEditSql() {
+    var pre = document.getElementById('execAuditSqlPre'), ed = document.getElementById('execAuditSqlEdit'), btn = document.getElementById('execAuditEditSqlBtn'), ta = document.getElementById('execAuditSqlText');
+    if (!pre || !ed || !ta) return;
+    ta.value = (_execAuditProv && _execAuditProv.sql) || '';
+    pre.classList.add('hidden'); if (btn) btn.classList.add('hidden'); ed.classList.remove('hidden');
+    ta.focus();
+}
+function _auditCancelSql() {
+    var pre = document.getElementById('execAuditSqlPre'), ed = document.getElementById('execAuditSqlEdit'), btn = document.getElementById('execAuditEditSqlBtn');
+    if (ed) ed.classList.add('hidden'); if (pre) pre.classList.remove('hidden'); if (btn) btn.classList.remove('hidden');
+}
+async function _auditRerunSql() {
+    if (!_execAuditProv) return;
+    var ta = document.getElementById('execAuditSqlText'); var sql = (ta && ta.value || '').trim();
+    var msg = document.getElementById('execAuditSqlMsg'); var btn = document.getElementById('execAuditRerunBtn');
+    if (!sql) { if (msg) msg.innerHTML = '<span style="color:#f85149">SQL vazio.</span>'; return; }
+    var old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Executando…'; }
+    if (msg) msg.innerHTML = '⏳ Re-executando com segurança…';
+    var ctrl = new AbortController(); var to = setTimeout(function () { ctrl.abort(); }, 120000);
+    try {
+        var dmIds = (_execDeck && _execDeck._dm) || getSelectedExecDatamartIds();
+        var dlIds = (_execDeck && _execDeck._dl) || getSelectedExecDiamondLayerIds();
+        var res = await fetch('/api/exec/number/rerun-sql', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sql: sql, hero: _execAuditProv.hero || {}, chart_data: _execAuditProv.chart_data || {}, datamart_ids: dmIds && dmIds.length ? dmIds : null, diamond_layer_ids: dlIds && dlIds.length ? dlIds : null }),
+            signal: ctrl.signal,
+        });
+        var d = await res.json();
+        if (d.detail) { if (msg) msg.innerHTML = '<span style="color:#f85149">' + escapeHtml(_fmtApiError(d)) + '</span>'; return; }
+        if (d.error) { if (msg) msg.innerHTML = '<span style="color:#f85149">' + escapeHtml(d.error) + '</span>'; return; }
+        var kind = _execAuditProv._kind, idx = _execAuditProv._idx, key = _execAuditProv._key;
+        _applyRerunToModel(_execAuditProv, d);
+        try { renderExecDeck(_execDeck); } catch (e) {}
+        if (kind === 'slide') openExecAuditForSlide(idx); else openExecAudit(key);
+    } catch (e) {
+        var aborted = e && e.name === 'AbortError';
+        if (msg) msg.innerHTML = '<span style="color:#f85149">' + (aborted ? 'A re-execução demorou demais e foi cancelada.' : 'Não foi possível re-executar agora.') + '</span>';
+        _recordClientFailure({ source: 'exec', question: 'Re-executar SQL editado', error_message: String((e && e.message) || e), error_type: (e && e.name) || 'ClientError', model: '' });
+    } finally { clearTimeout(to); if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+function _applyRerunToModel(prov, d) {
+    var h = d.hero || {};
+    if (prov._kind === 'slide') {
+        var s = ((_execDeck && _execDeck.slides) || [])[prov._idx];
+        if (!s) return;
+        s.hero = h; s.sql = d.sql || s.sql; s.chart = d.chart || null;
+        s.chart_data = d.chart_data || s.chart_data; s.source = d.source || s.source;
+        s.confidence = d.confidence || s.confidence; s.row_count = d.row_count; s._sqlEdited = true;
+        if (_execDeck._provenance && s.key && _execDeck._provenance[s.key]) {
+            var pe = _execDeck._provenance[s.key];
+            pe.hero = h; pe.sql = s.sql; pe.chart_data = s.chart_data; pe.source = s.source; pe.confidence = s.confidence; pe.row_count = d.row_count; pe._sqlEdited = true;
+        }
+        _updateCalloutFor(s.key, h);
+    } else if (prov._kind === 'callout') {
+        var key = prov._key;
+        if (_execDeck._provenance && _execDeck._provenance[key]) {
+            var p = _execDeck._provenance[key];
+            p.hero = h; p.sql = d.sql || p.sql; p.chart_data = d.chart_data || p.chart_data; p.source = d.source || p.source; p.confidence = d.confidence || p.confidence; p.row_count = d.row_count; p._sqlEdited = true;
+        }
+        _updateCalloutFor(key, h);
+    }
+}
+function _updateCalloutFor(key, h) {
+    if (!key || !_execDeck) return;
+    (_execDeck.slides || []).forEach(function (s) {
+        if (s.type === 'sintese') (s.callouts || []).forEach(function (c) {
+            if (c.key === key) { c.value = h.value_formatted || h.value || c.value; c.value_raw = h.value_raw; c.fmt = h.fmt; }
+        });
+    });
 }
 
 // --- Portão pré-save: varre os números e alerta os não-reconferidos ---
@@ -4423,30 +4569,115 @@ async function exportExecPptx() {
 }
 
 // ---- Deck vivo: salvar / listar / reabrir / atualizar ----
+// ---- Biblioteca de Decks salvos: busca + ordenação + recolher + metadados ----
+let _execDecksAll = [];
+let _execDecksSort = 'recent';   // 'recent' | 'az'
+let _execDecksQuery = '';
+let _execDecksCollapsed = (function () { try { return localStorage.getItem('execDecksCollapsed') === '1'; } catch (e) { return false; } })();
+
+function _relTime(iso) {
+    if (!iso) return '';
+    var d = new Date(String(iso).replace(' ', 'T'));
+    if (isNaN(d.getTime())) return '';
+    var diff = (Date.now() - d.getTime()) / 1000;
+    if (diff < 0) diff = 0;                                   // tolera skew de fuso (UTC vs local)
+    if (diff < 90) return 'agora';
+    if (diff < 3600) return 'há ' + Math.floor(diff / 60) + ' min';
+    if (diff < 86400) { var h = Math.floor(diff / 3600); return 'há ' + h + (h === 1 ? ' hora' : ' horas'); }
+    var days = Math.floor(diff / 86400);
+    if (days === 1) return 'ontem';
+    if (days < 7) return 'há ' + days + ' dias';
+    if (days < 30) { var w = Math.floor(days / 7); return 'há ' + w + (w === 1 ? ' semana' : ' semanas'); }
+    return d.toLocaleDateString('pt-BR');
+}
+function _execDeckScopeChips(d) {
+    var names = [];
+    (d.datamart_ids || []).forEach(function (id) { var m = _execDatamarts.find(function (x) { return x.id === id; }); if (m) names.push(m.name); });
+    (d.diamond_layer_ids || []).forEach(function (id) { var l = _execDiamondLayers.find(function (x) { return x.id === id; }); if (l) names.push(l.name); });
+    if (!names.length) return '';
+    var shown = names.slice(0, 2).map(function (n) { return escapeHtml(n); }).join(', ');
+    return '🗃 ' + shown + (names.length > 2 ? ' +' + (names.length - 2) : '');
+}
+function _execDeckRow(d) {
+    var when = _relTime(d.updated_at || d.created_at);
+    var abs = (d.updated_at || d.created_at) ? ('Salvo/atualizado: ' + String(d.updated_at || d.created_at).replace('T', ' ').slice(0, 16)) : '';
+    var scope = _execDeckScopeChips(d);
+    var isReplay = /reexec/i.test(d.name || '');
+    var q = (d.question || '').trim();
+    return '<div class="group bg-fg-800 border border-fg-border rounded-lg px-3 py-2.5 flex items-start gap-2 hover:border-fg-accent/50 transition">'
+        + '<button onclick="openExecDeck(' + d.id + ')" class="flex-1 text-left min-w-0">'
+        + '<div class="flex items-center gap-1.5 flex-wrap">'
+        + '<span class="text-xs font-semibold text-fg-bright truncate max-w-[26ch]" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</span>'
+        + (isReplay ? '<span class="text-[9px] text-fg-muted border border-fg-border rounded px-1 shrink-0" title="Deck reexecutado (replay determinístico)">🔁 reexecutado</span>' : '')
+        + '</div>'
+        + (q ? '<div class="text-[11px] text-fg-muted mt-0.5" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + escapeHtml(q) + '</div>' : '')
+        + '<div class="flex items-center gap-x-2 gap-y-0.5 flex-wrap mt-1 text-[10px] text-fg-muted/80">'
+        + '<span>🗂 ' + (d.n_slides || 0) + ' slides</span>'
+        + (when ? '<span title="' + escapeHtml(abs) + '">· 🕑 ' + when + '</span>' : '')
+        + (scope ? '<span class="truncate max-w-[22ch]" title="' + escapeHtml(scope.replace('🗃 ', '')) + '">· ' + scope + '</span>' : '')
+        + '</div></button>'
+        + '<div class="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition shrink-0">'
+        + '<button onclick="renameExecDeck(' + d.id + ')" title="Renomear" class="text-fg-muted hover:text-fg-accent text-sm w-6 h-6 rounded hover:bg-fg-700">✎</button>'
+        + '<button onclick="refreshExecDeck(' + d.id + ')" title="Atualizar com dados de hoje (recompõe)" class="text-fg-muted hover:text-fg-accent text-sm w-6 h-6 rounded hover:bg-fg-700">↻</button>'
+        + '<button onclick="deleteExecDeck(' + d.id + ')" title="Excluir" class="text-fg-muted hover:text-fg-accent text-sm w-6 h-6 rounded hover:bg-fg-700">🗑</button>'
+        + '</div></div>';
+}
+function _execDeckRowsHtml() {
+    var q = _execDecksQuery.trim().toLowerCase();
+    var list = _execDecksAll.slice();
+    if (q) list = list.filter(function (d) { return ((d.name || '') + ' ' + (d.question || '')).toLowerCase().indexOf(q) >= 0; });
+    if (_execDecksSort === 'az') list.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'pt-BR'); });
+    else list.sort(function (a, b) { return String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')); });
+    if (!list.length) return '<div class="text-[11px] text-fg-muted px-1 py-2">Nenhum deck corresponde a "' + escapeHtml(_execDecksQuery) + '".</div>';
+    return '<div class="grid grid-cols-1 lg:grid-cols-2 gap-2">' + list.map(_execDeckRow).join('') + '</div>';
+}
+function _renderExecDeckRows() { var r = document.getElementById('execDecksRows'); if (r) r.innerHTML = _execDeckRowsHtml(); }
+function _execDeckFilter(v) { _execDecksQuery = v; _renderExecDeckRows(); }
+function _execDeckSort(s) { _execDecksSort = s; renderExecDecksList(); }
+function _toggleExecDecks() { _execDecksCollapsed = !_execDecksCollapsed; try { localStorage.setItem('execDecksCollapsed', _execDecksCollapsed ? '1' : '0'); } catch (e) {} renderExecDecksList(); }
+async function renameExecDeck(id) {
+    var cur = (_execDecksAll.find(function (x) { return x.id === id; }) || {}).name || '';
+    var name = prompt('Renomear deck:', cur);
+    if (name === null) return;
+    name = name.trim();
+    if (name.length < 2) { alert('O nome precisa ter ao menos 2 caracteres.'); return; }
+    try {
+        var res = await fetch('/api/exec/decks/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name }) });
+        if (!res.ok) { var e = await res.json().catch(function () { return {}; }); alert('Falha ao renomear: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
+        loadExecDecks();
+    } catch (e) { alert('Erro ao renomear: ' + e); }
+}
 async function loadExecDecks() {
     const box = document.getElementById('execSavedDecks');
     if (!box) return;
     try {
         const r = await fetch('/api/exec/decks');
         const list = await r.json();
-        renderExecDecksList(Array.isArray(list) ? list : []);
-    } catch (_) { box.innerHTML = ''; }
+        _execDecksAll = Array.isArray(list) ? list : [];
+    } catch (_) { _execDecksAll = []; }
+    renderExecDecksList();
 }
-function renderExecDecksList(list) {
+function renderExecDecksList() {
     const box = document.getElementById('execSavedDecks');
     if (!box) return;
-    if (!list.length) { box.innerHTML = ''; return; }
-    const cards = list.map(d => `
-      <div class="bg-fg-800 border border-fg-border rounded-lg px-3 py-2 flex items-center gap-2">
-        <button onclick="openExecDeck(${d.id})" class="flex-1 text-left min-w-0">
-          <div class="text-xs font-semibold text-fg-bright truncate">${escapeHtml(d.name)}</div>
-          <div class="text-[10px] text-fg-muted truncate">${d.n_slides || 0} slides · ${escapeHtml((d.question || '').slice(0, 70))}</div>
-        </button>
-        <button onclick="refreshExecDeck(${d.id})" title="Atualizar com dados de hoje" class="text-fg-muted hover:text-fg-accent text-sm">↻</button>
-        <button onclick="deleteExecDeck(${d.id})" title="Excluir" class="text-fg-muted hover:text-fg-accent text-sm">✕</button>
-      </div>`).join('');
-    box.innerHTML = `<div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1.5">Decks salvos</div>
-       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${cards}</div>`;
+    const n = _execDecksAll.length;
+    const chev = '<span id="execDecksChevron" class="inline-block transition" style="transform:rotate(' + (_execDecksCollapsed ? '0' : '90') + 'deg)">▶</span>';
+    const head = '<button onclick="_toggleExecDecks()" class="text-[10px] text-fg-muted uppercase tracking-wider flex items-center gap-1 hover:text-fg-bright">'
+        + chev + ' Decks salvos' + (n ? ' <span class="text-fg-muted/60 normal-case">(' + n + ')</span>' : '') + '</button>';
+    if (!n) {
+        box.innerHTML = '<div class="flex items-center gap-2 mb-1.5">' + head + '</div>'
+            + (_execDecksCollapsed ? '' : '<div class="text-[11px] text-fg-muted bg-fg-800/60 border border-dashed border-fg-border rounded-lg px-3 py-2">Você ainda não salvou nenhum deck. Gere um deck e clique em 💾 Salvar para guardá-lo aqui.</div>');
+        return;
+    }
+    const controls = _execDecksCollapsed ? '' :
+        ('<div class="ml-auto flex items-center gap-2">'
+            + '<input id="execDecksSearch" oninput="_execDeckFilter(this.value)" value="' + escapeHtml(_execDecksQuery) + '" placeholder="Buscar nome ou pergunta…" class="bg-fg-700 border border-fg-border rounded-lg px-2.5 py-1 text-[11px] w-44 focus:border-fg-accent focus:outline-none">'
+            + '<div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5" title="Ordenar">'
+            + '<button onclick="_execDeckSort(\'recent\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'recent' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">Recentes</button>'
+            + '<button onclick="_execDeckSort(\'az\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'az' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">A–Z</button>'
+            + '</div></div>');
+    box.innerHTML = '<div class="flex items-center gap-2 mb-2 flex-wrap">' + head + controls + '</div>'
+        + (_execDecksCollapsed ? '' : '<div id="execDecksRows">' + _execDeckRowsHtml() + '</div>');
 }
 async function saveExecDeck() {
     if (!_execDeck) return;
