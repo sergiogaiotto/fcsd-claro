@@ -19,6 +19,7 @@ sem tocar em nenhum dos dois.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.services.agent_service import run_query
@@ -31,6 +32,25 @@ _VALID_FMTS = {
     "percent_2", "percent_0", "percent_raw", "percent_raw_sign", "raw",
 }
 _VALID_AGGS = {"first", "sum", "avg", "count", "min", "max"}
+
+# Tokens (palavras inteiras) que denotam um valor percentual no nome da coluna,
+# rótulo ou caption. Casamento por TOKEN (split em não-alfanumérico), não por
+# substring — evita falsos positivos como "percentil"/"percurso"/"liftoff".
+_PERCENT_TOKENS = {
+    "taxa", "percent", "percentual", "percentuais", "pct", "share", "captura",
+    "conversao", "conversão", "churn", "uplift", "lift",
+    "participacao", "participação", "penetracao", "penetração",
+}
+_NUMBER_FMTS = {"number_2", "number_0", "number_k", "raw"}
+_PCT_SPLIT_RE = re.compile(r"[^0-9a-zà-ú]+")
+
+
+def _looks_percent(*texts) -> bool:
+    blob = " ".join(str(t) for t in texts if t)
+    if "%" in blob:
+        return True
+    toks = _PCT_SPLIT_RE.split(blob.lower())
+    return any(t in _PERCENT_TOKENS for t in toks)
 
 
 # ---------------------------------------------------------------------------
@@ -127,7 +147,7 @@ Escolha UM número que melhor responde à pergunta. Devolva JSON:
 
 Regras:
 - agg "first" quando o resultado já é um único valor (1 linha).
-- fmt percent_2 se a coluna for proporção 0-1 (ex 0,002 -> 0,20%); percent_raw/percent_0 se já for número percentual (ex 21 -> 21%); currency_brl para valores em R$; number_k para grandes contagens; number_0/number_2 para contagens/medidas.
+- Se a coluna/rótulo denotar PERCENTUAL/taxa/participação/share/conversão/captura/churn, use SEMPRE um fmt percent_* (NUNCA number_*): percent_2 se for proporção 0-1 (ex 0,002 -> 0,20%); percent_raw (ou percent_0) se já estiver em escala 0-100 (ex 21 -> 21%, 8,4 -> 8,4%). currency_brl para valores em R$; number_k para grandes contagens; number_0/number_2 só para contagens/medidas que NÃO são percentuais.
 - Escolha sempre uma coluna que existe. Não invente números."""
         llm = make_general_llm(temperature=0)
         resp = llm.invoke([SystemMessage(content=sys), HumanMessage(content=human)])
@@ -180,6 +200,22 @@ def _pick_hero(question, explanation, columns, rows) -> dict:
         fmt = _guess_fmt(column, value_raw) if column in numeric_cols else "raw"
     if not label:
         label = column or "resultado"
+
+    # Guard de percentual: o LLM às vezes escolhe um fmt de número cru (number_2)
+    # para uma métrica claramente percentual ("percentual elegíveis" = 8,40), e o
+    # heurístico _guess_fmt é pulado porque o fmt do LLM já é válido. Aqui, se o
+    # rótulo/coluna/caption indicam percentual mas o fmt é número cru, coage para
+    # um fmt percentual — garantindo o símbolo "%". NÃO usa a pergunta (texto livre
+    # mencionando "taxa" não deve converter uma CONTAGEM) e só coage dentro de uma
+    # faixa plausível de percentual (evita contagem 338200 virar "338.200%").
+    if value_raw is not None and fmt in _NUMBER_FMTS and _looks_percent(label, column, caption):
+        n = _coerce_number(value_raw)
+        if n is not None:
+            if -1.0 <= n <= 1.0:
+                fmt = "percent_2"            # proporção 0-1 → ×100
+            elif abs(n) <= 150.0:
+                fmt = "percent_raw"          # já em escala 0-100
+            # fora da faixa (contagem/escala grande): mantém o fmt de número
 
     value_formatted = _format_value(value_raw, fmt) if value_raw is not None else "—"
     return {
