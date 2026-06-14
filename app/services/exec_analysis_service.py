@@ -265,7 +265,7 @@ def _source_quality(src_tables: list[str]) -> dict:
 
 def _confidence(quality: dict, row_count: int, hero: dict) -> dict:
     if not hero or hero.get("value_raw") is None:
-        return {"level": "Baixa", "reason": "Não foi possível extrair um número-herói do resultado."}
+        return {"level": "Baixa", "reason": "Não foi possível extrair um número-chave do resultado."}
     if row_count == 0:
         return {"level": "Baixa", "reason": "A consulta retornou 0 linhas."}
     comp = quality.get("min_completeness")

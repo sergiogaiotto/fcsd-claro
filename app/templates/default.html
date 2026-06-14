@@ -3298,7 +3298,7 @@ async function runExecHero() {
     const out = document.getElementById('execResult');
     const oldLabel = btn.textContent;
     btn.disabled = true; btn.textContent = 'Analisando…';
-    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">⏳ Consultando seus dados e selecionando o número-herói…</div>';
+    out.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-xl p-8 text-center text-fg-muted text-sm">⏳ Consultando seus dados e selecionando o número-chave…</div>';
     try {
         const dmIds = getSelectedExecDatamartIds();
         const dlIds = getSelectedExecDiamondLayerIds();
@@ -3355,7 +3355,7 @@ function renderExecResult(data) {
             <summary class="text-[10px] text-fg-muted cursor-pointer hover:text-fg-accent transition uppercase tracking-wider font-mono">Ver lastro — SQL, fonte e completude</summary>
             <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                 <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Linhas no resultado</div><div class="text-fg-bright font-semibold mt-0.5">${data.row_count != null ? data.row_count : '—'}</div></div>
-                <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude (mín.)</div><div class="text-fg-bright font-semibold mt-0.5">${comp}</div></div>
+                <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border cursor-help" title="${_compTitleAttr(src)}"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude (mín.)</div><div class="text-fg-bright font-semibold mt-0.5">${comp}</div></div>
                 <div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Qualidade catálogo</div><div class="text-fg-bright font-semibold mt-0.5">${qual}</div></div>
             </div>
             <div class="mt-2 text-[11px] text-fg-muted">Tabelas-fonte: <span class="text-fg-text">${escapeHtml(tables)}</span></div>
@@ -3627,7 +3627,7 @@ function _deckSlideHtml(s, i, prefix) {
         const czDrivers = (cz && cz.drivers && cz.drivers.length) ? `<div class="mt-1 text-[10px] text-fg-muted">📈 Drivers do modelo: ${cz.drivers.map(function (d) { return escapeHtml(d.name) + (d.coeff > 0 ? ' ↑' : ' ↓'); }).join(' · ')}</div>` : '';
         const _cd = s.chart_data || {};
         const chartBtn = (prefix === '' && _cd.rows && _cd.rows.length >= 2) ? `<button onclick="openChartStudio(${i})" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">${s.chart ? '📊 Editar gráfico' : '➕ Adicionar gráfico'}</button>` : '';
-        const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-herói)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
+        const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-chave)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
         // Auditar — disponível para TODOS os públicos (tira o lastro do antigo gate só-Gerente).
         const auditBtn = (prefix === '') ? `<button onclick="openExecAuditForSlide(${i})" title="Auditar este número — SQL, campos, conferência automática e explicação assistida" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">🔍 Auditar</button>` : '';
         const _auditHero = (prefix === '') ? ` onclick="openExecAuditForSlide(${i})" title="Auditar este número — clique para ver SQL, campos e conferência" style="cursor:pointer"` : '';
@@ -3876,7 +3876,7 @@ async function openChartStudio(i) {
         + _csSel('csOrder', 'Ordem', [['original', 'Original'], ['desc', 'Maior→menor'], ['asc', 'Menor→maior']], 'desc')
         + '</div>'
         + '<div class="px-5 py-4"><div style="position:relative;height:300px"><canvas id="csCanvas"></canvas></div></div>'
-        + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">Re-pivot sobre os dados do insight — o número-herói não muda. Aplicar atualiza o slide e o export PPTX.</span>'
+        + '<div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border"><span class="text-[10px] text-fg-muted mr-auto">Re-pivot sobre os dados do insight — o número-chave não muda. Aplicar atualiza o slide e o export PPTX.</span>'
         + (s.chart ? '<button onclick="removeChartStudio()" class="bg-fg-700 border border-fg-border text-fg-muted hover:text-fg-accent px-3 py-1.5 rounded-lg text-xs">Remover gráfico</button>' : '')
         + '<button onclick="closeChartStudio()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Cancelar</button>'
         + '<button onclick="applyChartStudio()" class="bg-fg-accent text-white px-3 py-1.5 rounded-lg text-xs font-semibold">Aplicar</button></div></div>';
@@ -4061,10 +4061,24 @@ function _pctDisplay(frozen, o) {
 // --- Tooltip de critérios da Confiança (fonte única; espelha _confidence) ---
 function _confTooltip(conf) {
     conf = conf || {};
-    var crit = 'Como definimos a Confiança: Alta = fonte catalogada com completude ≥90% e qualidade ≥70%; Média = fonte sem catálogo, ou completude entre 70% e 90%, ou qualidade <70%; Baixa = completude <70%, 0 linhas, ou número-herói ausente.';
+    var crit = 'Como definimos a Confiança: Alta = fonte catalogada com completude ≥90% e qualidade ≥70%; Média = fonte sem catálogo, ou completude entre 70% e 90%, ou qualidade <70%; Baixa = completude <70%, 0 linhas, ou sem um número-chave.';
     return (conf.reason ? ('Neste número: ' + conf.reason + ' — ') : '') + crit;
 }
 function _confTitleAttr(conf) { return escapeHtml(_confTooltip(conf)).replace(/"/g, '&quot;'); }
+
+// --- Tooltip de critérios da Completude (fonte única; espelha _source_quality) ---
+function _compTooltip(src) {
+    src = src || {};
+    var crit = 'Completude = % de valores preenchidos (não-nulos) nas colunas das tabelas-fonte, conforme o Catálogo de Dados; usamos a MENOR completude entre elas. Critérios: ≥90% alta · 70–90% média · <70% baixa (rebaixa a Confiança). "Não verificada" = fonte sem catálogo.';
+    var pts = [];
+    (src.details || []).forEach(function (d) {
+        if (d && d.table && d.completeness != null) pts.push(d.table + ': ' + Math.round(d.completeness) + '%');
+    });
+    var ap = pts.length ? (' Por tabela — ' + pts.join('; ') + '.') : '';
+    if (src.pii) ap += ' Contém colunas marcadas como PII (atenção à LGPD).';
+    return crit + ap;
+}
+function _compTitleAttr(src) { return escapeHtml(_compTooltip(src)).replace(/"/g, '&quot;'); }
 
 // Lastro de um número, keyed por `key`. Prefere a proveniência de geração
 // (deck._provenance — inclui o panorama/manchete); cai no slide insight (estado
@@ -4091,7 +4105,7 @@ function _provFromSlide(s, i) {
 function _execReconcile(prov) {
     var h = prov.hero || {}, cd = prov.chart_data || {}, rows = cd.rows || [];
     var col = h.column, agg = h.agg || 'first', fmt = h.fmt || 'raw', expRaw = h.value_raw;
-    if (expRaw === null || expRaw === undefined || expRaw === '') return { status: 'na', note: 'Sem número-herói numérico para reconferir.' };
+    if (expRaw === null || expRaw === undefined || expRaw === '') return { status: 'na', note: 'Sem um número para reconferir (o valor deste card não é numérico).' };
     if (!col || !rows.length) return { status: 'na', note: 'Sem amostra de linhas para reconferir o cálculo (o número permanece o do SQL).' };
     var total = cd.row_count;
     var truncated = (typeof total === 'number') && rows.length < total;
@@ -4122,7 +4136,7 @@ function _execReconcileHtml(rec) {
 function _execAuditFlags(prov) {
     var flags = [], src = prov.source || {};
     var comp = src.min_completeness;
-    if (typeof comp === 'number' && comp < 70) flags.push({ lvl: 'warn', txt: 'Completude do dado-fonte baixa (' + Math.round(comp) + '%).' });
+    if (typeof comp === 'number' && comp < 70) flags.push({ lvl: 'warn', txt: 'Completude do dado-fonte baixa (' + Math.round(comp) + '%).', tip: _compTooltip(src) });
     if (src.pii) flags.push({ lvl: 'info', txt: 'Fonte contém colunas marcadas como PII — atenção à LGPD ao compartilhar.' });
     var per = (_execDeck && _execDeck._period) || [];
     if (per.length && prov.sql) {
@@ -4136,7 +4150,9 @@ function _execFlagsHtml(flags) {
     if (!flags.length) return '';
     return '<div class="flex flex-wrap gap-1.5">' + flags.map(function (f) {
         var col = f.lvl === 'warn' ? '#f59e0b' : '#8b949e';
-        return '<span class="text-[10px] rounded px-2 py-0.5" style="border:1px solid ' + col + '55;color:' + col + '">' + (f.lvl === 'warn' ? '⚠ ' : '· ') + escapeHtml(f.txt) + '</span>';
+        var tip = f.tip ? (' title="' + escapeHtml(f.tip).replace(/"/g, '&quot;') + '" ') : '';
+        var help = f.tip ? ' cursor-help' : '';
+        return '<span class="text-[10px] rounded px-2 py-0.5' + help + '"' + tip + 'style="border:1px solid ' + col + '55;color:' + col + '">' + (f.lvl === 'warn' ? '⚠ ' : '· ') + escapeHtml(f.txt) + '</span>';
     }).join('') + '</div>';
 }
 function _execAuditSampleTable(cd, heroCol) {
@@ -4210,7 +4226,7 @@ function _openExecAuditWith(prov) {
         + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Como o número é calculado</div><div class="text-fg-bright mt-0.5">' + escapeHtml(_aggLabel(h.agg || 'first')) + ' de <span style="color:#e30613">' + escapeHtml(h.column || '—') + '</span></div></div></div>'
         + '<div class="grid grid-cols-3 gap-3 text-xs">'
         + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Linhas</div><div class="text-fg-bright font-semibold mt-0.5">' + (rowCount != null ? rowCount : '—') + '</div></div>'
-        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude</div><div class="text-fg-bright font-semibold mt-0.5">' + comp + '</div></div>'
+        + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border cursor-help" title="' + _compTitleAttr(src) + '"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Completude</div><div class="text-fg-bright font-semibold mt-0.5">' + comp + '</div></div>'
         + '<div class="bg-fg-900/60 rounded-lg p-3 border border-fg-border"><div class="text-fg-muted text-[10px] uppercase tracking-wider">Qualidade</div><div class="text-fg-bright font-semibold mt-0.5">' + qual + '</div></div></div>'
         + '<div class="text-[11px] text-fg-muted">Tabelas-fonte: <span class="text-fg-text">' + escapeHtml(tables) + '</span></div>'
         + '<div><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Dados que geraram o número (amostra)</div>' + _execAuditSampleTable(cd, h.column) + '</div>'
@@ -4218,7 +4234,7 @@ function _openExecAuditWith(prov) {
         + '<button id="execAuditEditSqlBtn" onclick="_auditEditSql()" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✏️ Editar SQL</button></div>'
         + '<pre id="execAuditSqlPre" class="bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green overflow-x-auto font-mono border border-fg-border leading-relaxed">' + escapeHtml(prov.sql || '(sem SQL)') + '</pre>'
         + '<div id="execAuditSqlEdit" class="hidden"><textarea id="execAuditSqlText" spellcheck="false" class="w-full bg-fg-900 rounded-lg p-3 text-[11px] text-fg-green font-mono border border-fg-border focus:border-fg-accent focus:outline-none" style="height:11rem"></textarea>'
-        + '<div class="flex items-center gap-2 mt-1 flex-wrap"><span id="execAuditSqlMsg" class="text-[10px] text-fg-muted mr-auto">Re-executa com segurança: read-only, sua RLS por login, só SELECT simples. O número-herói é recomputado a partir dos dados.</span>'
+        + '<div class="flex items-center gap-2 mt-1 flex-wrap"><span id="execAuditSqlMsg" class="text-[10px] text-fg-muted mr-auto">Re-executa com segurança: read-only, sua RLS por login, só SELECT simples. O número-chave é recomputado a partir dos dados.</span>'
         + '<button onclick="_auditCancelSql()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1 rounded-lg text-[11px]">Cancelar</button>'
         + '<button id="execAuditRerunBtn" onclick="_auditRerunSql()" class="bg-fg-accent text-white px-3 py-1 rounded-lg text-[11px] font-semibold">▶ Re-executar</button></div></div></div>'
         + '<div class="border-t border-fg-border pt-3"><div class="text-[10px] uppercase tracking-wider text-fg-muted font-mono mb-1">Pergunte sobre este número</div>'

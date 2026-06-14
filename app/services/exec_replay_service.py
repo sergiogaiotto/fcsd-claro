@@ -631,9 +631,9 @@ def rerun_edited_sql(sql: str, hero: dict, chart_data: dict, *, user=None,
         return {"error": err or "Sem dados após a re-execução."}
     slide = {"hero": dict(hero or {}), "chart_data": chart_data or {}}
     if not _recompute_insight(slide, data, new_sql):
-        return {"error": "O número-herói não pôde ser recomposto com segurança a "
-                         "partir do SQL editado (a coluna do herói não voltou no "
-                         "resultado, ou o resultado é grande demais para reconferir)."}
+        return {"error": "O número-chave não pôde ser recomposto com segurança a "
+                         "partir do SQL editado (a coluna do número-chave não voltou "
+                         "no resultado, ou o resultado é grande demais para reconferir)."}
     h = slide.get("hero") or {}
     h["value_formatted"] = h.get("value")  # drawer/herói-modal leem value_formatted
     return {
@@ -677,7 +677,7 @@ def replay_deck(deck_spec: dict, *, segment_filters=None, window=None, temporal_
             skipped.append({"key": s.get("key"), "title": s.get("title"), "reason": s["replay_error"]})
             continue
         if not _recompute_insight(s, data, new_sql):
-            s["replay_error"] = "Número-herói não pôde ser recomposto com segurança (resultado original truncado)."
+            s["replay_error"] = "Número-chave não pôde ser recomposto com segurança (resultado original truncado)."
             skipped.append({"key": s.get("key"), "title": s.get("title"), "reason": s["replay_error"]})
             continue
         # Causal: reaplica transforms ao SQL causal e reexecuta (best-effort).
@@ -788,7 +788,7 @@ def narrate_slide(slide: dict) -> dict:
         human = (
             f"Título: {slide.get('title','')}\n"
             f"Pergunta: {slide.get('nl_question','')}\n"
-            f"Número-herói: {hero.get('value','')} ({hero.get('label','')})\n"
+            f"Número-chave: {hero.get('value','')} ({hero.get('label','')})\n"
             f"Colunas: {cd.get('columns', [])}\n"
             f"Amostra (até 12 linhas): {_json.dumps(sample, ensure_ascii=False, default=str)}\n\n"
             "Devolva JSON: {\"narrative\":\"<2-3 frases, max ~320 chars, fiel aos números>\","

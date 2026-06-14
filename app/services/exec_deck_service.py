@@ -134,7 +134,7 @@ Catálogo de dados disponível (tabelas, colunas, KPIs):
 
 Planeje a espinha do deck. Gere 1 pergunta de PANORAMA (a métrica-síntese que responde diretamente à pergunta) e {n_insights} perguntas de INSIGHT que destrincham o porquê por dimensões diferentes (ex.: por canal, por tempo de base/cohort, por risco, por produto/bundle, por frequência).
 
-Prefira perguntas cujo resultado seja uma TABELA pequena e agrupada (2 a 15 linhas, ex.: "captura de banda larga por canal") — boa para virar número-herói E gráfico. Use o vocabulário do catálogo.
+Prefira perguntas cujo resultado seja uma TABELA pequena e agrupada (2 a 15 linhas, ex.: "captura de banda larga por canal") — boa para virar número-chave E gráfico. Use o vocabulário do catálogo.
 
 Devolva JSON:
 {{"title":"<título curto e executivo do deck>","questions":[{{"key":"panorama","section":"SÍNTESE","title":"<título do slide>","nl_question":"<pergunta em linguagem natural>"}},{{"key":"i1","section":"INSIGHT","title":"<título>","nl_question":"<pergunta>","effect":true,"causal":{{"treatment":"<coluna binária 0/1 ou 2 categorias, ex: usa_app>","outcome":"<coluna de desfecho 0/1 ou numérica, ex: comprou_bl>","covariates":["<confundidor, ex: tempo_de_base>","<ex: risco>"],"row_question":"<pergunta NL que retorne UMA LINHA POR CLIENTE/UNIDADE com EXATAMENTE essas colunas (tratamento, desfecho e confundidores) — dados em nível de linha, NÃO agregados>"}}}}]}}
@@ -390,7 +390,7 @@ def _narrate_minto(question: str, resolved: list[dict], n_insights: int) -> dict
     insight_keys = [r["key"] for r in resolved if r["section"] == "INSIGHT"] or [r["key"] for r in resolved]
     human = f"""Pergunta de negócio: {question}
 
-Achados (número-herói + narrativa de cada slide):
+Achados (número-chave + narrativa de cada slide):
 {_heroes_brief(resolved)}
 
 Escreva a camada executiva. Devolva JSON:
@@ -577,7 +577,7 @@ def _source_footer(src: dict) -> str:
 def _quick_actions(title: str, hero: dict, narrative: str) -> list[str]:
     sys = ("Você sugere ações executivas curtas e acionáveis. Responda APENAS com "
            "JSON {\"actions\":[\"...\",\"...\",\"...\"]}.")
-    human = (f"Insight: {title}\nNúmero-herói: {hero.get('value_formatted', '')} "
+    human = (f"Insight: {title}\nNúmero-chave: {hero.get('value_formatted', '')} "
              f"({hero.get('label', '')})\nNarrativa: {(narrative or '')[:300]}\n\n"
              "Dê 3 ações recomendadas (máx ~14 palavras cada).")
     out = _llm_json(sys, human, temperature=0.4) or {}
@@ -639,7 +639,7 @@ def explain_number(question: str, ctx: dict) -> dict:
 
 Número exibido no card: {ctx.get('value_formatted', '—')} — {ctx.get('label', '')}
 Pergunta de negócio que originou o slide: {ctx.get('nl_question', '')}
-Coluna e agregação do número-herói: {ctx.get('hero_column', '?')} / {ctx.get('hero_agg', '?')}
+Coluna e agregação do número-chave: {ctx.get('hero_column', '?')} / {ctx.get('hero_agg', '?')}
 Período aplicado: {period_txt}
 Linhas no resultado: {ctx.get('row_count', '?')}
 Tabelas-fonte: {', '.join(ctx.get('tables') or []) or '—'}

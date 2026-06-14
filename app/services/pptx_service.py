@@ -319,7 +319,7 @@ def _insight(prs, sp, deck, page):
                           + (f" — {_cf.get('reason')}" if _cf.get("reason") else "")
                           + "\n" + _crit)
     if sp.get("sql"):
-        note_parts.append("SQL do número-herói:\n" + sp["sql"])
+        note_parts.append("SQL do número-chave:\n" + sp["sql"])
     if note_parts:
         try:
             s.notes_slide.notes_text_frame.text = "\n\n".join(note_parts)
