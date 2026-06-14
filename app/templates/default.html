@@ -3542,10 +3542,12 @@ function _deckSlideHtml(s, i, prefix) {
         const confChip = conf.level ? `<span class="text-[10px] font-semibold rounded-full px-2 py-0.5" style="background:${cc.bg};border:1px solid ${cc.bd};color:${cc.fg}">Confiança: ${escapeHtml(conf.level)}</span>` : '';
         const chartHtml = s.chart ? `<div class="flex-1 min-w-[260px]"><div style="position:relative;height:240px"><canvas id="${prefix}Chart${i}"></canvas></div></div>` : '';
         const cz = s.causal;
-        const czHtml = cz ? `<div class="mt-3 inline-block text-[11px] font-semibold rounded px-2 py-1" style="background:${cz.significant ? 'rgba(22,163,74,.12)' : 'rgba(217,119,6,.12)'};border:1px solid ${cz.significant ? 'rgba(22,163,74,.4)' : 'rgba(217,119,6,.4)'};color:${cz.significant ? '#16a34a' : '#d97706'}">Efeito causal (PSM): ${escapeHtml(cz.effect_label || '')} <span class="font-normal opacity-80">· ${escapeHtml(cz.caveat || '')}</span></div>` : '';
+        const czDegraded = (cz && cz._degraded) ? `<span class="ml-2 text-[10px] text-amber-400" title="${escapeHtml(cz._degraded_reason || '')}">⚠ efeito da versão anterior (não reexecutado no recorte)</span>` : '';
+        const czHtml = cz ? `<div class="mt-3 inline-block text-[11px] font-semibold rounded px-2 py-1" style="background:${cz.significant ? 'rgba(22,163,74,.12)' : 'rgba(217,119,6,.12)'};border:1px solid ${cz.significant ? 'rgba(22,163,74,.4)' : 'rgba(217,119,6,.4)'};color:${cz.significant ? '#16a34a' : '#d97706'}">Efeito causal (PSM): ${escapeHtml(cz.effect_label || '')} <span class="font-normal opacity-80">· ${escapeHtml(cz.caveat || '')}</span>${czDegraded}</div>` : '';
         const czDrivers = (cz && cz.drivers && cz.drivers.length) ? `<div class="mt-1 text-[10px] text-fg-muted">📈 Drivers do modelo: ${cz.drivers.map(function (d) { return escapeHtml(d.name) + (d.coeff > 0 ? ' ↑' : ' ↓'); }).join(' · ')}</div>` : '';
         const _cd = s.chart_data || {};
-        const chartBtn = (prefix === '' && _cd.rows && _cd.rows.length >= 2) ? `<div class="mt-2 text-right"><button onclick="openChartStudio(${i})" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">${s.chart ? '📊 Editar gráfico' : '➕ Adicionar gráfico'}</button></div>` : '';
+        const chartBtn = (prefix === '' && _cd.rows && _cd.rows.length >= 2) ? `<button onclick="openChartStudio(${i})" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">${s.chart ? '📊 Editar gráfico' : '➕ Adicionar gráfico'}</button>` : '';
+        const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-herói)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
         return card(`<div class="flex items-center justify-between gap-2">${tag}${confChip}</div>${title}
             ${s.subtitle ? `<div class="text-xs text-fg-muted italic mt-0.5">${escapeHtml(s.subtitle)}</div>` : ''}
             <div class="flex gap-5 flex-wrap mt-3 items-start">
@@ -3561,7 +3563,7 @@ function _deckSlideHtml(s, i, prefix) {
             ${s.narrative ? `<div class="text-xs text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3">${escapeHtml(s.narrative)}</div>` : ''}
             ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}
             ${(_execAudience === 'gerente' && s.sql) ? `<details class="mt-3"><summary class="text-[10px] text-fg-muted cursor-pointer uppercase tracking-wider font-mono">SQL (lastro)</summary><pre class="mt-2 bg-fg-900 rounded-lg p-2 text-[10px] text-fg-green overflow-x-auto border border-fg-border">${escapeHtml(s.sql)}</pre></details>` : ''}
-            ${chartBtn}`);
+            ${(chartBtn || narrateBtn) ? `<div class="mt-2 flex items-center justify-end gap-2">${narrateBtn}${chartBtn}</div>` : ''}`);
     }
     if (s.type === 'estrategia') {
         const frentes = (s.frentes || []).map(f => `<div class="bg-fg-700/50 rounded-lg p-3 flex gap-3">
@@ -3827,16 +3829,156 @@ function renderExecDeck(deck) {
             <button onclick="setExecAudience('po')" title="Product Owner — Visão de produto para priorizar o backlog: insights, ações recomendadas, roadmap por sprint e KPIs (sem o diagnóstico de board)." class="px-2 py-1 rounded text-[11px] font-semibold ${_execAudience === 'po' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright'}">PO</button>
           </div>
           <button onclick="openDeckDesigner()" title="Deck Designer — refine os textos (tese, narrativas, rótulos, ações) que a IA propôs. Os números permanecem auditáveis." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">✏️ Editar</button>
+          <button onclick="openReplayPanel()" title="Reexecutar este deck para outro período/recorte — reusa o SQL de cada slide (determinístico, sem IA), recompõe os números e mostra o delta vs. a versão atual." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">🔁 Reexecutar</button>
           <button onclick="saveExecDeck()" id="execSaveBtn" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">💾 Salvar</button>
           <button onclick="enterExecPresent()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-2 rounded-lg text-xs font-semibold transition">▶ Apresentar</button>
           <button onclick="exportExecPptx()" id="execPptxBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-2 rounded-lg text-xs font-semibold transition">⬇ Exportar PPTX</button>
         </div>
       </div>
       ${_execAudience === 'ceo' ? `<div class="bg-fg-accent/10 border border-fg-accent/30 rounded-lg p-3 mb-3 text-sm font-semibold text-fg-bright">TL;DR — ${escapeHtml(deck.thesis || '')}</div>` : ''}
+      ${_replayBannerHtml(deck)}
       <div class="space-y-3">${slidesHtml}</div>
       <p class="text-[10px] text-fg-muted mt-3">${escapeHtml(deck.source_footer || '')} · ${visible.length} de ${(deck.slides || []).length} slides${_execAudience !== 'diretor' ? ' · visão ' + _execAudience : ''}</p>`;
     _destroyCharts(_execCharts);
     _instantiateDeckCharts(deck, '', _execCharts);
+}
+
+// ---- Reexecutar deck: replay determinístico (recorte + janela) ----
+let _replayParams = null;
+let _replaySegments = {};
+let _replayWindow = '';
+function _replayBannerHtml(deck) {
+    const r = deck && deck._replay;
+    if (!r) return '';
+    const parts = [];
+    (r.segment_filters || []).forEach(function (f) { if ((f.values || []).length) parts.push(escapeHtml(f.column) + ' = ' + escapeHtml((f.values || []).join(', '))); });
+    if (r.window) parts.push('janela ' + escapeHtml(r.window));
+    const desc = parts.length ? parts.join(' · ') : 'dados atualizados';
+    const skipped = (r.slides_skipped || []).length;
+    const skipNote = skipped ? ` · <span class="text-amber-400" title="Slides cujo SQL não pôde ser recortado/reexecutado — números originais mantidos">${skipped} slide(s) não reexecutado(s)</span>` : '';
+    return `<div class="bg-fg-accent/10 border border-fg-accent/30 rounded-lg px-3 py-2 mb-3 flex items-center justify-between gap-2 flex-wrap">
+        <div class="text-[11px] text-fg-bright"><span class="font-semibold">🔁 Reexecutado:</span> ${desc} · <span class="text-fg-muted">▲/▼ vs. versão anterior</span>${skipNote}</div>
+        <button onclick="saveReplayVersion()" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-3 py-1 rounded-lg text-[11px] font-semibold">💾 Salvar como nova versão</button>
+    </div>`;
+}
+async function openReplayPanel() {
+    if (!_execDeck) return;
+    const old = document.getElementById('replayModal'); if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'replayModal';
+    ov.className = 'fixed inset-0 z-[66] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+    ov.innerHTML = `<div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-2xl max-h-[88vh] flex flex-col shadow-2xl">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-fg-border">
+            <div class="text-sm font-bold text-fg-bright">🔁 Reexecutar deck — período & recorte</div>
+            <button onclick="closeReplayPanel()" class="text-fg-muted hover:text-fg-accent">✕</button>
+        </div>
+        <div id="replayBody" class="overflow-auto px-5 py-4 flex-1"><div class="text-xs text-fg-muted">Detectando parâmetros…</div></div>
+        <div class="flex items-center gap-2 px-5 py-3 border-t border-fg-border">
+            <span class="text-[10px] text-fg-muted mr-auto">Determinístico (sem IA): reusa o SQL de cada slide e mostra o delta. Cria nova versão ao salvar.</span>
+            <button onclick="closeReplayPanel()" class="bg-fg-700 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs">Cancelar</button>
+            <button id="replayRunBtn" onclick="runDeckReplay()" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-4 py-1.5 rounded-lg text-xs font-semibold">Reexecutar</button>
+        </div>
+    </div>`;
+    document.body.appendChild(ov);
+    _replaySegments = {}; _replayWindow = '';
+    try {
+        const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
+        const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/deck/params', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deck_spec: _execDeck, datamart_ids: dmIds && dmIds.length ? dmIds : null, diamond_layer_ids: dlIds && dlIds.length ? dlIds : null }) });
+        _replayParams = await res.json();
+        _renderReplayPanel(_replayParams);
+    } catch (e) { const b = document.getElementById('replayBody'); if (b) b.innerHTML = '<div class="text-xs text-red-400">Erro ao detectar parâmetros.</div>'; }
+}
+function closeReplayPanel() { const m = document.getElementById('replayModal'); if (m) m.remove(); }
+function _renderReplayPanel(params) {
+    const body = document.getElementById('replayBody');
+    if (!body) return;
+    const windows = (params && params.windows) || [];
+    const dims = (params && params.dimensions) || [];
+    const winLabels = { '3m': 'Últimos 3 meses', '6m': 'Últimos 6 meses', '12m': 'Últimos 12 meses' };
+    let html = '';
+    if (windows.length) {
+        html += `<div class="mb-4"><div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1">Período (janela de recarga)</div><div class="flex flex-wrap gap-1.5">`;
+        html += `<button type="button" onclick="_setReplayWindow('')" class="px-2.5 py-1 rounded-lg border text-xs ${_replayWindow === '' ? 'bg-fg-accent text-white border-fg-accent' : 'bg-fg-700 text-fg-muted border-fg-border'}">Manter</button>`;
+        windows.forEach(function (w) { html += `<button type="button" onclick="_setReplayWindow('${w}')" class="px-2.5 py-1 rounded-lg border text-xs ${_replayWindow === w ? 'bg-fg-accent text-white border-fg-accent' : 'bg-fg-700 text-fg-muted border-fg-border'}">${winLabels[w] || w}</button>`; });
+        html += `</div></div>`;
+    }
+    html += `<div class="text-[10px] text-fg-muted uppercase tracking-wider mb-1">Recorte por segmento <span class="text-fg-muted/60 normal-case">(vazio = base toda)</span></div>`;
+    if (!dims.length) html += '<div class="text-xs text-fg-muted">Nenhuma dimensão categórica detectada neste deck.</div>';
+    dims.forEach(function (d) {
+        const sel = _replaySegments[d.column] || [];
+        const chips = (d.values || []).map(function (v) {
+            const on = sel.indexOf(v) >= 0;
+            return `<button type="button" onclick="_toggleReplaySeg('${d.column}', this)" data-v="${escapeHtml(v).replace(/"/g, '&quot;')}" class="px-2 py-0.5 rounded-full border text-[10px] transition ${on ? 'bg-fg-accent text-white border-fg-accent' : 'bg-fg-700 text-fg-muted border-fg-border hover:border-fg-accent/40'}">${escapeHtml(v)}</button>`;
+        }).join('');
+        html += `<div class="mb-3"><div class="text-[11px] text-fg-bright font-semibold mb-1">${escapeHtml(d.column)}</div><div class="flex flex-wrap gap-1">${chips}</div></div>`;
+    });
+    body.innerHTML = html;
+}
+function _setReplayWindow(w) { _replayWindow = w; _renderReplayPanel(_replayParams); }
+function _toggleReplaySeg(column, btn) {
+    const v = (btn && btn.dataset && btn.dataset.v) || '';
+    const sel = _replaySegments[column] || (_replaySegments[column] = []);
+    const i = sel.indexOf(v);
+    if (i >= 0) sel.splice(i, 1); else sel.push(v);
+    ['bg-fg-accent', 'text-white', 'border-fg-accent'].forEach(function (c) { btn.classList.toggle(c); });
+    ['bg-fg-700', 'text-fg-muted'].forEach(function (c) { btn.classList.toggle(c); });
+}
+async function runDeckReplay() {
+    if (!_execDeck) return;
+    const segs = Object.keys(_replaySegments).filter(function (c) { return (_replaySegments[c] || []).length; }).map(function (c) { return { column: c, values: _replaySegments[c] }; });
+    const btn = document.getElementById('replayRunBtn');
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Reexecutando…'; }
+    try {
+        const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
+        const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/deck/replay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deck_spec: _execDeck, segment_filters: segs, window: _replayWindow || null, datamart_ids: dmIds && dmIds.length ? dmIds : null, diamond_layer_ids: dlIds && dlIds.length ? dlIds : null }) });
+        if (!res.ok) { const e = await res.json().catch(function () { return {}; }); alert('Falha ao reexecutar: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
+        const newDeck = await res.json();
+        _applyDeckDelta(_execDeck, newDeck);
+        newDeck._dm = dmIds; newDeck._dl = dlIds; newDeck.question = _execDeck.question;
+        _execDeck = newDeck;
+        closeReplayPanel();
+        renderExecDeck(newDeck);
+    } catch (e) { alert('Erro ao reexecutar: ' + e); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+async function saveReplayVersion() {
+    if (!_execDeck) return;
+    const r = _execDeck._replay || {};
+    const parts = [];
+    (r.segment_filters || []).forEach(function (f) { if ((f.values || []).length) parts.push(f.column + '=' + (f.values || []).join('/')); });
+    if (r.window) parts.push(r.window);
+    const suffix = parts.length ? (' — ' + parts.join(' · ')) : ' — reexecução';
+    const name = prompt('Nome da nova versão:', ((_execDeck.title || 'Deck executivo') + suffix).slice(0, 140));
+    if (!name) return;
+    try {
+        const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
+        const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
+        const res = await fetch('/api/exec/decks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name, question: _execDeck.question || '', datamart_ids: dmIds && dmIds.length ? dmIds : null, diamond_layer_ids: dlIds && dlIds.length ? dlIds : null, deck_spec: _execDeck }) });
+        if (!res.ok) { const e = await res.json().catch(function () { return {}; }); alert('Falha ao salvar: ' + _fmtApiError(e, 'HTTP ' + res.status)); return; }
+        loadExecDecks();
+        alert('Nova versão salva.');
+    } catch (e) { alert('Erro ao salvar: ' + e); }
+}
+async function narrateSlide(key, btn) {
+    if (!_execDeck) return;
+    const slide = (_execDeck.slides || []).find(function (s) { return s.key === key; });
+    if (!slide) return;
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Re-narrando…'; }
+    try {
+        const res = await fetch('/api/exec/slide/narrate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slide: slide }) });
+        if (!res.ok) { const e = await res.json().catch(function () { return {}; }); alert('Falha ao re-narrar: ' + _fmtApiError(e)); return; }
+        const out = await res.json();
+        if (out.narrative_source === 'fallback_original') { alert('A IA não conseguiu re-narrar agora (texto original mantido). Tente novamente.'); return; }
+        if (out.narrative) slide.narrative = out.narrative;
+        if (out.subtitle) slide.subtitle = out.subtitle;
+        if (out.actions && out.actions.length) slide.actions = out.actions;
+        renderExecDeck(_execDeck);
+    } catch (e) { alert('Erro: ' + e); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
 async function exportExecPptx() {
