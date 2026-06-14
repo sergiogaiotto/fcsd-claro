@@ -806,6 +806,27 @@ def _can_edit_report(user: dict, rep: dict) -> bool:
     return is_admin(user) or rep.get("owner_id") == user.get("id")
 
 
+def _record_exec_failure(user: dict | None, source: str, question: str, exc: Exception,
+                         datamart_ids=None, diamond_layer_ids=None) -> None:
+    """Registra uma falha das rotas da Análise Executiva na tabela `failures`
+    (mesmo padrão de /api/query). Best-effort: nunca propaga erro."""
+    try:
+        create_failure(
+            user_id=(user["id"] if user else None),
+            user_login=((user.get("login") if user else "") or ""),
+            user_name=((user.get("display_name") if user else "") or ""),
+            source=source,
+            question=question or "",
+            error_message=str(exc),
+            error_type=type(exc).__name__,
+            traceback=_tb.format_exc(),
+            datamart_ids=datamart_ids,
+            diamond_layer_ids=diamond_layer_ids,
+        )
+    except Exception:
+        pass
+
+
 @router.get("/reports")
 async def reports_list(user: dict = Depends(get_current_user)):
     """Reports the user can see: own (any status) + published from others."""
@@ -962,7 +983,8 @@ async def exec_hero(req: ExecHeroRequest, user: dict = Depends(get_current_user)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro na análise executiva: {e}")
+        _record_exec_failure(user, "exec/hero", req.question, e, req.datamart_ids, req.diamond_layer_ids)
+        raise HTTPException(status_code=500, detail="Erro na análise executiva. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/deck")
@@ -981,7 +1003,8 @@ async def exec_deck(req: ExecDeckRequest, user: dict = Depends(get_current_user)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao compor o deck: {e}")
+        _record_exec_failure(user, "exec/deck", req.question, e, req.datamart_ids, req.diamond_layer_ids)
+        raise HTTPException(status_code=500, detail="Erro ao compor o deck. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/deck/stream")
@@ -1043,7 +1066,8 @@ async def exec_slide(req: ExecHeroRequest, user: dict = Depends(get_current_user
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao regenerar insight: {e}")
+        _record_exec_failure(user, "exec/slide", req.question, e, req.datamart_ids, req.diamond_layer_ids)
+        raise HTTPException(status_code=500, detail="Erro ao regenerar insight. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/deck/params")
@@ -1055,7 +1079,8 @@ async def exec_deck_params(req: ExecDeckParamsRequest, user: dict = Depends(get_
     try:
         return analyze_deck_params(req.deck_spec, accessible_tables=accessible)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao analisar parâmetros do deck: {e}")
+        _record_exec_failure(user, "exec/deck/params", "(parâmetros de reexecução)", e, req.datamart_ids, req.diamond_layer_ids)
+        raise HTTPException(status_code=500, detail="Erro ao analisar parâmetros do deck. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/deck/replay")
@@ -1076,7 +1101,8 @@ async def exec_deck_replay(req: ExecReplayRequest, user: dict = Depends(get_curr
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao reexecutar deck: {e}")
+        _record_exec_failure(user, "exec/deck/replay", "(reexecução de deck)", e, req.datamart_ids, req.diamond_layer_ids)
+        raise HTTPException(status_code=500, detail="Erro ao reexecutar deck. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/slide/narrate")
@@ -1086,7 +1112,8 @@ async def exec_slide_narrate(req: ExecNarrateRequest, user: dict = Depends(get_c
     try:
         return narrate_slide(req.slide)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro ao re-narrar slide: {e}")
+        _record_exec_failure(user, "exec/slide/narrate", "(re-narração de slide)", e)
+        raise HTTPException(status_code=500, detail="Erro ao re-narrar slide. O detalhe foi registrado em Falhas.")
 
 
 @router.post("/exec/deck/pptx")

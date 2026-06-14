@@ -4012,7 +4012,10 @@ async function narrateSlide(key, btn) {
         if (out.subtitle) slide.subtitle = out.subtitle;
         if (out.actions && out.actions.length) slide.actions = out.actions;
         renderExecDeck(_execDeck);
-    } catch (e) { alert('Erro: ' + e); }
+    } catch (e) {
+        alert('Erro ao re-narrar: ' + ((e && e.message) || e));
+        _recordClientFailure({ source: 'exec', question: 'Re-narrar slide: ' + (slide.title || key), error_message: String((e && e.message) || e), error_type: (e && e.name) || 'ClientError' });
+    }
     finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
@@ -4035,7 +4038,10 @@ async function exportExecPptx() {
         a.download = ((_execDeck.title || 'analise_executiva').replace(/[^\w\-]+/g, '_').slice(0, 60) || 'analise_executiva') + '.pptx';
         document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
-    } catch (e) { alert('Erro ao exportar: ' + e); }
+    } catch (e) {
+        alert('Erro ao exportar: ' + ((e && e.message) || e));
+        _recordClientFailure({ source: 'exec', question: 'Exportar PPTX: ' + (_execDeck.title || ''), error_message: String((e && e.message) || e), error_type: (e && e.name) || 'ClientError' });
+    }
     finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
@@ -4205,8 +4211,12 @@ async function askSlide() {
     if (!q || !_execDeck) return;
     const btn = document.getElementById('execAskBtn');
     const old = btn ? btn.textContent : '';
-    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    if (btn) { btn.disabled = true; btn.textContent = 'Consultando…'; }
     inp.value = '';
+    // A análise roda o agente (LLM) e pode levar até ~1 min. AbortController
+    // evita o cryptico "Failed to fetch" quando a requisição longa cai/expira.
+    const _ctrl = new AbortController();
+    const _to = setTimeout(function () { _ctrl.abort(); }, 180000);
     try {
         const dmIds = _execDeck._dm || getSelectedExecDatamartIds();
         const dlIds = _execDeck._dl || getSelectedExecDiamondLayerIds();
@@ -4217,9 +4227,15 @@ async function askSlide() {
                 datamart_ids: dmIds && dmIds.length ? dmIds : null,
                 diamond_layer_ids: dlIds && dlIds.length ? dlIds : null,
             }),
+            signal: _ctrl.signal,
         });
         const d = await res.json();
-        if (d.detail || d.error) { alert('Não foi possível: ' + _fmtApiError(d)); return; }
+        if (d.detail || d.error) {
+            const em = _fmtApiError(d);
+            alert('Não foi possível: ' + em);
+            _recordClientFailure({ source: 'exec', question: 'Pergunte ao slide: ' + q, error_message: em, error_type: 'ExecHeroError', model: '' });
+            return;
+        }
         const h = d.hero || {};
         const slide = {
             type: 'insight', section: 'APROFUNDAMENTO', title: q,
@@ -4242,8 +4258,15 @@ async function askSlide() {
             const c = document.getElementById('execPresentCounter');
             if (c) c.textContent = (_presIdx + 1) + ' / ' + slides.length;
         }
-    } catch (e) { alert('Erro: ' + e); }
-    finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+    } catch (e) {
+        var aborted = e && (e.name === 'AbortError');
+        var msg = aborted
+            ? 'A consulta demorou demais (acima de 3 min) e foi cancelada. Tente uma pergunta mais simples ou tente de novo.'
+            : 'Não foi possível responder agora (a conexão caiu ou a consulta falhou). A falha foi registrada em Configurações › Falhas.';
+        alert(msg);
+        _recordClientFailure({ source: 'exec', question: 'Pergunte ao slide: ' + q, error_message: String((e && e.message) || e), error_type: (e && e.name) || 'ClientError', model: '' });
+    }
+    finally { clearTimeout(_to); if (btn) { btn.disabled = false; btn.textContent = old; } }
 }
 
 function useSuggestion(btn) { document.getElementById('queryInput').value = btn.textContent; sendQuery(); }
