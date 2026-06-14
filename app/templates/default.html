@@ -568,7 +568,8 @@
     <div id="datamartSelector" class="hidden flex flex-wrap gap-2 mb-3 items-center"></div>
     <div id="diamondLayerSelector" class="hidden flex flex-wrap gap-2 mb-3 items-center"></div>
     <div id="selectedSkillsBadge" class="hidden mb-3"></div>
-    <div id="chatArea" class="bg-fg-800 rounded-xl border border-fg-border min-h-[320px] max-h-[62vh] overflow-y-auto p-5 mb-4 space-y-4 glow-accent">
+    <div class="flex gap-3 mb-4 items-stretch">
+    <div id="chatArea" class="flex-1 min-w-0 bg-fg-800 rounded-xl border border-fg-border min-h-[320px] max-h-[62vh] overflow-y-auto p-5 space-y-4 glow-accent">
         <div class="text-center text-fg-muted text-sm py-16">
             <div class="w-12 h-12 mx-auto mb-4 rounded-xl bg-fg-700 border border-fg-border flex items-center justify-center">
                 <svg class="w-6 h-6 text-fg-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5m.75-9l3-3 2.148 2.148A12.061 12.061 0 0116.5 7.605" /></svg>
@@ -576,6 +577,14 @@
             <p class="font-medium text-fg-text">Faça uma pergunta sobre seus dados</p>
             <p class="text-xs mt-1.5 text-fg-muted">Aprofunde seu conhecimento com linguagem natural e visualização interativa</p>
         </div>
+    </div>
+        <aside id="historyPanel" class="hidden w-72 shrink-0 bg-fg-800 rounded-xl border border-fg-border max-h-[62vh] flex flex-col glow-accent">
+            <div class="flex items-center justify-between px-3 py-2.5 border-b border-fg-border">
+                <span class="text-[11px] font-bold text-fg-accent uppercase tracking-wider">Histórico</span>
+                <button onclick="clearQueryHistory()" title="Limpar todo o histórico de consultas" class="text-[10px] text-fg-muted hover:text-red-400 transition">Limpar</button>
+            </div>
+            <div id="historyList" class="flex-1 overflow-y-auto p-2 space-y-1"><div class="text-[11px] text-fg-muted p-2">Carregando…</div></div>
+        </aside>
     </div>
     <div class="flex gap-2">
         <input id="queryInput" type="text" placeholder="Digite sua pergunta em linguagem natural..." class="flex-1 bg-fg-700 border border-fg-border rounded-xl px-4 py-3 text-sm focus:border-fg-accent focus:outline-none focus:ring-1 focus:ring-fg-accent/30 transition placeholder:text-fg-muted/50" onkeydown="if(event.key==='Enter')sendQuery()">
@@ -585,6 +594,9 @@
         <button onclick="openSkillPicker(this, {fromHeader:true})" id="btnPickSkills" title="Selecionar skills aplicadas à próxima pergunta" class="skill-picker-btn bg-fg-blue/15 hover:bg-fg-blue/25 text-fg-blue border border-fg-blue/25 px-3 py-3 rounded-xl text-xs font-medium transition-all active:scale-95">Skills ▾</button>
         <button onclick="sendQuery()" id="btnSend" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Enviar</button>
         <button onclick="resetConversation()" id="btnResetChat" title="Limpa o histórico de turnos enviado ao agente" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-3 py-3 rounded-xl text-xs font-mono transition-all active:scale-95">Nova conversa</button>
+        <button onclick="toggleHistoryPanel()" id="btnHistory" title="Histórico de consultas" aria-label="Histórico de consultas" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-3 py-3 rounded-xl transition-all active:scale-95">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>
+        </button>
     </div>
 </section>
 
@@ -4292,6 +4304,7 @@ async function sendQuery() {
         if (inlineChart) inlineChart.render();
         if (inlineReport) inlineReport.render();
         if (data.failure_id) _attachFailureArtifact(data.failure_id, _msgEl);
+        _refreshHistoryIfOpen();
     } catch (e) {
         removeLoading();
         appendMessage('error', 'Erro de conexão: ' + e.message);
@@ -5147,6 +5160,66 @@ function appendMessage(role, content, isHtml = false) {
     return div;
 }
 function removeLoading() { const el = document.getElementById('loadingMsg'); if (el) el.remove(); }
+
+// ---- Histórico de consultas (painel lateral com toggle) ----
+function toggleHistoryPanel() {
+    const panel = document.getElementById('historyPanel');
+    const btn = document.getElementById('btnHistory');
+    if (!panel) return;
+    const willShow = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !willShow);
+    if (btn) {
+        btn.classList.toggle('bg-fg-accent', willShow);
+        btn.classList.toggle('text-white', willShow);
+        btn.classList.toggle('border-fg-accent', willShow);
+        btn.classList.toggle('bg-fg-700', !willShow);
+        btn.classList.toggle('text-fg-muted', !willShow);
+    }
+    if (willShow) loadQueryHistory();
+}
+function _histWhen(ts) { if (!ts) return ''; try { return String(ts).slice(0, 16).replace('T', ' '); } catch (_) { return String(ts); } }
+async function loadQueryHistory() {
+    const list = document.getElementById('historyList');
+    if (!list) return;
+    list.innerHTML = '<div class="text-[11px] text-fg-muted p-2">Carregando…</div>';
+    try {
+        const res = await fetch('/api/query-history?limit=100');
+        if (!res.ok) { list.innerHTML = '<div class="text-[11px] text-fg-muted p-2">Erro ao carregar.</div>'; return; }
+        const items = await res.json();
+        if (!Array.isArray(items) || !items.length) {
+            list.innerHTML = '<div class="text-[11px] text-fg-muted p-3 text-center">Sem consultas ainda.</div>';
+            return;
+        }
+        list.innerHTML = items.map(h => {
+            const q = String(h.question || '');
+            const qEsc = escapeHtml(q);
+            const qAttr = escapeHtml(q).replace(/"/g, '&quot;');
+            return `<div class="group relative rounded-lg hover:bg-fg-700/50 transition">
+                <button type="button" onclick="_useHistoryQuestion(this)" data-q="${qAttr}" title="${qAttr}" class="w-full text-left px-2.5 py-2 pr-7">
+                    <div class="text-[11px] text-fg-text leading-snug" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${qEsc}</div>
+                    <div class="text-[9px] text-fg-muted mt-0.5 font-mono">${escapeHtml(_histWhen(h.created_at))}</div>
+                </button>
+                <button type="button" onclick="deleteHistoryItem(${h.id})" title="Remover do histórico" class="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 text-fg-muted hover:text-red-400 transition text-xs">✕</button>
+            </div>`;
+        }).join('');
+    } catch (e) { list.innerHTML = '<div class="text-[11px] text-fg-muted p-2">Erro ao carregar.</div>'; }
+}
+function _useHistoryQuestion(btn) {
+    const q = (btn && btn.dataset && btn.dataset.q) || '';
+    const el = document.getElementById('queryInput');
+    if (el) { el.value = q; el.focus(); }
+}
+async function deleteHistoryItem(id) {
+    try { await fetch('/api/query-history/' + id, { method: 'DELETE' }); loadQueryHistory(); } catch (_) {}
+}
+async function clearQueryHistory() {
+    if (!confirm('Limpar todo o seu histórico de consultas?')) return;
+    try { await fetch('/api/query-history', { method: 'DELETE' }); loadQueryHistory(); } catch (_) {}
+}
+function _refreshHistoryIfOpen() {
+    const p = document.getElementById('historyPanel');
+    if (p && !p.classList.contains('hidden')) loadQueryHistory();
+}
 
 // ---- Falhas: caixa de erro expansível + captura de print/snapshot ----
 let _failBoxSeq = 0;

@@ -120,6 +120,7 @@ from app.core.database import (
     list_all_playbooks, update_playbook, delete_playbook,
     create_failure, get_failure, list_failures,
     update_failure_artifact, update_failure_status, delete_failure,
+    get_query_history, delete_query_history_item, clear_query_history,
 )
 
 router = APIRouter(prefix="/api")
@@ -1257,6 +1258,27 @@ async def failures_set_status(failure_id: int, req: FailureStatusUpdate, user: d
 async def failures_delete(failure_id: int, user: dict = Depends(require_admin)):
     delete_failure(failure_id)
     return {"ok": True}
+
+
+# --- Histórico de consultas do usuário (painel lateral em Consultar) ---
+
+@router.get("/query-history")
+async def query_history_list(limit: int = Query(50, ge=1, le=200),
+                            user: dict = Depends(get_current_user)):
+    """Histórico de consultas do usuário logado (mais recentes primeiro)."""
+    return get_query_history(user.get("login") or "", limit=limit)
+
+
+@router.delete("/query-history/{history_id}")
+async def query_history_delete(history_id: int, user: dict = Depends(get_current_user)):
+    delete_query_history_item(history_id, user.get("login") or "")
+    return {"ok": True}
+
+
+@router.delete("/query-history")
+async def query_history_clear(user: dict = Depends(get_current_user)):
+    n = clear_query_history(user.get("login") or "")
+    return {"ok": True, "deleted": n}
 
 
 # --- Tables ---

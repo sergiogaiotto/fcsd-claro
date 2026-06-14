@@ -566,9 +566,9 @@ async def run_query(
             conn = get_sync_connection()
             try:
                 conn.execute(
-                    "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id) "
-                    "VALUES (?, ?, ?, ?)",
-                    (question, saved_sql, "(reuso de SQL salvo)", analysis_type_id),
+                    "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id, user_login) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (question, saved_sql, "(reuso de SQL salvo)", analysis_type_id, user_login or ""),
                 )
                 conn.commit()
             finally:
@@ -734,9 +734,9 @@ async def run_query(
     conn = get_sync_connection()
     try:
         conn.execute(
-            "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id) "
-            "VALUES (?, ?, ?, ?)",
-            (question, sql_generated, ai_response[:500] if ai_response else "", analysis_type_id),
+            "INSERT INTO query_history (question, sql_generated, result_summary, analysis_type_id, user_login) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (question, sql_generated, ai_response[:500] if ai_response else "", analysis_type_id, user_login or ""),
         )
         conn.commit()
     finally:

@@ -585,6 +585,7 @@ _INDEX_STATEMENTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_saved_questions_user ON saved_questions(user_id, is_favorite)",
     "CREATE INDEX IF NOT EXISTS idx_saved_visions_user ON saved_visions(user_id)",
     "CREATE INDEX IF NOT EXISTS idx_query_history_created ON query_history(created_at DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_query_history_user ON query_history(user_login, created_at DESC)",
     "CREATE INDEX IF NOT EXISTS idx_cockpit_tiles_user ON cockpit_tiles(user_id, position)",
     "CREATE INDEX IF NOT EXISTS idx_codegen_tables_owner ON codegen_tables(owner_id)",
     "CREATE INDEX IF NOT EXISTS idx_codegen_snippets_user ON codegen_snippets(user_id)",
@@ -617,6 +618,7 @@ _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
     ],
     "analysis_types": [("owner_id", "INTEGER")],
     "reports": [("diamond_layer_ids", "TEXT NOT NULL DEFAULT '[]'")],
+    "query_history": [("user_login", "TEXT NOT NULL DEFAULT ''")],
 }
 
 
@@ -3136,5 +3138,46 @@ def delete_failure(failure_id: int) -> bool:
         cur = conn.execute("DELETE FROM failures WHERE id = ?", (failure_id,))
         conn.commit()
         return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Query history — histórico de consultas por usuário (painel lateral)
+# ---------------------------------------------------------------------------
+
+def get_query_history(user_login: str, limit: int = 50) -> list[dict]:
+    """Histórico de consultas do usuário, mais recentes primeiro."""
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, question, sql_generated, result_summary, created_at "
+            "FROM query_history WHERE user_login = ? ORDER BY created_at DESC LIMIT ?",
+            (user_login or "", int(limit)),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def delete_query_history_item(history_id: int, user_login: str) -> bool:
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute(
+            "DELETE FROM query_history WHERE id = ? AND user_login = ?",
+            (history_id, user_login or ""),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def clear_query_history(user_login: str) -> int:
+    conn = get_sync_connection()
+    try:
+        cur = conn.execute("DELETE FROM query_history WHERE user_login = ?", (user_login or "",))
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
