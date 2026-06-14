@@ -223,7 +223,7 @@ async def _resolve_slide(q: dict, user_login: str, accessible_tables, apply_logi
     out.update({
         "hero": hero,
         "chart": _chart_spec(columns, rows, hero),
-        "chart_data": {"columns": columns, "rows": rows[:60]},
+        "chart_data": {"columns": columns, "rows": rows[:60], "row_count": row_count},
         "source": quality,
         "confidence": conf,
         "row_count": row_count,
@@ -448,7 +448,9 @@ def _assemble(question, plan, resolved, synthesis, governance, source_global) ->
             "narrative": r.get("narrative", ""),
             "hero": {"value": h.get("value_formatted", "—"), "label": h.get("label", ""),
                      "caption": h.get("caption", ""), "eligible": h.get("eligible_as_thesis", True),
-                     "value_raw": h.get("value_raw"), "fmt": h.get("fmt")},
+                     "value_raw": h.get("value_raw"), "fmt": h.get("fmt"),
+                     # column/agg persistidos p/ replay determinístico exato (reexecução).
+                     "column": h.get("column"), "agg": h.get("agg")},
             "chart": r.get("chart"),
             "chart_data": r.get("chart_data"),
             "actions": (actions.get(r["key"]) or [])[:3],

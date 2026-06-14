@@ -14,6 +14,7 @@ from datetime import date as _date
 
 from app.models.schemas import (
     QueryRequest, ExecHeroRequest, ExecDeckRequest, ExecDeckSaveRequest, ExecDeckUpdateRequest,
+    ExecDeckParamsRequest, ExecReplayRequest, ExecNarrateRequest,
     PlaybookCreate, PlaybookUpdate, PlaybookCopyRequest,
     FailureCreate, FailureArtifact, FailureStatusUpdate,
     AnalysisTypeCreate, AnalysisTypeUpdate,
@@ -1043,6 +1044,49 @@ async def exec_slide(req: ExecHeroRequest, user: dict = Depends(get_current_user
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao regenerar insight: {e}")
+
+
+@router.post("/exec/deck/params")
+async def exec_deck_params(req: ExecDeckParamsRequest, user: dict = Depends(get_current_user)):
+    """Analisa um deck e devolve os 'botões' de reexecução: janelas detectadas +
+    dimensões de recorte (colunas categóricas) com seus valores distintos."""
+    from app.services.exec_replay_service import analyze_deck_params
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    try:
+        return analyze_deck_params(req.deck_spec, accessible_tables=accessible)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao analisar parâmetros do deck: {e}")
+
+
+@router.post("/exec/deck/replay")
+async def exec_deck_replay(req: ExecReplayRequest, user: dict = Depends(get_current_user)):
+    """Reexecuta determinístico o deck com recorte de segmento + janela (sem LLM).
+    Reusa o SQL de cada slide, recomputa herói/gráfico e devolve o novo deck_spec."""
+    from app.services.exec_replay_service import replay_deck
+    if not req.deck_spec or not req.deck_spec.get("slides"):
+        raise HTTPException(status_code=400, detail="deck_spec inválido (sem slides).")
+    accessible = _accessible_tables_for(user, req.datamart_ids, req.diamond_layer_ids)
+    apply_login_filter = not is_root(user) if user else False
+    filters = [{"column": f.column, "values": f.values} for f in (req.segment_filters or [])]
+    try:
+        return replay_deck(
+            req.deck_spec, segment_filters=filters, window=req.window, user=user,
+            accessible_tables=accessible, apply_login_filter=apply_login_filter,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao reexecutar deck: {e}")
+
+
+@router.post("/exec/slide/narrate")
+async def exec_slide_narrate(req: ExecNarrateRequest, user: dict = Depends(get_current_user)):
+    """Re-narra um slide a partir dos números atuais (não toca SQL/herói)."""
+    from app.services.exec_replay_service import narrate_slide
+    try:
+        return narrate_slide(req.slide)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao re-narrar slide: {e}")
 
 
 @router.post("/exec/deck/pptx")
