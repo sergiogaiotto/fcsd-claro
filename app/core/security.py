@@ -87,12 +87,19 @@ def verify_password(password: str, password_hash: str) -> bool:
 # ---------------------------------------------------------------------------
 
 ADMIN_ROLES = {"root", "superuser", "admin"}
-UPLOAD_ROLES = {"root", "superuser", "admin", "analista"}
+UPLOAD_ROLES = {"root", "superuser", "admin", "analista", "engenheiro_dados"}
 CODEGEN_ROLES = {"root", "superuser", "admin", "engenheiro_dados"}
 ALL_ROLES = {"root", "superuser", "admin", "analista", "engenheiro_dados", "user"}
 
 def is_analista(user: dict) -> bool:
     return user.get("user_type") == "analista"
+
+def acts_as_analista(user: dict) -> bool:
+    """Papéis com o fluxo self-service do analista: upload para o DataMart pessoal
+    `dm-{login}` (forçado + auto-atribuído) e drop das próprias tabelas. O
+    `engenheiro_dados` herda isso ALÉM dos seus privilégios próprios (codegen,
+    catálogo, produtos de dados), que são governados por gates separados."""
+    return user.get("user_type") in ("analista", "engenheiro_dados")
 
 def is_engenheiro_dados(user: dict) -> bool:
     return user.get("user_type") == "engenheiro_dados"

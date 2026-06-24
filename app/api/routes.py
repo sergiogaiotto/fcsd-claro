@@ -69,7 +69,7 @@ from app.core.security import (
     authenticate_user, create_session, validate_session, destroy_session,
     get_user_count, create_user, list_users, get_user_by_id, update_user,
     change_password, delete_user,
-    is_admin, is_root, hash_password,
+    is_admin, is_root, hash_password, acts_as_analista,
 )
 from app.core.config import settings
 from app.services.excel_service import import_excel
@@ -155,10 +155,10 @@ async def require_root(user: dict = Depends(get_current_user)) -> dict:
     return user
 
 async def require_upload_access(user: dict = Depends(get_current_user)) -> dict:
-    """Permite admin OU analista."""
+    """Permite admin, analista OU engenheiro de dados."""
     from app.core.security import can_upload
     if not can_upload(user):
-        raise HTTPException(status_code=403, detail="Acesso restrito a administradores e analistas")
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores, analistas e engenheiros de dados")
     return user
 
 
@@ -1514,9 +1514,9 @@ async def list_tables(request: Request):
         # "Apenas os meus" para refinar do lado cliente).
         return all_tables
     if user:
-        # user / analista: estritamente limitado às tabelas acessíveis via
-        # DataMarts OU DiamondLayers autorizadas. Sem nenhuma atribuição
-        # → lista vazia (regra de segurança).
+        # Qualquer não-admin (user / analista / engenheiro_dados): estritamente
+        # limitado às tabelas acessíveis via DataMarts OU DiamondLayers autorizadas.
+        # Sem nenhuma atribuição → lista vazia (regra de segurança).
         dm_list = get_user_datamarts(user["id"])
         layer_list = get_user_diamond_layers(user["id"])
         if not dm_list and not layer_list:
@@ -1553,8 +1553,8 @@ async def drop_table(table_name: str, user: dict = Depends(get_current_user)):
             raise HTTPException(400, result["error"])
         return result
 
-    # Analista: só tabelas do seu DataMart dm-{login}
-    if user.get("user_type") == "analista":
+    # Analista / Engenheiro de Dados: só tabelas do seu DataMart dm-{login}
+    if acts_as_analista(user):
         dm_name = f"dm-{user['login']}"
         dm = get_datamart_by_name(dm_name)
         if not dm:
@@ -1588,10 +1588,10 @@ async def upload_excel(
         raise HTTPException(400, "Apenas arquivos Excel (.xlsx) são aceitos.")
     data = await file.read()
     if len(data) > MAX_UPLOAD_SIZE:
-        raise HTTPException(400, "Arquivo excede o tamanho máximo permitido (10MB).")
+        raise HTTPException(400, f"Arquivo excede o tamanho máximo permitido ({MAX_UPLOAD_SIZE // (1024 * 1024)}MB).")
 
-    # Analista: forçar DataMart "dm-{login}" e auto-atribuir
-    if user.get("user_type") == "analista":
+    # Analista / Engenheiro de Dados: forçar DataMart "dm-{login}" e auto-atribuir
+    if acts_as_analista(user):
         datamart_name = f"dm-{user['login']}"
 
     if not datamart_name or not datamart_name.strip():
@@ -1609,8 +1609,8 @@ async def upload_excel(
         dm = db_create_datamart(datamart_name)
     dm_id = dm["id"]
 
-    # Auto-atribuir DataMart ao analista
-    if user.get("user_type") == "analista":
+    # Auto-atribuir DataMart ao analista / engenheiro de dados
+    if acts_as_analista(user):
         current_dms = get_user_datamarts(user["id"])
         current_dm_ids = [d["id"] for d in current_dms]
         if dm_id not in current_dm_ids:
@@ -1635,8 +1635,35 @@ async def upload_excel(
                 assign_table_to_datamart(dm_id, sheet_info["table"])
         reset_agent()
         return {"filename": filename, "sheets": report, "datamart": dm["name"]}
-    except Exception:
-        raise HTTPException(500, "Erro ao processar arquivo.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Não engula o erro real: registra o traceback completo em Configurações ›
+        # Falhas (troubleshooting) e devolve tipo+mensagem ao cliente, que antes só via
+        # "Erro ao processar arquivo." sem nenhuma pista do que falhou de fato.
+        try:
+            create_failure(
+                user_id=user.get("id"),
+                user_login=user.get("login", ""),
+                user_name=(user.get("display_name") or ""),
+                source="upload",
+                question=f"upload:{filename} → datamart:{dm['name']}",
+                error_message=str(e),
+                error_type=type(e).__name__,
+                traceback=_tb.format_exc(),
+            )
+        except Exception:
+            pass
+        # Só o NOME da exceção vai ao cliente (ex.: BadZipFile, IntegrityError) — útil e
+        # seguro. NÃO ecoar str(e): em erros de df.to_sql o SQLAlchemy anexa
+        # "[SQL: INSERT INTO {tabela} ({colunas})] [parameters: ...]", o que vazaria nomes
+        # físicos de tabela/coluna e até linhas do arquivo (PII). O detalhe completo
+        # (str(e)+traceback) fica registrado em Configurações › Falhas para o admin.
+        raise HTTPException(
+            500,
+            f"Erro ao processar arquivo ({type(e).__name__}). "
+            "Detalhe completo em Configurações › Falhas.",
+        )
 
 
 # --- Query (Natural Language via Deep Agent) ---

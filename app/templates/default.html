@@ -5,7 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Fale com Seus Dados</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Polyfill defensivo: runtimes antigos (WebView/navegador anterior a Chrome 92 /
+         Safari 15.4) não têm Array/String.prototype.at, que o marked v5+ usa internamente
+         (.at(-1) — 15x na v15). Sem isto, marked.parse() lança "t.at is not a function" e
+         derruba a renderização da resposta inteira. -->
+    <script>
+      (function () {
+        function at(n) {
+          n = Math.trunc(n) || 0;
+          if (n < 0) n += this.length;
+          if (n < 0 || n >= this.length) return undefined;
+          return this[n];
+        }
+        if (!Array.prototype.at) Object.defineProperty(Array.prototype, 'at', { value: at, writable: true, configurable: true });
+        if (!String.prototype.at) Object.defineProperty(String.prototype, 'at', { value: at, writable: true, configurable: true });
+      })();
+    </script>
+    <!-- marked PINADO: a URL sem versão resolvia para a "latest" (hoje v15), que exige
+         runtime moderno. v4.3.0 não usa .at()/optional-chaining e renderiza o mesmo
+         markdown — evita a quebra silenciosa quando o CDN sobe de versão sozinho. -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -5250,7 +5269,7 @@ async function sendQuery() {
             html += `<div class="mt-1 mb-1 text-[10px] text-fg-green flex items-center gap-1"><span>✓</span> O SQL inicial falhou e foi corrigido automaticamente. A falha foi registrada em Configurações › Falhas.</div>`;
         }
         if (data.explanation) {
-            let parsed = marked.parse(data.explanation);
+            let parsed = safeMarked(data.explanation);
             parsed = linkifySuggestions(parsed);
             html += `<div class="prose-custom text-sm leading-relaxed">${parsed}</div>`;
         }
@@ -6353,6 +6372,21 @@ async function deleteFailureItem(id) {
     } catch (e) { alert('Erro: ' + e.message); }
 }
 
+// Renderiza markdown sem nunca derrubar a resposta: se o marked tropeçar (ex.: o CDN
+// subiu para uma versão incompatível com o runtime), cai para texto puro escapado em
+// vez de estourar a exceção que o catch externo rotulava como "Erro de conexão".
+function safeMarked(src) {
+    if (src == null || src === '') return '';
+    try {
+        return marked.parse(String(src));
+    } catch (e) {
+        console.error('Falha ao renderizar markdown; usando texto puro:', e);
+        const div = document.createElement('div');
+        div.textContent = String(src);
+        return '<div style="white-space:pre-wrap">' + div.innerHTML + '</div>';
+    }
+}
+
 function linkifySuggestions(html) {
     const tmp = document.createElement('div'); tmp.innerHTML = html;
     tmp.querySelectorAll('li').forEach(li => {
@@ -7051,6 +7085,10 @@ let _tablesCache = [];
 let _userDmIdsCache = new Set();   // datamart ids the current user has access to
 let _userLayerIdsCache = new Set();// diamond layer ids the current user has access to
 
+// Engenheiro de Dados herda o fluxo self-service do analista (upload p/ dm-{login},
+// auto-atribuição, drop das próprias tabelas) ALÉM dos seus privilégios próprios.
+function actsAsAnalista() { return !!(currentUser && ['analista', 'engenheiro_dados'].includes(currentUser.user_type)); }
+
 async function loadTables() {
     const el = document.getElementById('tablesList');
     try {
@@ -7059,7 +7097,7 @@ async function loadTables() {
         _tablesCache = Array.isArray(tables) ? tables : [];
         await _refreshTablesFilterControls();
         renderTablesList();
-        if (currentUser && currentUser.user_type !== 'analista') { loadDatamartsAdmin(); loadDiamondLayersAdmin(); }
+        if (currentUser && !actsAsAnalista()) { loadDatamartsAdmin(); loadDiamondLayersAdmin(); }
     } catch (e) {
         el.innerHTML = `<p class="text-xs text-red-400">Erro: ${e.message}</p>`;
     }
@@ -7153,7 +7191,7 @@ function renderTablesList() {
     const techTables = _allTables.filter(t => t.is_tech);
     const tables = _allTables.filter(t => !t.is_tech);
     const isAdmin = currentUser && ['root','superuser','admin'].includes(currentUser.user_type);
-    const isAnalista = currentUser && currentUser.user_type === 'analista';
+    const isAnalista = actsAsAnalista();
     const analistaDmName = isAnalista ? ('dm-' + currentUser.login) : '';
     const dmFilterSel = document.getElementById('tablesDmFilter');
     const onlyMineEl = document.getElementById('tablesOnlyMine');
@@ -7265,7 +7303,7 @@ async function uploadFile(file) {
     status.className = 'mt-3 text-xs text-red-400';
     const ext = (file.name.split('.').pop() || '').toLowerCase();
     if (ext !== 'xlsx') { status.textContent = 'Apenas arquivos .xlsx são aceitos.'; return; }
-    const isAnalista = currentUser && currentUser.user_type === 'analista';
+    const isAnalista = actsAsAnalista();
     const dmNew = document.getElementById('uploadDatamartNew') ? document.getElementById('uploadDatamartNew').value.trim() : '';
     const dmSelect = document.getElementById('uploadDatamart') ? document.getElementById('uploadDatamart').value : '';
     const dmName = dmNew || dmSelect || '';
@@ -7279,7 +7317,11 @@ async function uploadFile(file) {
         let url = '/api/upload?datamart_name=' + encodeURIComponent(dmName);
         if (strategy) url += '&conflict_strategy=' + encodeURIComponent(strategy);
         const res = await fetch(url, { method: 'POST', body: formData });
-        return { res, data: await res.json() };
+        // Resposta pode não ser JSON (413 de proxy, página de erro, corpo vazio):
+        // não deixe res.json() estourar e virar um "Erro:" genérico no catch externo.
+        let data = null;
+        try { data = await res.json(); } catch (_) { data = null; }
+        return { res, data };
     }
 
     try {
@@ -7293,9 +7335,10 @@ async function uploadFile(file) {
         }
         if (!res.ok) {
             status.className = 'mt-3 text-xs text-red-400';
-            status.textContent = (data && (data.detail || data.error)) || 'Erro no upload.';
+            status.textContent = (data && (data.detail || data.error)) || ('Erro no upload (HTTP ' + res.status + ').');
             return;
         }
+        data = data || {};
         let html = `<span class="text-fg-green font-bold font-mono">${file.name}</span> → DataMart: <span class="text-fg-blue font-mono">${data.datamart || dmName}</span><br>`;
         (data.sheets || []).forEach(s => {
             const sigil = s.action === 'created' ? '+' : (s.action === 'replaced' ? '↻' : (s.action === 'appended' ? '~' : '·'));
@@ -7949,7 +7992,7 @@ function renderReportPayload(payload, dark) {
         return `<div class="${cls}"><div class="rpt-error"><strong>Falha ao executar:</strong> ${escapeHtml(payload.error)}</div></div>`;
     }
     const parts = [];
-    if (payload.report_header_html) parts.push(`<div class="rpt-band-rh">${marked.parse(payload.report_header_html)}</div>`);
+    if (payload.report_header_html) parts.push(`<div class="rpt-band-rh">${safeMarked(payload.report_header_html)}</div>`);
     const bands = payload.bands || [];
     let openTable = false;
     let tableCols = [];
@@ -7973,11 +8016,11 @@ function renderReportPayload(payload, dark) {
             openTableFn();
         } else if (b.kind === 'group_header') {
             closeTable();
-            parts.push(`<div class="rpt-band-gh">${marked.parse(b.html || '')}</div>`);
+            parts.push(`<div class="rpt-band-gh">${safeMarked(b.html || '')}</div>`);
             openTableFn();
         } else if (b.kind === 'sub_group_header') {
             closeTable();
-            parts.push(`<div class="rpt-band-sgh">${marked.parse(b.html || '')}</div>`);
+            parts.push(`<div class="rpt-band-sgh">${safeMarked(b.html || '')}</div>`);
             openTableFn();
         } else if (b.kind === 'detail_rows') {
             openTableFn();
@@ -7992,11 +8035,11 @@ function renderReportPayload(payload, dark) {
             });
         } else if (b.kind === 'sub_group_footer') {
             closeTable();
-            const html = b.html ? marked.parse(b.html) : '';
+            const html = b.html ? safeMarked(b.html) : '';
             parts.push(`<div class="rpt-band-sgf">${html}${renderAggs(b.aggregations)}</div>`);
         } else if (b.kind === 'group_footer') {
             closeTable();
-            const html = b.html ? marked.parse(b.html) : '';
+            const html = b.html ? safeMarked(b.html) : '';
             parts.push(`<div class="rpt-band-gf">${html}${renderAggs(b.aggregations)}</div>`);
         } else if (b.kind === 'grand_footer') {
             closeTable();
@@ -8005,7 +8048,7 @@ function renderReportPayload(payload, dark) {
         }
     });
     closeTable();
-    if (payload.report_footer_html) parts.push(`<div class="rpt-band-rf">${marked.parse(payload.report_footer_html)}</div>`);
+    if (payload.report_footer_html) parts.push(`<div class="rpt-band-rf">${safeMarked(payload.report_footer_html)}</div>`);
     if (!parts.length) parts.push('<div class="rpt-empty">Reporte sem conteúdo. Configure cabeçalho, colunas ou agregações.</div>');
     return `<div class="${cls}">${parts.join('')}</div>`;
 }
@@ -9118,15 +9161,16 @@ async function loadCurrentUser() { try { const res = await fetch('/api/auth/me')
         const cg = document.getElementById('nav-codegen');
         if (cg) cg.classList.remove('hidden');
     }
-    // Engenheiro de Dados: em Configurações, manter só Catálogo e Produtos de Dados
+    // Engenheiro de Dados: em Configurações, manter Catálogo, Produtos de Dados E a aba
+    // Tabelas (upload self-service estilo analista). Esconder só API e Usuários.
     if (currentUser.user_type === 'engenheiro_dados') {
-        ['cfg-tab-tables','cfg-tab-api','cfg-tab-users','cfg-sep-users','cfg-sep-tables'].forEach(id => {
+        ['cfg-tab-api','cfg-tab-users','cfg-sep-users'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.style.display = 'none';
         });
     }
-    // Analista: forçar DataMart e esconder seções admin do painel Tables
-    if (currentUser.user_type === 'analista') {
+    // Analista / Engenheiro de Dados: forçar DataMart pessoal e esconder seções admin do painel Tables
+    if (actsAsAnalista()) {
         const dmGroup = document.getElementById('uploadDatamartGroup');
         const dmAnalista = document.getElementById('uploadDatamartAnalista');
         const analistaLabel = document.getElementById('analistaDatamartLabel');
