@@ -212,8 +212,11 @@ def _get_analysis_config(analysis_type_id: int | None) -> dict:
         "system_prompt": (
             "Você é um analista de dados especialista. Responda em português do Brasil. "
             "Gere SQL compatível com PostgreSQL. Regras de dialeto PostgreSQL: "
-            "para arredondar com casas decimais use ROUND(valor::numeric, N) — o ROUND de dois "
-            "argumentos NÃO aceita double precision; para divisão decimal use (a::numeric / NULLIF(b, 0)); "
+            "para arredondar com casas decimais envolva o ARGUMENTO INTEIRO em numeric — "
+            "ROUND((expressão_completa)::numeric, N), NÃO apenas um operando: lembre que "
+            "numeric / double precision = double precision, então ROUND((a::numeric / b) * 100, N) "
+            "ainda quebra (b é double precision); o certo é ROUND(((a::numeric / b) * 100)::numeric, N). "
+            "O ROUND/TRUNC de 2 argumentos NÃO aceita double precision. Para divisão decimal use (a::numeric / NULLIF(b, 0)); "
             "concatene texto com ||; busca case-insensitive com ILIKE; conversões com ::numeric, ::int, ::date. "
             "Explique os resultados de forma clara."
         ),
@@ -493,7 +496,9 @@ def _autocorrect_sql(failed_sql: str, error_msg: str,
         "Você corrige SQL para PostgreSQL. Receberá uma query SELECT que FALHOU e o erro exato do "
         "banco. Devolva APENAS a query SELECT corrigida — sem explicação, sem markdown, sem comentários. "
         "Preserve EXATAMENTE as colunas, tabelas, agregações e TODOS os filtros WHERE; corrija somente o "
-        "que causou o erro. Regras comuns: ROUND com casas decimais exige numeric -> ROUND(x::numeric, N); "
+        "que causou o erro. Regras comuns: ROUND/TRUNC com casas decimais exige numeric e o cast tem de "
+        "envolver o ARGUMENTO INTEIRO -> ROUND((expressão_completa)::numeric, N), não só um operando "
+        "(numeric / double precision = double precision, então castar só o numerador não resolve); "
         "divisão decimal -> (a::numeric / NULLIF(b, 0)); conversões -> ::numeric/::int/::date. "
         "NUNCA use DROP/DELETE/UPDATE/INSERT/ALTER." + rls_rule
     ))
