@@ -2393,6 +2393,28 @@ async def catalog_scan(data: dict = None, user: dict = Depends(require_admin)):
     return run_catalog_scan(table_names)
 
 
+@router.post("/catalog/scan/stream")
+async def catalog_scan_stream(data: dict = None, user: dict = Depends(require_admin)):
+    """Variante streaming (SSE) do scan: emite progresso tabela-a-tabela para o modal de
+    Re-scan. Cada evento é uma fase; o evento 'done' traz o resumo final."""
+    from app.services.catalog_service import scan_catalog_iter
+    table_names = data["tables"] if (data and data.get("tables")) else None
+
+    def _gen():
+        try:
+            for ev in scan_catalog_iter(table_names):
+                phase = ev.get("phase", "progress")
+                yield f"event: {phase}\ndata: {json.dumps(ev, ensure_ascii=False, default=str)}\n\n"
+        except Exception as e:
+            yield f"event: error\ndata: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.get("/catalog/search")
 async def catalog_search(q: str = Query("", min_length=1), user: dict = Depends(get_current_user)):
     return search_catalog(q)
