@@ -67,6 +67,27 @@ def _mask_url(url: str) -> str:
         return "(unparseable)"
 
 
+def _force_psycopg3_driver(url: str) -> str:
+    """Força o driver psycopg 3 (``postgresql+psycopg://``) em QUALQUER URL Postgres.
+
+    O app inteiro usa psycopg 3 e o engine SQLAlchemy passa
+    ``connect_args={'prepare_threshold': 3}`` — parâmetro que SÓ o psycopg 3 aceita.
+    Mas o SQLAlchemy faz *default* para o dialeto **psycopg2** quando a URL vem como
+    ``postgresql://`` / ``postgres://`` (formato típico de Postgres gerenciado/cloud
+    e de quem seta DATABASE_URL na mão). Nesse caso o psycopg2 ou não está instalado
+    (``ModuleNotFoundError: No module named 'psycopg2'``) ou rejeita
+    ``prepare_threshold`` como opção inválida — e a conexão (logo, o upload) quebra.
+    Normalizar para ``+psycopg`` elimina os dois casos e ainda resolve o
+    ``postgres://`` legado (estilo Heroku/Render) que o SQLAlchemy 2 nem aceita.
+    """
+    if "://" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    if scheme.split("+", 1)[0].lower() in ("postgresql", "postgres"):
+        return "postgresql+psycopg://" + rest
+    return url
+
+
 def _resolve_database_url() -> str:
     """Build the effective PostgreSQL connection URL.
 
@@ -92,6 +113,10 @@ def _resolve_database_url() -> str:
                 f"DATABASE_URL must be a PostgreSQL URL (got: {explicit[:30]}...). "
                 "SQLite is no longer supported."
             )
+        # Normaliza para o driver psycopg 3 ANTES de validar/retornar: sem isto, um
+        # DATABASE_URL "postgresql://" cru cai no dialeto psycopg2 e o
+        # connect_args['prepare_threshold'] do engine quebra a conexão (e o upload).
+        explicit = _force_psycopg3_driver(explicit)
         ok, err = _try_sqlalchemy_parse(explicit)
         if ok:
             return explicit
