@@ -5246,6 +5246,18 @@ async function _rerunChatSql(key) {
 // ============================
 // Query — com suporte a saved_sql
 // ============================
+// A explicação é para leitura de NEGÓCIO. Remove blocos de código (SQL) que o modelo às
+// vezes embute no texto — o SQL vive só no bloco "SQL Gerado". Mantém `código inline`
+// (nomes de coluna). Atua no HTML já renderizado, então pega blocos cercados E indentados.
+function _stripCodeBlocksHtml(html) {
+    try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        tmp.querySelectorAll('pre').forEach(function (p) { p.remove(); });
+        return tmp.innerHTML;
+    } catch (e) { return html; }
+}
+
 // Toggle "🧠 Raciocínio profundo": força reasoning_effort=high no gpt-oss-120b nesta
 // pergunta (mais raciocínio, melhor em perguntas complexas; um pouco mais lento).
 let _reasoningHigh = false;
@@ -5356,6 +5368,7 @@ async function sendQuery() {
         }
         if (data.explanation) {
             let parsed = safeMarked(data.explanation);
+            parsed = _stripCodeBlocksHtml(parsed);   // tira SQL embutido na explicação (negócio)
             parsed = linkifySuggestions(parsed);
             html += `<div class="prose-custom text-sm leading-relaxed">${parsed}</div>`;
         }
