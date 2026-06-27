@@ -639,6 +639,24 @@ def _sys_prompt_resolve(prompt_id: str):
     return None
 
 
+# --- Ajustes de runtime (Configurações › Ajustes — só Root) ---
+
+@router.get("/admin/settings")
+async def admin_settings_get(user: dict = Depends(require_root)):
+    from app.core.app_settings import get_settings_for_ui
+    return {"settings": get_settings_for_ui()}
+
+
+@router.put("/admin/settings")
+async def admin_settings_put(payload: dict, user: dict = Depends(require_root)):
+    from app.core.app_settings import set_settings, get_settings_for_ui
+    updates = payload.get("settings") if isinstance(payload, dict) and "settings" in payload else payload
+    if not isinstance(updates, dict):
+        raise HTTPException(400, "Payload inválido: esperado um objeto de ajustes.")
+    set_settings(updates, user.get("login", ""))
+    return {"settings": get_settings_for_ui()}
+
+
 @router.get("/system-prompts")
 async def list_system_prompts(user: dict = Depends(require_root)):
     return _sys_prompt_list()
@@ -1587,8 +1605,14 @@ async def upload_excel(
     if ext != "xlsx":
         raise HTTPException(400, "Apenas arquivos Excel (.xlsx) são aceitos.")
     data = await file.read()
-    if len(data) > MAX_UPLOAD_SIZE:
-        raise HTTPException(400, f"Arquivo excede o tamanho máximo permitido ({MAX_UPLOAD_SIZE // (1024 * 1024)}MB).")
+    # Limite dinâmico (Configurações › Ajustes, Root); fallback p/ o default.
+    try:
+        from app.core.app_settings import get_setting
+        _max_mb = int(get_setting("max_upload_mb") or (MAX_UPLOAD_SIZE // (1024 * 1024)))
+    except Exception:
+        _max_mb = MAX_UPLOAD_SIZE // (1024 * 1024)
+    if len(data) > _max_mb * 1024 * 1024:
+        raise HTTPException(400, f"Arquivo excede o tamanho máximo permitido ({_max_mb}MB).")
 
     # Analista / Engenheiro de Dados: forçar DataMart "dm-{login}" e auto-atribuir
     if acts_as_analista(user):

@@ -528,6 +528,14 @@
                         </svg>
                         Falhas
                     </button>
+                    <button onclick="showCfgTab('ajustes')" id="cfg-tab-ajustes" class="hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        Ajustes
+                    </button>
                 </div>
             </div>
             <!-- IDs mantidos para compatibilidade com showTab() -->
@@ -540,6 +548,7 @@
             <span id="tab-api"          class="hidden"></span>
             <span id="tab-users"        class="hidden"></span>
             <span id="tab-falhas"       class="hidden"></span>
+            <span id="tab-ajustes"      class="hidden"></span>
 
             <!-- TDIA-CodeGen — copiloto de programação: ícone ao lado do usuário. id mantido p/ o gating por papel (JS) -->
             <a href="/codegen" id="nav-codegen" class="hidden text-fg-accent hover:text-fg-accent-hover transition-colors" title="TDIA-CodeGen — Copiloto de Programação (SQL / Engenharia de Dados)" aria-label="TDIA-CodeGen">
@@ -2656,6 +2665,24 @@ CREATE INDEX IF NOT EXISTS ix_minha_tabela_login ON minha_tabela (login);</pre>
     </div>
 </section>
 
+<!-- ===================== AJUSTES TAB (Root) ===================== -->
+<section id="panel-ajustes" class="tab-panel hidden">
+    <div class="bg-fg-800 border border-fg-border rounded-xl p-5 glow-accent max-w-3xl">
+        <div class="flex items-center justify-between mb-1 flex-wrap gap-2">
+            <div>
+                <h2 class="text-xs font-bold text-fg-accent uppercase tracking-wider">Ajustes — parâmetros de runtime</h2>
+                <p class="text-[11px] text-fg-muted mt-0.5">Knobs operacionais editáveis sem redeploy (exclusivo do Root). As alterações entram em vigor em até ~5s, para todos os workers.</p>
+            </div>
+            <button onclick="loadAjustes()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-3 py-1.5 rounded-lg text-xs font-semibold transition">↻ Recarregar</button>
+        </div>
+        <div id="ajustesForm" class="mt-4 space-y-5"><p class="text-xs text-fg-muted">Carregando…</p></div>
+        <div class="flex items-center gap-3 mt-5 pt-4 border-t border-fg-border">
+            <button onclick="saveAjustes()" id="ajustesSaveBtn" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-5 py-2 rounded-lg text-xs font-semibold transition">Salvar ajustes</button>
+            <span id="ajustesStatus" class="text-[11px] text-fg-muted"></span>
+        </div>
+    </div>
+</section>
+
 <!-- ===================== FAILURE DETAIL MODAL ===================== -->
 <div id="failureDetailModal" class="fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm hidden items-center justify-center p-4" onclick="if(event.target===this)closeFailureDetail()">
     <div class="bg-fg-800 border border-fg-border rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -2982,6 +3009,7 @@ function showTab(name) {
     if (name === 'sysprompts') loadSystemPrompts();
     if (name === 'users') loadUsers();
     if (name === 'falhas') loadFailures();
+    if (name === 'ajustes') loadAjustes();
     if (name === 'skills') loadSkills();
     if (name === 'visions') loadVisionsTab();
     if (name === 'cockpit') loadCockpit();
@@ -9254,10 +9282,12 @@ async function loadCurrentUser() { try { const res = await fetch('/api/auth/me')
         const fb = document.getElementById('cfg-tab-falhas');
         if (fb) fb.classList.remove('hidden');
     }
-    // "Prompts de Sistema" é exclusivo do Root
+    // "Prompts de Sistema" e "Ajustes" são exclusivos do Root
     if (currentUser.user_type === 'root') {
         const sp = document.getElementById('cfg-tab-sysprompts');
         if (sp) sp.classList.remove('hidden');
+        const aj = document.getElementById('cfg-tab-ajustes');
+        if (aj) aj.classList.remove('hidden');
     }
     // Analista: esconder tabs restritos no dropdown Configurações
     if (currentUser.user_type === 'analista') {
@@ -12562,6 +12592,75 @@ function _closeCfgOnOutsideClick(e) {
     }
 }
 
+// ============================================================
+// Ajustes (Configurações > Ajustes — Root): parâmetros de runtime
+// ============================================================
+let _ajustesSchema = [];
+async function loadAjustes() {
+    const form = document.getElementById('ajustesForm');
+    const status = document.getElementById('ajustesStatus');
+    if (status) { status.textContent = ''; status.className = 'text-[11px] text-fg-muted'; }
+    if (form) form.innerHTML = '<p class="text-xs text-fg-muted">Carregando…</p>';
+    try {
+        const res = await fetch('/api/admin/settings');
+        if (!res.ok) { if (form) form.innerHTML = '<p class="text-xs text-red-400">Acesso negado (somente Root) ou erro ao carregar.</p>'; return; }
+        const d = await res.json();
+        _ajustesSchema = d.settings || [];
+        _renderAjustes(_ajustesSchema);
+    } catch (e) {
+        if (form) form.innerHTML = '<p class="text-xs text-red-400">Erro: ' + escapeHtml(e.message) + '</p>';
+    }
+}
+function _renderAjustes(items) {
+    const form = document.getElementById('ajustesForm');
+    if (!form) return;
+    const groups = [], byGroup = {};
+    items.forEach(function (s) { const g = s.group || 'Geral'; if (!byGroup[g]) { byGroup[g] = []; groups.push(g); } byGroup[g].push(s); });
+    form.innerHTML = groups.map(function (g) {
+        return '<div><div class="text-[10px] font-bold text-fg-muted uppercase tracking-wider mb-2">' + escapeHtml(g) + '</div>'
+            + '<div class="space-y-3">' + byGroup[g].map(_ajusteRow).join('') + '</div></div>';
+    }).join('');
+}
+function _ajusteRow(s) {
+    const id = 'aj-' + s.key;
+    const head = '<div class="min-w-0"><div class="text-sm text-fg-bright">' + escapeHtml(s.label) + '</div>'
+        + '<div class="text-[10px] text-fg-muted mt-0.5">' + escapeHtml(s.help || '')
+        + ((s.type === 'int' && s.min != null && s.max != null) ? ' <span class="text-fg-muted/60">(' + s.min + '–' + s.max + ')</span>' : '') + '</div></div>';
+    if (s.type === 'bool') {
+        return '<div class="flex items-start justify-between gap-4 bg-fg-900 border border-fg-border rounded-lg px-3 py-2.5">' + head
+            + '<label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">'
+            + '<input type="checkbox" id="' + id + '" data-key="' + s.key + '" data-type="bool" ' + (s.value ? 'checked' : '') + ' class="sr-only peer">'
+            + '<div class="w-9 h-5 bg-fg-600 rounded-full peer peer-checked:bg-fg-accent transition-colors after:content-[\'\'] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4"></div>'
+            + '</label></div>';
+    }
+    const lo = (s.min != null) ? s.min : '', hi = (s.max != null) ? s.max : '';
+    return '<div class="flex items-start justify-between gap-4 bg-fg-900 border border-fg-border rounded-lg px-3 py-2.5">' + head
+        + '<input type="number" id="' + id + '" data-key="' + s.key + '" data-type="int" value="' + s.value + '" min="' + lo + '" max="' + hi + '" '
+        + 'class="w-24 bg-fg-700 border border-fg-border rounded-lg px-2 py-1.5 text-sm text-right font-mono focus:border-fg-accent focus:outline-none flex-shrink-0"></div>';
+}
+async function saveAjustes() {
+    const btn = document.getElementById('ajustesSaveBtn');
+    const status = document.getElementById('ajustesStatus');
+    const updates = {};
+    document.querySelectorAll('#ajustesForm [data-key]').forEach(function (el) {
+        if (el.dataset.type === 'bool') updates[el.dataset.key] = el.checked;
+        else { const v = parseInt(el.value, 10); if (!isNaN(v)) updates[el.dataset.key] = v; }
+    });
+    if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
+    try {
+        const res = await fetch('/api/admin/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: updates }) });
+        if (!res.ok) { const e = await res.json().catch(function () { return {}; }); if (status) { status.className = 'text-[11px] text-red-400'; status.textContent = _fmtApiError(e, 'Falha ao salvar.'); } return; }
+        const d = await res.json();
+        _ajustesSchema = d.settings || _ajustesSchema;
+        _renderAjustes(_ajustesSchema);
+        if (status) { status.className = 'text-[11px] text-fg-green'; status.textContent = '✓ Ajustes salvos — em vigor em até ~5s.'; }
+    } catch (e) {
+        if (status) { status.className = 'text-[11px] text-red-400'; status.textContent = 'Erro: ' + ((e && e.message) || e); }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Salvar ajustes'; }
+    }
+}
+
 function showCfgTab(name) {
     const dd = document.getElementById('cfgDropdown');
     if (dd) dd.classList.remove('open');
@@ -12571,7 +12670,7 @@ function showCfgTab(name) {
     if (tr) tr.classList.remove('cfg-trigger-active');
     document.removeEventListener('click', _closeCfgOnOutsideClick);
 
-    ['tables', 'catalog', 'dataproducts', 'sysprompts', 'api', 'users', 'falhas'].forEach(n => {
+    ['tables', 'catalog', 'dataproducts', 'sysprompts', 'api', 'users', 'falhas', 'ajustes'].forEach(n => {
         const btn = document.getElementById('cfg-tab-' + n);
         if (btn) btn.classList.toggle('cfg-active', n === name);
     });

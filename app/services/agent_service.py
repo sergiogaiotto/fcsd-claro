@@ -282,7 +282,12 @@ def build_agent():
         # Empty string → no cataloged table → prompt identical to legacy. Flag
         # CATALOG_ENRICH_AGENT can disable it without a code deploy.
         catalog_context = ""
-        if getattr(settings, "catalog_enrich_agent", True):
+        try:
+            from app.core.app_settings import get_setting as _get_setting
+            _enrich = bool(_get_setting("catalog_enrich_agent"))
+        except Exception:
+            _enrich = getattr(settings, "catalog_enrich_agent", True)
+        if _enrich:
             try:
                 from app.services.catalog_service import build_catalog_context_text
                 catalog_context = build_catalog_context_text(accessible)
@@ -699,8 +704,14 @@ async def run_query(
             original_type = data.get("error_type") or ""
             # Só auto-corrige erros REAIS de execução do banco — pular rejeições de
             # validação (SELECT-only etc.), onde o LLM não tem o que consertar.
+            # Pode ser desligado em Configurações › Ajustes (Root).
             corrected = ""
-            if original_type and original_type != "ValidationError":
+            try:
+                from app.core.app_settings import get_setting as _get_setting
+                _autocorrect_on = bool(_get_setting("sql_autocorrect_enabled"))
+            except Exception:
+                _autocorrect_on = True
+            if _autocorrect_on and original_type and original_type != "ValidationError":
                 corrected = _autocorrect_sql(
                     original_sql, original_error,
                     login_filter_user=login_filter_user,

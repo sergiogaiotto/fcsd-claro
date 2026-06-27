@@ -1564,12 +1564,19 @@ def execute_readonly_sql(sql: str) -> dict:
     if validation_error:
         return {"error": validation_error, "error_type": "ValidationError"}
 
+    # Teto dinâmico (Configurações › Ajustes, Root); fallback p/ o env/default.
+    try:
+        from app.core.app_settings import get_setting
+        timeout_ms = max(1000, int(get_setting("query_statement_timeout_seconds") or 60) * 1000)
+    except Exception:
+        timeout_ms = _READONLY_STMT_TIMEOUT_MS
+
     conn = get_sync_connection()
     try:
         # SET LOCAL = escopo da transação (rollback ao devolver ao pool reseta), então
         # não vaza o teto para a próxima consulta na mesma conexão do pool.
         try:
-            conn.execute(f"SET LOCAL statement_timeout = {_READONLY_STMT_TIMEOUT_MS}")
+            conn.execute(f"SET LOCAL statement_timeout = {timeout_ms}")
         except Exception:
             pass
         cursor = conn.execute(sql)
@@ -1597,7 +1604,7 @@ def execute_readonly_sql(sql: str) -> dict:
         # Timeout: mensagem acionável em vez do "canceling statement due to statement
         # timeout" do Postgres — e error_type estável para registro/UX.
         if etype == "QueryCanceled" or "statement timeout" in msg.lower():
-            secs = _READONLY_STMT_TIMEOUT_MS // 1000
+            secs = timeout_ms // 1000
             return {
                 "error": (f"A consulta excedeu o tempo limite de {secs}s. Refine o escopo "
                           "(adicione filtros, agregue, ou reduza o número de tabelas/linhas) "
