@@ -3710,6 +3710,8 @@ function _deckSlideHtml(s, i, prefix) {
         const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-chave)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
         // Auditar — disponível para TODOS os públicos (tira o lastro do antigo gate só-Gerente).
         const auditBtn = (prefix === '') ? `<button onclick="openExecAuditForSlide(${i})" title="Auditar este número — SQL, campos, conferência automática e explicação assistida" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">🔍 Auditar</button>` : '';
+        // Slides gerados ao vivo por "Pergunte ao slide" (_adhoc) podem ser removidos da análise.
+        const delBtn = (prefix === '' && s._adhoc) ? `<button onclick="removeExecSlide(${i})" title="Excluir este slide (gerado por 'Pergunte ao slide') da análise executiva" class="text-[10px] text-fg-muted hover:text-red-400 border border-fg-border rounded px-2 py-0.5 transition">🗑 Excluir</button>` : '';
         const _auditHero = (prefix === '') ? ` onclick="openExecAuditForSlide(${i})" title="Auditar este número — clique para ver SQL, campos e conferência" style="cursor:pointer"` : '';
         const _magHero = (prefix === '') ? ` <span class="text-fg-muted/50">🔍</span>` : '';
         return card(`<div class="flex items-center justify-between gap-2">${tag}<div class="flex items-center gap-2">${confChip}${editedChip}</div></div>${title}
@@ -3724,10 +3726,10 @@ function _deckSlideHtml(s, i, prefix) {
               ${chartHtml}
             </div>
             ${czHtml}${czDrivers}
-            ${s.narrative ? `<div class="text-xs text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3">${escapeHtml(s.narrative)}</div>` : ''}
+            ${s.narrative ? `<div class="prose-custom text-sm text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3 leading-relaxed">${safeMarked(s.narrative)}</div>` : ''}
             ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}
             ${(_execAudience === 'gerente' && s.sql) ? `<details class="mt-3"><summary class="text-[10px] text-fg-muted cursor-pointer uppercase tracking-wider font-mono">SQL (lastro)</summary><pre class="mt-2 bg-fg-900 rounded-lg p-2 text-[10px] text-fg-green overflow-x-auto border border-fg-border">${escapeHtml(s.sql)}</pre></details>` : ''}
-            ${(chartBtn || narrateBtn || auditBtn) ? `<div class="mt-2 flex items-center justify-end gap-2">${auditBtn}${narrateBtn}${chartBtn}</div>` : ''}`);
+            ${(chartBtn || narrateBtn || auditBtn || delBtn) ? `<div class="mt-2 flex items-center justify-end gap-2">${auditBtn}${narrateBtn}${chartBtn}${delBtn}</div>` : ''}`);
     }
     if (s.type === 'estrategia') {
         const frentes = (s.frentes || []).map(f => `<div class="bg-fg-700/50 rounded-lg p-3 flex gap-3">
@@ -4956,6 +4958,22 @@ function exitExecPresent() {
     _destroyCharts(_presCharts);
     const ov = document.getElementById('execPresentOverlay');
     if (ov) ov.remove();
+    // Slides criados ao vivo com "Pergunte ao slide" foram empurrados em _execDeck.slides
+    // durante a apresentação; re-renderiza a tela principal para que apareçam (legíveis e
+    // removíveis) em vez de ficarem invisíveis até um novo Gerar.
+    if (_execDeck && (_execDeck.slides || []).length && document.getElementById('execResult')) {
+        try { renderExecDeck(_execDeck); } catch (e) {}
+    }
+}
+
+// Remove um slide ad-hoc ("Pergunte ao slide") da análise em memória e re-renderiza.
+// Para persistir, o usuário usa "💾 Salvar" (mesmo fluxo do Deck Designer).
+function removeExecSlide(i) {
+    if (!_execDeck || !_execDeck.slides || !_execDeck.slides[i]) return;
+    const s = _execDeck.slides[i];
+    if (!confirm('Excluir o slide "' + (s.title || 'sem título') + '" desta análise executiva?')) return;
+    _execDeck.slides.splice(i, 1);
+    renderExecDeck(_execDeck);
 }
 
 // ---- "Pergunte ao slide": follow-up ao vivo vira slide-anexo ----
@@ -4996,6 +5014,7 @@ async function askSlide() {
             hero: { value: h.value_formatted || '—', label: h.label || '', caption: h.caption || '' },
             narrative: d.explanation || '', actions: [],
             confidence: d.confidence || {}, sql: d.sql || '', source: d.source || {},
+            _adhoc: true,  // gerado ao vivo por "Pergunte ao slide" → removível na tela principal
         };
         _execDeck.slides.push(slide);
         const idx = _execDeck.slides.length - 1;

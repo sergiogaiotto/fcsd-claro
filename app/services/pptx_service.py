@@ -20,7 +20,7 @@ from typing import Any
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+from pptx.enum.text import PP_ALIGN, MSO_ANCHOR, MSO_AUTO_SIZE
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
@@ -57,6 +57,53 @@ def _short(text, n: int = 320) -> str:
         return cut[:last + 1]
     sp = cut.rfind(" ")
     return (cut[:sp] if sp > 60 else cut).rstrip() + "…"
+
+
+def _clean_md_lines(text) -> list[str]:
+    """Limpa markdown (**, crases, # ) e quebra a narrativa em linhas/bullets legíveis,
+    PRESERVANDO o conteúdo ÍNTEGRO (sem truncar). Bullets inline ' - ' e numeração
+    'N. ' viram quebras de linha; mantém parágrafos. Usado no layout texto-forward."""
+    if not text:
+        return []
+    import re as _re
+    t = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    t = t.replace("**", "").replace("`", "")
+    t = _re.sub(r"(?m)^\s{0,3}#{1,6}\s*", "", t)               # cabeçalhos markdown
+    t = _re.sub(r"\s+-\s+", "\n• ", t)                          # bullets inline ' - '
+    t = _re.sub(r"(?<=[\s.;:])(\d{1,2})\.\s+", r"\n\1. ", t)    # numeração 'N. '
+    out: list[str] = []
+    for ln in t.split("\n"):
+        ln = _re.sub(r"[ \t]+", " ", ln).strip()
+        ln = _re.sub(r"^[*\-]\s+", "• ", ln)                    # bullet no início da linha
+        if ln:
+            out.append(ln)
+    return out
+
+
+def _para(slide, l, t, w, h, lines, size=12, color=INK, name="Calibri"):
+    """Caixa multi-parágrafo com autoajuste (SHRINK_TEXT_ON_OVERFLOW): o PowerPoint
+    reduz a fonte para caber TODO o conteúdo — mostra a narrativa íntegra sem truncar."""
+    tb = slide.shapes.add_textbox(Inches(l), Inches(t), Inches(w), Inches(h))
+    tf = tb.text_frame
+    tf.word_wrap = True
+    try:
+        tf.auto_size = MSO_AUTO_SIZE.SHRINK_TEXT_ON_OVERFLOW
+    except Exception:
+        pass
+    tf.margin_left = tf.margin_right = Pt(0)
+    tf.margin_top = tf.margin_bottom = Pt(0)
+    items = lines if isinstance(lines, (list, tuple)) else [str(lines)]
+    first = True
+    for ln in items:
+        p = tf.paragraphs[0] if first else tf.add_paragraph()
+        first = False
+        p.space_after = Pt(4)
+        r = p.add_run()
+        r.text = str(ln)
+        r.font.size = Pt(size)
+        r.font.name = name
+        r.font.color.rgb = color
+    return tb
 
 
 def _slide(prs):
@@ -272,43 +319,9 @@ def _add_chart(slide, chart, l, t, w, h):
         return False
 
 
-def _insight(prs, sp, deck, page):
-    s = _slide(prs)
-    _header(s, sp)
-    _conf_seal(s, sp.get("confidence"))
-    if sp.get("subtitle"):
-        _txt(s, M, 1.32, SW - 2 * M, 0.4, sp["subtitle"], size=13, color=MUTED, italic=True)
-    has_chart = bool(sp.get("chart"))
-    left_w = 5.6 if has_chart else (SW - 2 * M)
-    # narrativa (curta/limpa para não transbordar e sobrepor o resto)
-    if sp.get("narrative"):
-        _txt(s, M, 1.85, left_w, 1.05, _short(sp["narrative"], 240 if has_chart else 360), size=11, color=INK)
-    # número-herói
-    hero = sp.get("hero") or {}
-    _txt(s, M, 3.0, left_w, 1.1, _pct_display(hero.get("value", "—"), hero), size=52, bold=True, color=RED)
-    _txt(s, M, 4.15, left_w, 0.35, hero.get("label", ""), size=13, bold=True, color=INK)
-    if hero.get("caption"):
-        _txt(s, M, 4.5, left_w, 0.35, hero["caption"], size=11, color=MUTED)
-    # efeito causal (PSM) — só aparece quando o método rodou de verdade
-    cz = sp.get("causal")
-    if cz:
-        ccol = GREEN if cz.get("significant") else AMBER
-        _txt(s, M, 4.85, left_w, 0.5,
-             f"Efeito causal (PSM): {cz.get('effect_label','')}  ·  {cz.get('caveat','')}",
-             size=9.5, bold=True, color=ccol)
-    # gráfico nativo
-    if has_chart:
-        _add_chart(s, sp["chart"], 6.5, 1.7, SW - M - 6.5, 3.4)
-    # ação recomendada
-    actions = sp.get("actions") or []
-    if actions:
-        ay = 5.5 if cz else 5.25
-        _txt(s, M, ay, left_w, 0.3, "Ação recomendada", size=12, bold=True, color=RED)
-        _bullets(s, M, ay + 0.35, left_w, 1.0, actions, size=11, color=INK, space_after=3)
-    foot = _src_footer_for(sp) or deck.get("source_footer", "")
-    _footer(s, foot, page)
-    # SQL + fundamento da confiança nas speaker notes (auditabilidade; PPTX não
-    # tem tooltip, então o critério/motivo da confiança vai para as notas).
+def _insight_notes(slide, sp):
+    """SQL + fundamento da confiança nas speaker notes (auditabilidade; PPTX não tem
+    tooltip, então o critério/motivo da confiança vai para as notas)."""
     note_parts = []
     _cf = sp.get("confidence") or {}
     if _cf.get("level"):
@@ -322,9 +335,71 @@ def _insight(prs, sp, deck, page):
         note_parts.append("SQL do número-chave:\n" + sp["sql"])
     if note_parts:
         try:
-            s.notes_slide.notes_text_frame.text = "\n\n".join(note_parts)
+            slide.notes_slide.notes_text_frame.text = "\n\n".join(note_parts)
         except Exception:
             pass
+
+
+def _insight(prs, sp, deck, page):
+    s = _slide(prs)
+    _header(s, sp)
+    _conf_seal(s, sp.get("confidence"))
+    if sp.get("subtitle"):
+        _txt(s, M, 1.32, SW - 2 * M, 0.4, sp["subtitle"], size=13, color=MUTED, italic=True)
+    has_chart = bool(sp.get("chart"))
+    hero = sp.get("hero") or {}
+    actions = sp.get("actions") or []
+    cz = sp.get("causal")
+    foot = _src_footer_for(sp) or deck.get("source_footer", "")
+    narr_lines = _clean_md_lines(sp.get("narrative"))
+    narr_len = sum(len(x) for x in narr_lines)
+    sub_off = 0.45 if sp.get("subtitle") else 0.0
+
+    # --- Slides "aprofundamento": narrativa longa SEM gráfico → layout texto-forward
+    #     que mostra a narrativa ÍNTEGRA (autoajuste), com o número-chave compacto no
+    #     topo — em vez de truncar para caber num cantinho. ---
+    if narr_lines and narr_len > 360 and not has_chart:
+        y0 = 1.5 + sub_off
+        hv = _pct_display(hero.get("value", "—"), hero)
+        if hv and str(hv) != "—":
+            _txt(s, M, y0, 3.1, 0.8, hv, size=28, bold=True, color=RED, anchor=MSO_ANCHOR.MIDDLE)
+            _txt(s, M + 3.25, y0 + 0.05, SW - 2 * M - 3.25, 0.4, hero.get("label", ""), size=13, bold=True, color=INK)
+            if hero.get("caption"):
+                _txt(s, M + 3.25, y0 + 0.45, SW - 2 * M - 3.25, 0.4, hero["caption"], size=10, color=MUTED)
+            ny = y0 + 1.0
+        else:
+            ny = y0  # sem número (ex.: "Sem dados") → narrativa ocupa desde o topo
+        ab = SH - 0.55                       # base acima do rodapé
+        if actions:
+            _txt(s, M, ab - 0.9, SW - 2 * M, 0.3, "Ação recomendada", size=12, bold=True, color=RED)
+            _bullets(s, M, ab - 0.58, SW - 2 * M, 0.5, actions, size=11, color=INK, space_after=3)
+        nh = (ab - 1.0 if actions else ab) - ny
+        _para(s, M, ny, SW - 2 * M, max(1.0, nh), narr_lines, size=12, color=INK)
+        _footer(s, foot, page)
+        _insight_notes(s, sp)
+        return
+
+    # --- Layout padrão: número-herói grande + narrativa curta/limpa acima ---
+    left_w = 5.6 if has_chart else (SW - 2 * M)
+    if sp.get("narrative"):
+        _txt(s, M, 1.85, left_w, 1.05, _short(sp["narrative"], 240 if has_chart else 360), size=11, color=INK)
+    _txt(s, M, 3.0, left_w, 1.1, _pct_display(hero.get("value", "—"), hero), size=52, bold=True, color=RED)
+    _txt(s, M, 4.15, left_w, 0.35, hero.get("label", ""), size=13, bold=True, color=INK)
+    if hero.get("caption"):
+        _txt(s, M, 4.5, left_w, 0.35, hero["caption"], size=11, color=MUTED)
+    if cz:
+        ccol = GREEN if cz.get("significant") else AMBER
+        _txt(s, M, 4.85, left_w, 0.5,
+             f"Efeito causal (PSM): {cz.get('effect_label','')}  ·  {cz.get('caveat','')}",
+             size=9.5, bold=True, color=ccol)
+    if has_chart:
+        _add_chart(s, sp["chart"], 6.5, 1.7, SW - M - 6.5, 3.4)
+    if actions:
+        ay = 5.5 if cz else 5.25
+        _txt(s, M, ay, left_w, 0.3, "Ação recomendada", size=12, bold=True, color=RED)
+        _bullets(s, M, ay + 0.35, left_w, 1.0, actions, size=11, color=INK, space_after=3)
+    _footer(s, foot, page)
+    _insight_notes(s, sp)
 
 
 def _src_footer_for(sp):
