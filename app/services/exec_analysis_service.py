@@ -217,6 +217,16 @@ def _pick_hero(question, explanation, columns, rows) -> dict:
                 fmt = "percent_raw"          # já em escala 0-100
             # fora da faixa (contagem/escala grande): mantém o fmt de número
 
+    # Guard SIMÉTRICO: o LLM às vezes marca percent_2/percent_0 (que pressupõem
+    # proporção 0-1 e multiplicam por 100) para um valor que JÁ está em escala 0-100
+    # (ex.: taxa de conversão = 100), gerando "10.000%" (100×100). Se o fmt multiplica
+    # por 100 mas |valor| escapa da faixa de proporção, rebaixa para percent_raw (sem
+    # ×100). Teto 1.5 preserva proporções >100% legítimas (1.05 = 105%) e não toca em 0-1.
+    if value_raw is not None and fmt in ("percent_2", "percent_0"):
+        n = _coerce_number(value_raw)
+        if n is not None and abs(n) > 1.5:
+            fmt = "percent_raw"
+
     value_formatted = _format_value(value_raw, fmt) if value_raw is not None else "—"
     return {
         "value_raw": _json_safe(value_raw),
