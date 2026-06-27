@@ -3,15 +3,30 @@
 // ============================
 
 // --- DataMart state ---
-let userDatamarts = [];
+let userDatamarts = [];      // legado: alimenta o módulo Reportes (lê userDatamarts direto)
 let allDatamarts = [];
 
 // --- DiamondLayer state (mirror of DataMart) ---
-let userDiamondLayers = [];
+let userDiamondLayers = [];  // legado: alimenta o módulo Reportes
 let allDiamondLayers = [];
 // Expose so non-module code (default.html) can read for inline rendering
 window.userDiamondLayers = userDiamondLayers;
 window.allDiamondLayers = allDiamondLayers;
+
+// --- Seletores da tela "Consultar" (Fale com seus dados) ---------------------
+// Estado próprio, independente dos globais userDatamarts/userDiamondLayers (que
+// continuam servindo o módulo Reportes). Por padrão lista só os DataMarts/
+// DiamondLayers atribuídos ao usuário logado; admin/root ganham um checkbox
+// "Mostrar todos" para listar todos. Demais usuários: comportamento inalterado.
+let consultaDatamarts = [];
+let consultaDiamondLayers = [];
+let _consultaDmShowAll = false;
+let _consultaDlShowAll = false;
+
+function _consultaCanShowAll() {
+    return !!(typeof currentUser !== 'undefined' && currentUser
+              && ['root', 'superuser', 'admin'].includes(currentUser.user_type));
+}
 
 async function loadDatamarts() {
     try {
@@ -25,8 +40,20 @@ async function loadUserDatamarts() {
     try {
         const res = await fetch('/api/datamarts/user');
         if (res.ok) userDatamarts = await res.json();
-        renderDatamartSelector();
     } catch(e) {}
+}
+
+async function loadConsultaDatamarts() {
+    try {
+        const res = await fetch('/api/datamarts/user?show_all=' + (_consultaDmShowAll ? 'true' : 'false'));
+        if (res.ok) consultaDatamarts = await res.json();
+    } catch(e) { consultaDatamarts = []; }
+    renderDatamartSelector();
+}
+
+function toggleConsultaDmShowAll(on) {
+    _consultaDmShowAll = !!on;
+    loadConsultaDatamarts();
 }
 
 async function loadDiamondLayers() {
@@ -46,20 +73,47 @@ async function loadUserDiamondLayers() {
             userDiamondLayers = await res.json();
             window.userDiamondLayers = userDiamondLayers;
         }
-        renderDiamondLayerSelector();
     } catch(e) {}
+}
+
+async function loadConsultaDiamondLayers() {
+    try {
+        const res = await fetch('/api/diamond-layers/user?show_all=' + (_consultaDlShowAll ? 'true' : 'false'));
+        if (res.ok) consultaDiamondLayers = await res.json();
+    } catch(e) { consultaDiamondLayers = []; }
+    renderDiamondLayerSelector();
+}
+
+function toggleConsultaDlShowAll(on) {
+    _consultaDlShowAll = !!on;
+    loadConsultaDiamondLayers();
 }
 
 function renderDiamondLayerSelector() {
     const container = document.getElementById('diamondLayerSelector');
-    if (!container || !userDiamondLayers.length) return;
+    if (!container) return;
+    const canAll = _consultaCanShowAll();
+    // Não-privilegiado e sem layers: esconde (comportamento original).
+    if (!canAll && !consultaDiamondLayers.length) {
+        container.classList.add('hidden'); container.innerHTML = ''; return;
+    }
     let html = '<span class="text-[10px] text-fg-muted uppercase tracking-wider mr-1">DiamondLayers</span>';
-    html += userDiamondLayers.map(dl =>
-        `<label class="inline-flex items-center gap-1.5 text-xs bg-fg-700 border border-fg-border rounded-full px-2.5 py-1 cursor-pointer hover:border-fg-blue transition">
-            <input type="checkbox" value="${dl.id}" class="dl-check accent-[#58a6ff] w-3 h-3" checked>
-            <span class="text-fg-text">${escapeHtml(dl.name)}</span>
-        </label>`
-    ).join('');
+    if (canAll) {
+        html += `<label class="inline-flex items-center gap-1.5 text-[10px] text-fg-muted mr-1.5 cursor-pointer select-none" title="Mostrar todas as DiamondLayers (não apenas as suas)">
+            <input type="checkbox" ${_consultaDlShowAll ? 'checked' : ''} onchange="toggleConsultaDlShowAll(this.checked)" class="accent-[#58a6ff] w-3 h-3">
+            <span>Mostrar todas</span>
+        </label>`;
+    }
+    if (consultaDiamondLayers.length) {
+        html += consultaDiamondLayers.map(dl =>
+            `<label class="inline-flex items-center gap-1.5 text-xs bg-fg-700 border border-fg-border rounded-full px-2.5 py-1 cursor-pointer hover:border-fg-blue transition">
+                <input type="checkbox" value="${dl.id}" class="dl-check accent-[#58a6ff] w-3 h-3" checked>
+                <span class="text-fg-text">${escapeHtml(dl.name)}</span>
+            </label>`
+        ).join('');
+    } else if (canAll) {
+        html += '<span class="text-[10px] text-fg-muted/60">' + (_consultaDlShowAll ? 'Nenhuma DiamondLayer cadastrada.' : 'Nenhuma DiamondLayer atribuída a você.') + '</span>';
+    }
     container.innerHTML = html;
     container.classList.remove('hidden');
 }
@@ -77,14 +131,29 @@ function populateUploadDatamart() {
 
 function renderDatamartSelector() {
     const container = document.getElementById('datamartSelector');
-    if (!container || !userDatamarts.length) return;
+    if (!container) return;
+    const canAll = _consultaCanShowAll();
+    // Não-privilegiado e sem DataMarts: esconde (comportamento original).
+    if (!canAll && !consultaDatamarts.length) {
+        container.classList.add('hidden'); container.innerHTML = ''; return;
+    }
     let html = '<span class="text-[10px] text-fg-muted uppercase tracking-wider mr-1">DataMarts</span>';
-    html += userDatamarts.map(dm =>
-        `<label class="inline-flex items-center gap-1.5 text-xs bg-fg-700 border border-fg-border rounded-full px-2.5 py-1 cursor-pointer hover:border-fg-blue transition">
-            <input type="checkbox" value="${dm.id}" class="dm-check accent-[#58a6ff] w-3 h-3" checked>
-            <span class="text-fg-text">${escapeHtml(dm.name)}</span>
-        </label>`
-    ).join('');
+    if (canAll) {
+        html += `<label class="inline-flex items-center gap-1.5 text-[10px] text-fg-muted mr-1.5 cursor-pointer select-none" title="Mostrar todos os DataMarts (não apenas os seus)">
+            <input type="checkbox" ${_consultaDmShowAll ? 'checked' : ''} onchange="toggleConsultaDmShowAll(this.checked)" class="accent-[#58a6ff] w-3 h-3">
+            <span>Mostrar todos</span>
+        </label>`;
+    }
+    if (consultaDatamarts.length) {
+        html += consultaDatamarts.map(dm =>
+            `<label class="inline-flex items-center gap-1.5 text-xs bg-fg-700 border border-fg-border rounded-full px-2.5 py-1 cursor-pointer hover:border-fg-blue transition">
+                <input type="checkbox" value="${dm.id}" class="dm-check accent-[#58a6ff] w-3 h-3" checked>
+                <span class="text-fg-text">${escapeHtml(dm.name)}</span>
+            </label>`
+        ).join('');
+    } else if (canAll) {
+        html += '<span class="text-[10px] text-fg-muted/60">' + (_consultaDmShowAll ? 'Nenhum DataMart cadastrado.' : 'Nenhum DataMart atribuído a você.') + '</span>';
+    }
     container.innerHTML = html;
     container.classList.remove('hidden');
 }
@@ -252,13 +321,13 @@ async function createDatamart() {
             body: JSON.stringify({ name, description: '' }),
         });
         if (!res.ok) { const e = await res.json(); alert(e.detail || 'Erro'); return; }
-        loadDatamartsAdmin(); loadUserDatamarts();
+        loadDatamartsAdmin(); loadUserDatamarts(); loadConsultaDatamarts();
     } catch(e) { alert('Erro: ' + e.message); }
 }
 
 async function deleteDatamart(id) {
     if (!confirm('Excluir este DataMart?')) return;
-    try { await fetch('/api/datamarts/' + id, { method: 'DELETE' }); loadDatamartsAdmin(); loadUserDatamarts(); }
+    try { await fetch('/api/datamarts/' + id, { method: 'DELETE' }); loadDatamartsAdmin(); loadUserDatamarts(); loadConsultaDatamarts(); }
     catch(e) { alert('Erro: ' + e.message); }
 }
 
@@ -312,14 +381,14 @@ async function createDiamondLayer() {
         if (!res.ok) { const e = await res.json(); alert(e.detail || 'Erro'); return null; }
         const created = await res.json();
         await loadDiamondLayers();
-        loadDiamondLayersAdmin(); loadUserDiamondLayers();
+        loadDiamondLayersAdmin(); loadUserDiamondLayers(); loadConsultaDiamondLayers();
         return created;
     } catch(e) { alert('Erro: ' + e.message); return null; }
 }
 
 async function deleteDiamondLayer(id) {
     if (!confirm('Excluir esta DiamondLayer?')) return;
-    try { await fetch('/api/diamond-layers/' + id, { method: 'DELETE' }); loadDiamondLayersAdmin(); loadUserDiamondLayers(); if (typeof loadTables === 'function') loadTables(); }
+    try { await fetch('/api/diamond-layers/' + id, { method: 'DELETE' }); loadDiamondLayersAdmin(); loadUserDiamondLayers(); loadConsultaDiamondLayers(); if (typeof loadTables === 'function') loadTables(); }
     catch(e) { alert('Erro: ' + e.message); }
 }
 

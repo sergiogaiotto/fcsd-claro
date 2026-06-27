@@ -13354,7 +13354,7 @@ showTab = function(name) {
 // ============================
 // Init
 // ============================
-document.addEventListener('DOMContentLoaded', () => { loadCurrentUser(); loadAnalysisTypeSelector(); loadActiveSkillsBadge(); loadDatamarts(); loadUserDatamarts(); loadDiamondLayers(); loadUserDiamondLayers(); loadSavedQuestions(); loadCatalogIfNeeded(); loadSavedQuestions(); loadCatalogIfNeeded(); loadDataProducts();});
+document.addEventListener('DOMContentLoaded', () => { loadCurrentUser().then(() => { if (!currentUser) return; if (typeof loadConsultaDatamarts === 'function') loadConsultaDatamarts(); if (typeof loadConsultaDiamondLayers === 'function') loadConsultaDiamondLayers(); }); loadAnalysisTypeSelector(); loadActiveSkillsBadge(); loadDatamarts(); loadUserDatamarts(); loadDiamondLayers(); loadUserDiamondLayers(); loadSavedQuestions(); loadCatalogIfNeeded(); loadSavedQuestions(); loadCatalogIfNeeded(); loadDataProducts();});
 // Auto-execute favorite question after full initialization
 
 // setTimeout(() => checkAndRunFavorite(), 1500);
