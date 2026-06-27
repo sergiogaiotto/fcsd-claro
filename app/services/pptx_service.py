@@ -87,7 +87,12 @@ def _para(slide, l, t, w, h, lines, size=12, color=INK, name="Calibri"):
     tf = tb.text_frame
     tf.word_wrap = True
     try:
-        tf.auto_size = MSO_AUTO_SIZE.SHRINK_TEXT_ON_OVERFLOW
+        # TEXT_TO_FIT_SHAPE é o membro válido (python-pptx) que grava <a:normAutofit/>
+        # = "Shrink text on overflow". (SHRINK_TEXT_ON_OVERFLOW NÃO existe no enum →
+        # lançava AttributeError engolido, deixando o texto em fonte fixa.) O PowerPoint
+        # recalcula o fontScale ao reabrir; o tamanho-base já vem adaptado ao tamanho do
+        # texto (ver _insight) para ficar legível mesmo em visualizadores que ignoram isto.
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     except Exception:
         pass
     tf.margin_left = tf.margin_right = Pt(0)
@@ -319,6 +324,17 @@ def _add_chart(slide, chart, l, t, w, h):
         return False
 
 
+def _causal_line(slide, l, t, w, cz):
+    """Linha de efeito causal (PSM) — MESMA evidência nos dois layouts do insight
+    (padrão e texto-forward), para não sumir num caminho e aparecer no outro."""
+    if not cz:
+        return
+    ccol = GREEN if cz.get("significant") else AMBER
+    _txt(slide, l, t, w, 0.5,
+         f"Efeito causal (PSM): {cz.get('effect_label','')}  ·  {cz.get('caveat','')}",
+         size=9.5, bold=True, color=ccol)
+
+
 def _insight_notes(slide, sp):
     """SQL + fundamento da confiança nas speaker notes (auditabilidade; PPTX não tem
     tooltip, então o critério/motivo da confiança vai para as notas)."""
@@ -369,12 +385,19 @@ def _insight(prs, sp, deck, page):
             ny = y0 + 1.0
         else:
             ny = y0  # sem número (ex.: "Sem dados") → narrativa ocupa desde o topo
+        if cz:
+            _causal_line(s, M, ny, SW - 2 * M, cz)
+            ny += 0.5
         ab = SH - 0.55                       # base acima do rodapé
         if actions:
             _txt(s, M, ab - 0.9, SW - 2 * M, 0.3, "Ação recomendada", size=12, bold=True, color=RED)
             _bullets(s, M, ab - 0.58, SW - 2 * M, 0.5, actions, size=11, color=INK, space_after=3)
         nh = (ab - 1.0 if actions else ab) - ny
-        _para(s, M, ny, SW - 2 * M, max(1.0, nh), narr_lines, size=12, color=INK)
+        # Tamanho-base adaptativo ao volume de texto (determinístico, vale em qualquer
+        # visualizador); o TEXT_TO_FIT_SHAPE refina no PowerPoint. Evita transbordo.
+        nsize = (12 if narr_len <= 900 else 11 if narr_len <= 1300 else 10
+                 if narr_len <= 1800 else 9 if narr_len <= 2400 else 8)
+        _para(s, M, ny, SW - 2 * M, max(1.0, nh), narr_lines, size=nsize, color=INK)
         _footer(s, foot, page)
         _insight_notes(s, sp)
         return
@@ -388,10 +411,7 @@ def _insight(prs, sp, deck, page):
     if hero.get("caption"):
         _txt(s, M, 4.5, left_w, 0.35, hero["caption"], size=11, color=MUTED)
     if cz:
-        ccol = GREEN if cz.get("significant") else AMBER
-        _txt(s, M, 4.85, left_w, 0.5,
-             f"Efeito causal (PSM): {cz.get('effect_label','')}  ·  {cz.get('caveat','')}",
-             size=9.5, bold=True, color=ccol)
+        _causal_line(s, M, 4.85, left_w, cz)
     if has_chart:
         _add_chart(s, sp["chart"], 6.5, 1.7, SW - M - 6.5, 3.4)
     if actions:

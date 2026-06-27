@@ -25,6 +25,10 @@
          runtime moderno. v4.3.0 não usa .at()/optional-chaining e renderiza o mesmo
          markdown — evita a quebra silenciosa quando o CDN sobe de versão sozinho. -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <!-- DOMPurify PINADO: sanitiza o HTML do marked antes de ir para innerHTML (defesa
+         contra XSS via narrativa/dados do usuário no deck e nas respostas do chat/reportes).
+         v2.4.7 = compatibilidade ampla (sem .at(), roda no runtime antigo deste cliente). -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.7/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -3452,6 +3456,7 @@ let _execDeck = null;
 let _execCharts = [];
 let _presCharts = [];
 let _presIdx = 0;
+let _execPresDirty = false;  // true quando "Pergunte ao slide" adicionou slide durante a apresentação
 
 function _execSuggest(btn) { const el = document.getElementById('execQuestion'); if (el) { el.value = (btn.textContent || '').trim(); el.focus(); } }
 function _ensureChartJs() {
@@ -4906,11 +4911,15 @@ async function refreshExecDeck(id) {
 function enterExecPresent() {
     if (!_execDeck || !(_execDeck.slides || []).length) return;
     _presIdx = 0;
+    _execPresDirty = false;
     const existing = document.getElementById('execPresentOverlay');
     if (existing) existing.remove();
-    const total = _execDeck.slides.length;
-    const slides = _execDeck.slides.map((s, i) =>
-        `<div class="exec-pres-slide ${i === 0 ? '' : 'hidden'} absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center"><div class="w-full max-w-5xl">${_deckSlideHtml(s, i, 'pres')}</div></div>`
+    // Respeita o público selecionado (igual à tela principal e ao export PPTX): apresentar
+    // CEO/PO mostrava o deck inteiro. Passa o índice ORIGINAL (x.i) p/ casar os canvases.
+    const _vis = _audienceVisible(_execDeck);
+    const total = _vis.length;
+    const slides = _vis.map((x, vi) =>
+        `<div class="exec-pres-slide ${vi === 0 ? '' : 'hidden'} absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center"><div class="w-full max-w-5xl">${_deckSlideHtml(x.s, x.i, 'pres')}</div></div>`
     ).join('');
     const ov = document.createElement('div');
     ov.id = 'execPresentOverlay';
@@ -4958,12 +4967,13 @@ function exitExecPresent() {
     _destroyCharts(_presCharts);
     const ov = document.getElementById('execPresentOverlay');
     if (ov) ov.remove();
-    // Slides criados ao vivo com "Pergunte ao slide" foram empurrados em _execDeck.slides
-    // durante a apresentação; re-renderiza a tela principal para que apareçam (legíveis e
-    // removíveis) em vez de ficarem invisíveis até um novo Gerar.
-    if (_execDeck && (_execDeck.slides || []).length && document.getElementById('execResult')) {
+    // Só re-renderiza a tela principal se "Pergunte ao slide" adicionou algum slide
+    // durante a apresentação (evita resetar scroll / recriar gráficos à toa no caso
+    // comum de só navegar e sair). Aí os slides ad-hoc aparecem legíveis e removíveis.
+    if (_execPresDirty && _execDeck && document.getElementById('execResult')) {
         try { renderExecDeck(_execDeck); } catch (e) {}
     }
+    _execPresDirty = false;
 }
 
 // Remove um slide ad-hoc ("Pergunte ao slide") da análise em memória e re-renderiza.
@@ -5017,6 +5027,7 @@ async function askSlide() {
             _adhoc: true,  // gerado ao vivo por "Pergunte ao slide" → removível na tela principal
         };
         _execDeck.slides.push(slide);
+        _execPresDirty = true;  // marca p/ a tela principal re-renderizar ao sair da apresentação
         const idx = _execDeck.slides.length - 1;
         const body = document.getElementById('execPresentBody');
         if (body) {
@@ -6391,15 +6402,20 @@ async function deleteFailureItem(id) {
     } catch (e) { alert('Erro: ' + e.message); }
 }
 
-// Renderiza markdown sem nunca derrubar a resposta: se o marked tropeçar (ex.: o CDN
-// subiu para uma versão incompatível com o runtime), cai para texto puro escapado em
-// vez de estourar a exceção que o catch externo rotulava como "Erro de conexão".
+// Renderiza markdown SANITIZADO (DOMPurify) sem nunca derrubar a resposta. O HTML do
+// marked vai para innerHTML em vários pontos (chat, reportes, narrativa do deck), e o
+// conteúdo deriva de dados do usuário/LLM — sem sanitização, `<img onerror>`/`<svg
+// onload>`/`javascript:` virariam XSS. Sem sanitizador disponível, cai para texto puro
+// escapado (seguro) em vez de injetar HTML potencialmente perigoso.
 function safeMarked(src) {
     if (src == null || src === '') return '';
     try {
-        return marked.parse(String(src));
+        if (typeof DOMPurify === 'undefined' || !DOMPurify.sanitize) {
+            throw new Error('DOMPurify indisponível — não renderiza HTML não-sanitizado');
+        }
+        return DOMPurify.sanitize(marked.parse(String(src)));
     } catch (e) {
-        console.error('Falha ao renderizar markdown; usando texto puro:', e);
+        console.error('Falha ao renderizar/sanitizar markdown; usando texto puro:', e);
         const div = document.createElement('div');
         div.textContent = String(src);
         return '<div style="white-space:pre-wrap">' + div.innerHTML + '</div>';
