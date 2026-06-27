@@ -654,6 +654,13 @@ async def admin_settings_put(payload: dict, user: dict = Depends(require_root)):
     if not isinstance(updates, dict):
         raise HTTPException(400, "Payload inválido: esperado um objeto de ajustes.")
     set_settings(updates, user.get("login", ""))
+    # Temperatura/esforço de raciocínio são "assados" no agente — recria p/ valer já.
+    if any(k in updates for k in ("llm_temperature", "llm_reasoning_effort", "catalog_enrich_agent")):
+        try:
+            from app.services.agent_service import reset_agent
+            reset_agent()
+        except Exception:
+            pass
     return {"settings": get_settings_for_ui()}
 
 
@@ -1711,6 +1718,7 @@ async def query_nl(req: QueryRequest, request: Request):
     diamond_layer_ids = req.diamond_layer_ids
     skill_ids = req.skill_ids
     saved_sql = req.saved_sql
+    reasoning_high = bool(req.reasoning_high)
 
     try:
         parsed_question = json.loads(req.question)
@@ -1800,6 +1808,7 @@ async def query_nl(req: QueryRequest, request: Request):
             saved_sql=saved_sql,
             apply_login_filter=not is_root(user) if user else False,
             log_history=True,  # só a tela Consultar registra no Histórico
+            reasoning_high=reasoning_high,
         )
         # Registra a falha (mesmo quando auto-corrigida) e devolve o id para o
         # front anexar o print/snapshot. Best-effort: nunca quebra a resposta.

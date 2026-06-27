@@ -42,6 +42,22 @@ SETTINGS_SCHEMA = [
                 "Catálogo no prompt do agente NL→SQL, para tabelas catalogadas. Aplica na "
                 "próxima recriação do agente (ex.: após um upload).",
     },
+    {
+        "key": "llm_reasoning_effort", "type": "choice",
+        "default": "medium", "options": ["low", "medium", "high"], "group": "Modelo (LLM)",
+        "label": "Esforço de raciocínio padrão (gpt-oss-120b)",
+        "help": "Profundidade de raciocínio do modelo nas consultas. 'high' pensa mais "
+                "(melhor em perguntas complexas), porém mais lento e mais tokens. O Consultar "
+                "tem o atalho '🧠 Raciocínio profundo' que força 'high' por pergunta.",
+    },
+    {
+        "key": "llm_temperature", "type": "float",
+        "default": 0.0, "min": 0.0, "max": 1.0, "step": 0.1, "group": "Modelo (LLM)",
+        "label": "Temperatura do modelo",
+        "help": "0 = determinístico (recomendado — o mesmo modelo gera o SQL e a explicação, "
+                "e SQL confiável precisa de temperatura baixa). Valores maiores variam mais as "
+                "respostas, mas deixam o SQL menos previsível/reproduzível.",
+    },
 ]
 _SCHEMA_BY_KEY = {s["key"]: s for s in SETTINGS_SCHEMA}
 
@@ -63,8 +79,25 @@ def _ensure_table(conn) -> None:
 
 
 def _coerce(schema: dict, raw):
-    if schema["type"] == "bool":
+    t = schema["type"]
+    if t == "bool":
         return str(raw).strip().lower() in ("1", "true", "t", "yes", "on", "sim")
+    if t == "choice":
+        s = str(raw).strip().lower()
+        opts = [str(o).lower() for o in schema.get("options", [])]
+        return s if s in opts else schema["default"]
+    if t == "float":
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return schema["default"]
+        lo, hi = schema.get("min"), schema.get("max")
+        if lo is not None:
+            v = max(lo, v)
+        if hi is not None:
+            v = min(hi, v)
+        return round(v, 4)
+    # int
     try:
         v = int(raw)
     except (TypeError, ValueError):
@@ -125,7 +158,7 @@ def get_settings_for_ui() -> list:
         cur = _refresh()
     except Exception:
         cur = {s["key"]: s["default"] for s in SETTINGS_SCHEMA}
-    fields = ("key", "type", "label", "help", "group", "min", "max", "default")
+    fields = ("key", "type", "label", "help", "group", "min", "max", "default", "options", "step")
     return [{**{k: s.get(k) for k in fields}, "value": cur.get(s["key"], s["default"])}
             for s in SETTINGS_SCHEMA]
 

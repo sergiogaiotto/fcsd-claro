@@ -642,6 +642,7 @@
         <select id="resultLimit" title="Limite de registros (exibição)" class="bg-fg-700 border border-fg-border rounded-xl px-3 py-3 text-xs text-fg-muted focus:border-fg-accent focus:outline-none transition font-mono w-[100px]" hidden="true">
             <option value="20" selected>20 rows</option><option value="50">50 rows</option><option value="100">100 rows</option><option value="500">500 rows</option><option value="1000">1000 rows</option>
         </select>
+        <button onclick="toggleReasoningHigh(this)" id="btnReasoning" title="Raciocínio profundo: o gpt-oss-120b pensa mais antes de gerar o SQL — melhor em perguntas complexas (cruzamentos, várias tabelas), porém um pouco mais lento. Ligue para perguntas difíceis." class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted px-3 py-3 rounded-xl text-xs font-medium transition-all active:scale-95 whitespace-nowrap">🧠 Raciocínio</button>
         <button onclick="openSkillPicker(this, {fromHeader:true})" id="btnPickSkills" title="Selecionar skills aplicadas à próxima pergunta" class="skill-picker-btn bg-fg-blue/15 hover:bg-fg-blue/25 text-fg-blue border border-fg-blue/25 px-3 py-3 rounded-xl text-xs font-medium transition-all active:scale-95">Skills ▾</button>
         <button onclick="sendQuery()" id="btnSend" class="bg-fg-accent hover:bg-fg-accent-hover text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all active:scale-95">Enviar</button>
         <button onclick="resetConversation()" id="btnResetChat" title="Limpa o histórico de turnos enviado ao agente" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-muted hover:text-fg-bright px-3 py-3 rounded-xl text-xs font-mono transition-all active:scale-95">Nova conversa</button>
@@ -5245,6 +5246,21 @@ async function _rerunChatSql(key) {
 // ============================
 // Query — com suporte a saved_sql
 // ============================
+// Toggle "🧠 Raciocínio profundo": força reasoning_effort=high no gpt-oss-120b nesta
+// pergunta (mais raciocínio, melhor em perguntas complexas; um pouco mais lento).
+let _reasoningHigh = false;
+function toggleReasoningHigh(btn) {
+    _reasoningHigh = !_reasoningHigh;
+    if (btn) {
+        btn.classList.toggle('bg-fg-accent', _reasoningHigh);
+        btn.classList.toggle('text-white', _reasoningHigh);
+        btn.classList.toggle('border-fg-accent', _reasoningHigh);
+        btn.classList.toggle('bg-fg-700', !_reasoningHigh);
+        btn.classList.toggle('text-fg-muted', !_reasoningHigh);
+        btn.textContent = _reasoningHigh ? '🧠 Raciocínio: ON' : '🧠 Raciocínio';
+    }
+}
+
 async function sendQuery() {
     const input = document.getElementById('queryInput');
     const q = input.value.trim();
@@ -5285,6 +5301,7 @@ async function sendQuery() {
                 datamart_ids: getSelectedDatamartIds().length > 0 ? getSelectedDatamartIds() : null,
                 diamond_layer_ids: (typeof getSelectedDiamondLayerIds === 'function' && getSelectedDiamondLayerIds().length > 0) ? getSelectedDiamondLayerIds() : null,
                 saved_sql: pendingSql,
+                reasoning_high: _reasoningHigh,
             }),
             signal: _qCtrl.signal,
         });
@@ -12623,27 +12640,35 @@ function _renderAjustes(items) {
 }
 function _ajusteRow(s) {
     const id = 'aj-' + s.key;
+    const showRange = (s.type === 'int' || s.type === 'float') && s.min != null && s.max != null;
     const head = '<div class="min-w-0"><div class="text-sm text-fg-bright">' + escapeHtml(s.label) + '</div>'
         + '<div class="text-[10px] text-fg-muted mt-0.5">' + escapeHtml(s.help || '')
-        + ((s.type === 'int' && s.min != null && s.max != null) ? ' <span class="text-fg-muted/60">(' + s.min + '–' + s.max + ')</span>' : '') + '</div></div>';
+        + (showRange ? ' <span class="text-fg-muted/60">(' + s.min + '–' + s.max + ')</span>' : '') + '</div></div>';
+    let ctrl;
     if (s.type === 'bool') {
-        return '<div class="flex items-start justify-between gap-4 bg-fg-900 border border-fg-border rounded-lg px-3 py-2.5">' + head
-            + '<label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">'
+        ctrl = '<label class="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">'
             + '<input type="checkbox" id="' + id + '" data-key="' + s.key + '" data-type="bool" ' + (s.value ? 'checked' : '') + ' class="sr-only peer">'
-            + '<div class="w-9 h-5 bg-fg-600 rounded-full peer peer-checked:bg-fg-accent transition-colors after:content-[\'\'] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4"></div>'
-            + '</label></div>';
+            + '<div class="w-9 h-5 bg-fg-600 rounded-full peer peer-checked:bg-fg-accent transition-colors after:content-[\'\'] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-transform peer-checked:after:translate-x-4"></div></label>';
+    } else if (s.type === 'choice') {
+        const opts = (s.options || []).map(function (o) { return '<option value="' + o + '"' + (String(o) === String(s.value) ? ' selected' : '') + '>' + escapeHtml(String(o)) + '</option>'; }).join('');
+        ctrl = '<select id="' + id + '" data-key="' + s.key + '" data-type="choice" class="bg-fg-700 border border-fg-border rounded-lg px-2 py-1.5 text-sm focus:border-fg-accent focus:outline-none flex-shrink-0">' + opts + '</select>';
+    } else {
+        const lo = (s.min != null) ? s.min : '', hi = (s.max != null) ? s.max : '';
+        const step = (s.type === 'float') ? (s.step || 0.1) : 1;
+        ctrl = '<input type="number" id="' + id + '" data-key="' + s.key + '" data-type="' + s.type + '" value="' + s.value + '" min="' + lo + '" max="' + hi + '" step="' + step + '" '
+            + 'class="w-24 bg-fg-700 border border-fg-border rounded-lg px-2 py-1.5 text-sm text-right font-mono focus:border-fg-accent focus:outline-none flex-shrink-0">';
     }
-    const lo = (s.min != null) ? s.min : '', hi = (s.max != null) ? s.max : '';
-    return '<div class="flex items-start justify-between gap-4 bg-fg-900 border border-fg-border rounded-lg px-3 py-2.5">' + head
-        + '<input type="number" id="' + id + '" data-key="' + s.key + '" data-type="int" value="' + s.value + '" min="' + lo + '" max="' + hi + '" '
-        + 'class="w-24 bg-fg-700 border border-fg-border rounded-lg px-2 py-1.5 text-sm text-right font-mono focus:border-fg-accent focus:outline-none flex-shrink-0"></div>';
+    return '<div class="flex items-start justify-between gap-4 bg-fg-900 border border-fg-border rounded-lg px-3 py-2.5">' + head + ctrl + '</div>';
 }
 async function saveAjustes() {
     const btn = document.getElementById('ajustesSaveBtn');
     const status = document.getElementById('ajustesStatus');
     const updates = {};
     document.querySelectorAll('#ajustesForm [data-key]').forEach(function (el) {
-        if (el.dataset.type === 'bool') updates[el.dataset.key] = el.checked;
+        const t = el.dataset.type;
+        if (t === 'bool') updates[el.dataset.key] = el.checked;
+        else if (t === 'choice') updates[el.dataset.key] = el.value;
+        else if (t === 'float') { const v = parseFloat(el.value); if (!isNaN(v)) updates[el.dataset.key] = v; }
         else { const v = parseInt(el.value, 10); if (!isNaN(v)) updates[el.dataset.key] = v; }
     });
     if (btn) { btn.disabled = true; btn.textContent = 'Salvando…'; }
