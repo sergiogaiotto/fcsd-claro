@@ -25,6 +25,10 @@
          runtime moderno. v4.3.0 não usa .at()/optional-chaining e renderiza o mesmo
          markdown — evita a quebra silenciosa quando o CDN sobe de versão sozinho. -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+    <!-- DOMPurify PINADO: sanitiza o HTML do marked antes de ir para innerHTML (defesa
+         contra XSS via narrativa/dados do usuário no deck e nas respostas do chat/reportes).
+         v2.4.7 = compatibilidade ampla (sem .at(), roda no runtime antigo deste cliente). -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@2.4.7/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -3452,6 +3456,7 @@ let _execDeck = null;
 let _execCharts = [];
 let _presCharts = [];
 let _presIdx = 0;
+let _execPresDirty = false;  // true quando "Pergunte ao slide" adicionou slide durante a apresentação
 
 function _execSuggest(btn) { const el = document.getElementById('execQuestion'); if (el) { el.value = (btn.textContent || '').trim(); el.focus(); } }
 function _ensureChartJs() {
@@ -3710,6 +3715,8 @@ function _deckSlideHtml(s, i, prefix) {
         const narrateBtn = (prefix === '' && _execDeck && _execDeck._replay && s.key) ? `<button onclick="narrateSlide('${s.key}', this)" title="Re-narrar este slide a partir dos novos números (não muda o SQL nem o número-chave)" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">✦ Re-narrar</button>` : '';
         // Auditar — disponível para TODOS os públicos (tira o lastro do antigo gate só-Gerente).
         const auditBtn = (prefix === '') ? `<button onclick="openExecAuditForSlide(${i})" title="Auditar este número — SQL, campos, conferência automática e explicação assistida" class="text-[10px] text-fg-muted hover:text-fg-accent border border-fg-border rounded px-2 py-0.5 transition">🔍 Auditar</button>` : '';
+        // Slides gerados ao vivo por "Pergunte ao slide" (_adhoc) podem ser removidos da análise.
+        const delBtn = (prefix === '' && s._adhoc) ? `<button onclick="removeExecSlide(${i})" title="Excluir este slide (gerado por 'Pergunte ao slide') da análise executiva" class="text-[10px] text-fg-muted hover:text-red-400 border border-fg-border rounded px-2 py-0.5 transition">🗑 Excluir</button>` : '';
         const _auditHero = (prefix === '') ? ` onclick="openExecAuditForSlide(${i})" title="Auditar este número — clique para ver SQL, campos e conferência" style="cursor:pointer"` : '';
         const _magHero = (prefix === '') ? ` <span class="text-fg-muted/50">🔍</span>` : '';
         return card(`<div class="flex items-center justify-between gap-2">${tag}<div class="flex items-center gap-2">${confChip}${editedChip}</div></div>${title}
@@ -3724,10 +3731,10 @@ function _deckSlideHtml(s, i, prefix) {
               ${chartHtml}
             </div>
             ${czHtml}${czDrivers}
-            ${s.narrative ? `<div class="text-xs text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3">${escapeHtml(s.narrative)}</div>` : ''}
+            ${s.narrative ? `<div class="prose-custom text-sm text-fg-text/90 mt-3 border-l-2 border-fg-accent/40 pl-3 leading-relaxed">${safeMarked(s.narrative)}</div>` : ''}
             ${(s.actions && s.actions.length) ? `<div class="mt-3"><div class="text-[11px] font-bold text-fg-accent uppercase tracking-wider mb-1">Ação recomendada</div>${_ul(s.actions)}</div>` : ''}
             ${(_execAudience === 'gerente' && s.sql) ? `<details class="mt-3"><summary class="text-[10px] text-fg-muted cursor-pointer uppercase tracking-wider font-mono">SQL (lastro)</summary><pre class="mt-2 bg-fg-900 rounded-lg p-2 text-[10px] text-fg-green overflow-x-auto border border-fg-border">${escapeHtml(s.sql)}</pre></details>` : ''}
-            ${(chartBtn || narrateBtn || auditBtn) ? `<div class="mt-2 flex items-center justify-end gap-2">${auditBtn}${narrateBtn}${chartBtn}</div>` : ''}`);
+            ${(chartBtn || narrateBtn || auditBtn || delBtn) ? `<div class="mt-2 flex items-center justify-end gap-2">${auditBtn}${narrateBtn}${chartBtn}${delBtn}</div>` : ''}`);
     }
     if (s.type === 'estrategia') {
         const frentes = (s.frentes || []).map(f => `<div class="bg-fg-700/50 rounded-lg p-3 flex gap-3">
@@ -4904,11 +4911,15 @@ async function refreshExecDeck(id) {
 function enterExecPresent() {
     if (!_execDeck || !(_execDeck.slides || []).length) return;
     _presIdx = 0;
+    _execPresDirty = false;
     const existing = document.getElementById('execPresentOverlay');
     if (existing) existing.remove();
-    const total = _execDeck.slides.length;
-    const slides = _execDeck.slides.map((s, i) =>
-        `<div class="exec-pres-slide ${i === 0 ? '' : 'hidden'} absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center"><div class="w-full max-w-5xl">${_deckSlideHtml(s, i, 'pres')}</div></div>`
+    // Respeita o público selecionado (igual à tela principal e ao export PPTX): apresentar
+    // CEO/PO mostrava o deck inteiro. Passa o índice ORIGINAL (x.i) p/ casar os canvases.
+    const _vis = _audienceVisible(_execDeck);
+    const total = _vis.length;
+    const slides = _vis.map((x, vi) =>
+        `<div class="exec-pres-slide ${vi === 0 ? '' : 'hidden'} absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center"><div class="w-full max-w-5xl">${_deckSlideHtml(x.s, x.i, 'pres')}</div></div>`
     ).join('');
     const ov = document.createElement('div');
     ov.id = 'execPresentOverlay';
@@ -4956,6 +4967,23 @@ function exitExecPresent() {
     _destroyCharts(_presCharts);
     const ov = document.getElementById('execPresentOverlay');
     if (ov) ov.remove();
+    // Só re-renderiza a tela principal se "Pergunte ao slide" adicionou algum slide
+    // durante a apresentação (evita resetar scroll / recriar gráficos à toa no caso
+    // comum de só navegar e sair). Aí os slides ad-hoc aparecem legíveis e removíveis.
+    if (_execPresDirty && _execDeck && document.getElementById('execResult')) {
+        try { renderExecDeck(_execDeck); } catch (e) {}
+    }
+    _execPresDirty = false;
+}
+
+// Remove um slide ad-hoc ("Pergunte ao slide") da análise em memória e re-renderiza.
+// Para persistir, o usuário usa "💾 Salvar" (mesmo fluxo do Deck Designer).
+function removeExecSlide(i) {
+    if (!_execDeck || !_execDeck.slides || !_execDeck.slides[i]) return;
+    const s = _execDeck.slides[i];
+    if (!confirm('Excluir o slide "' + (s.title || 'sem título') + '" desta análise executiva?')) return;
+    _execDeck.slides.splice(i, 1);
+    renderExecDeck(_execDeck);
 }
 
 // ---- "Pergunte ao slide": follow-up ao vivo vira slide-anexo ----
@@ -4996,8 +5024,10 @@ async function askSlide() {
             hero: { value: h.value_formatted || '—', label: h.label || '', caption: h.caption || '' },
             narrative: d.explanation || '', actions: [],
             confidence: d.confidence || {}, sql: d.sql || '', source: d.source || {},
+            _adhoc: true,  // gerado ao vivo por "Pergunte ao slide" → removível na tela principal
         };
         _execDeck.slides.push(slide);
+        _execPresDirty = true;  // marca p/ a tela principal re-renderizar ao sair da apresentação
         const idx = _execDeck.slides.length - 1;
         const body = document.getElementById('execPresentBody');
         if (body) {
@@ -6372,15 +6402,20 @@ async function deleteFailureItem(id) {
     } catch (e) { alert('Erro: ' + e.message); }
 }
 
-// Renderiza markdown sem nunca derrubar a resposta: se o marked tropeçar (ex.: o CDN
-// subiu para uma versão incompatível com o runtime), cai para texto puro escapado em
-// vez de estourar a exceção que o catch externo rotulava como "Erro de conexão".
+// Renderiza markdown SANITIZADO (DOMPurify) sem nunca derrubar a resposta. O HTML do
+// marked vai para innerHTML em vários pontos (chat, reportes, narrativa do deck), e o
+// conteúdo deriva de dados do usuário/LLM — sem sanitização, `<img onerror>`/`<svg
+// onload>`/`javascript:` virariam XSS. Sem sanitizador disponível, cai para texto puro
+// escapado (seguro) em vez de injetar HTML potencialmente perigoso.
 function safeMarked(src) {
     if (src == null || src === '') return '';
     try {
-        return marked.parse(String(src));
+        if (typeof DOMPurify === 'undefined' || !DOMPurify.sanitize) {
+            throw new Error('DOMPurify indisponível — não renderiza HTML não-sanitizado');
+        }
+        return DOMPurify.sanitize(marked.parse(String(src)));
     } catch (e) {
-        console.error('Falha ao renderizar markdown; usando texto puro:', e);
+        console.error('Falha ao renderizar/sanitizar markdown; usando texto puro:', e);
         const div = document.createElement('div');
         div.textContent = String(src);
         return '<div style="white-space:pre-wrap">' + div.innerHTML + '</div>';
