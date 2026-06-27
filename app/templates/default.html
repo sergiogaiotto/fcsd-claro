@@ -66,6 +66,11 @@
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
         .shimmer { background: linear-gradient(90deg, #161b22 25%, #1c2128 50%, #161b22 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
         @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Stepper de raciocínio (loading do chat) */
+        @keyframes qi-spin { to { transform: rotate(360deg); } }
+        .qi-spin { width: 13px; height: 13px; border: 2px solid #ff6347; border-top-color: transparent; border-radius: 50%; display: inline-block; animation: qi-spin .75s linear infinite; }
+        .qi-rdot { animation: pulse 1.1s ease-in-out infinite; }
+        .qi-rsub { transition: opacity .25s ease; }
         .table-container { max-height: 400px; overflow: auto; border-radius: 8px; overflow-x: auto; overflow-y: hidden;}
         .table-container table { border-collapse: collapse; width: 100%; }
         .table-container th { position: sticky; top: 0; z-index: 1; }
@@ -4919,7 +4924,7 @@ function enterExecPresent() {
     const _vis = _audienceVisible(_execDeck);
     const total = _vis.length;
     const slides = _vis.map((x, vi) =>
-        `<div class="exec-pres-slide ${vi === 0 ? '' : 'hidden'} absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center"><div class="w-full max-w-5xl">${_deckSlideHtml(x.s, x.i, 'pres')}</div></div>`
+        `<div class="exec-pres-slide ${vi === 0 ? '' : 'hidden'} absolute inset-0 overflow-auto"><div class="min-h-full flex items-center justify-center p-6 sm:p-10"><div class="w-full max-w-5xl">${_deckSlideHtml(x.s, x.i, 'pres')}</div></div></div>`
     ).join('');
     const ov = document.createElement('div');
     ov.id = 'execPresentOverlay';
@@ -5032,8 +5037,8 @@ async function askSlide() {
         const body = document.getElementById('execPresentBody');
         if (body) {
             const div = document.createElement('div');
-            div.className = 'exec-pres-slide absolute inset-0 overflow-auto p-6 sm:p-10 flex items-center justify-center';
-            div.innerHTML = '<div class="w-full max-w-5xl">' + _deckSlideHtml(slide, idx, 'pres') + '</div>';
+            div.className = 'exec-pres-slide absolute inset-0 overflow-auto';
+            div.innerHTML = '<div class="min-h-full flex items-center justify-center p-6 sm:p-10"><div class="w-full max-w-5xl">' + _deckSlideHtml(slide, idx, 'pres') + '</div></div>';
             body.appendChild(div);
             const slides = document.querySelectorAll('#execPresentBody .exec-pres-slide');
             slides.forEach(s => s.classList.add('hidden'));
@@ -6169,13 +6174,77 @@ function appendMessage(role, content, isHtml = false) {
     if (chat.querySelector('.text-center')) chat.innerHTML = '';
     const div = document.createElement('div'); div.className = 'fade-in';
     if (role === 'user') { div.innerHTML = `<div class="flex justify-end"><div class="bg-fg-accent/10 border border-fg-accent/20 rounded-xl px-4 py-2.5 max-w-[80%] text-sm">${escapeHtml(content)}</div></div>`; }
-    else if (role === 'loading') { div.id = 'loadingMsg'; div.innerHTML = `<div class="flex items-center gap-2.5 text-xs text-fg-muted py-2"><span class="flex gap-1"><span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-fg-accent"></span><span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-fg-accent" style="animation-delay:0.3s"></span><span class="pulse-dot inline-block w-1.5 h-1.5 rounded-full bg-fg-accent" style="animation-delay:0.6s"></span></span> Falando com seus dados...</div>`; }
+    else if (role === 'loading') { div.id = 'loadingMsg'; chat.appendChild(div); chat.scrollTop = chat.scrollHeight; _startReasoning(div); return div; }
     else if (role === 'error') { div.innerHTML = `<div class="bg-red-900/15 border border-red-800/40 rounded-xl px-4 py-2.5 text-sm text-red-400">${escapeHtml(content)}</div>`; }
     else { div.innerHTML = `<div class="bg-fg-700/50 border border-fg-border rounded-xl px-4 py-3 text-sm max-w-full overflow-x-auto">${isHtml ? content : escapeHtml(content)}</div>`; }
     chat.appendChild(div); chat.scrollTop = chat.scrollHeight;
     return div;
 }
-function removeLoading() { const el = document.getElementById('loadingMsg'); if (el) el.remove(); }
+function removeLoading() { _stopReasoning(); const el = document.getElementById('loadingMsg'); if (el) el.remove(); }
+
+// ---- Stepper de raciocínio: mostra os passos REAIS do pipeline (interpretar →
+// raciocinar/gerar SQL → executar → analisar) com micro-status rotativos + cronômetro,
+// para o usuário perceber que a inferência está acontecendo (não trava em 1 frase). ----
+const _REASON_STEPS = [
+    { label: 'Interpretando sua pergunta', subs: ['lendo a intenção', 'identificando métricas e dimensões', 'checando o período e os filtros'] },
+    { label: 'Raciocinando e gerando a consulta SQL', subs: ['consultando o catálogo de dados', 'escolhendo as tabelas certas', 'mapeando as colunas e relações', 'montando filtros e joins', 'aplicando segurança por usuário (RLS)', 'validando a sintaxe SQL'] },
+    { label: 'Executando no banco e trazendo os dados', subs: ['rodando a consulta no PostgreSQL', 'agregando os resultados', 'paginando as linhas'] },
+    { label: 'Analisando os resultados e escrevendo a resposta', subs: ['interpretando os números', 'destacando o que importa', 'redigindo em português claro'] },
+];
+const _REASON_AT = [0, 1100, 6500, 9800];  // ms em que cada passo passa a ser o ativo (parqueia no último)
+let _reasonTimer = null;
+let _reasonT0 = 0;
+function _nowMs() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+function _startReasoning(root) {
+    _stopReasoning();
+    _reasonT0 = _nowMs();
+    const steps = _REASON_STEPS.map((s, i) =>
+        `<div class="qi-rstep flex items-start gap-2.5 py-0.5" data-i="${i}">
+            <span class="qi-rmark mt-0.5 flex-shrink-0 w-3.5 inline-flex justify-center"></span>
+            <div class="min-w-0 flex-1"><div class="qi-rlabel text-xs leading-snug"></div><div class="qi-rsub text-[10px] text-fg-muted/70 leading-snug"></div></div>
+        </div>`).join('');
+    root.innerHTML =
+        `<div class="bg-fg-700/30 border border-fg-border rounded-xl px-4 py-3 max-w-[88%]">
+            <div class="flex items-center justify-between mb-2">
+                <div class="text-xs font-semibold text-fg-bright flex items-center gap-2"><span class="qi-spin"></span> Raciocinando sobre seus dados</div>
+                <div class="qi-relapsed text-[10px] font-mono text-fg-muted tabular-nums">0,0s</div>
+            </div>
+            <div class="space-y-0.5">${steps}</div>
+            <div class="qi-rhint text-[10px] text-fg-muted/60 mt-2 hidden"></div>
+        </div>`;
+    const tick = () => {
+        const els = (_nowMs() - _reasonT0) / 1000;
+        const elEl = root.querySelector('.qi-relapsed');
+        if (elEl) elEl.textContent = els.toFixed(1).replace('.', ',') + 's';
+        let active = 0;
+        for (let i = 0; i < _REASON_AT.length; i++) { if (els * 1000 >= _REASON_AT[i]) active = i; }
+        root.querySelectorAll('.qi-rstep').forEach((node, i) => {
+            const mark = node.querySelector('.qi-rmark');
+            const label = node.querySelector('.qi-rlabel');
+            const sub = node.querySelector('.qi-rsub');
+            label.textContent = _REASON_STEPS[i].label;
+            if (i < active) {
+                mark.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+                label.className = 'qi-rlabel text-xs leading-snug text-fg-muted';
+                sub.textContent = '';
+            } else if (i === active) {
+                mark.innerHTML = '<span class="qi-rdot inline-block w-2 h-2 rounded-full bg-fg-accent"></span>';
+                label.className = 'qi-rlabel text-xs leading-snug text-fg-bright font-medium';
+                const subs = _REASON_STEPS[i].subs;
+                sub.textContent = '↳ ' + subs[Math.floor(els / 2.2) % subs.length] + '…';
+            } else {
+                mark.innerHTML = '<span class="inline-block w-2 h-2 rounded-full border border-fg-border"></span>';
+                label.className = 'qi-rlabel text-xs leading-snug text-fg-muted/50';
+                sub.textContent = '';
+            }
+        });
+        const hint = root.querySelector('.qi-rhint');
+        if (hint && els > 18) { hint.classList.remove('hidden'); hint.textContent = '⏳ Consultas mais complexas levam um pouco mais — sigo trabalhando…'; }
+    };
+    tick();
+    _reasonTimer = setInterval(tick, 250);
+}
+function _stopReasoning() { if (_reasonTimer) { clearInterval(_reasonTimer); _reasonTimer = null; } }
 
 // ---- Histórico de consultas (painel lateral com toggle) ----
 function toggleHistoryPanel() {
