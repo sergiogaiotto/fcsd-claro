@@ -709,8 +709,11 @@ def _save_enrichment(table_name: str, enrichment: dict):
 # Full Scan — Main Entry Point
 # ---------------------------------------------------------------------------
 
-def run_catalog_scan(table_names: list[str] | None = None) -> dict:
-    """Run full catalog scan: profile all columns, detect relationships, score quality."""
+def scan_catalog_iter(table_names: list[str] | None = None):
+    """Gerador do scan de catálogo: roda tabela-a-tabela e emite eventos de progresso
+    (dicts com 'phase': start / table_start / table_done / relationships / done). O evento
+    'done' carrega o resumo completo. Alimenta a rota de streaming (/catalog/scan/stream);
+    run_catalog_scan() consome este gerador e devolve só o resumo (assinatura preservada)."""
     conn = get_sync_connection()
     try:
         all_tables = get_all_tables()
@@ -718,31 +721,30 @@ def run_catalog_scan(table_names: list[str] | None = None) -> dict:
             all_tables = [t for t in all_tables if t["name"] in set(table_names)]
 
         if not all_tables:
-            return {"error": "Nenhuma tabela encontrada."}
+            yield {"phase": "done", "result": {"error": "Nenhuma tabela encontrada."}}
+            return
 
-        catalog = []
-        all_profiles = {}
+        total = len(all_tables)
+        yield {"phase": "start", "total": total, "tables": [t["name"] for t in all_tables]}
 
-        for table in all_tables:
+        scanned = 0
+        total_cols = 0
+        total_rows = 0
+
+        for i, table in enumerate(all_tables):
             t_name = table["name"]
             col_names = [c["name"] for c in table["columns"]]
+            yield {"phase": "table_start", "table": t_name, "index": i, "total": total,
+                   "columns": len(col_names), "rows": table.get("row_count", 0)}
 
             # Profile each column
             profiles = []
             for col in table["columns"]:
-                profile = _profile_column(conn, t_name, col["name"], col["type"])
-                profiles.append(profile)
+                profiles.append(_profile_column(conn, t_name, col["name"], col["type"]))
 
-            # Domain classification
             domain_info = _classify_domain(t_name, col_names)
-
-            # Entity detection
             entities = _detect_entities(t_name, col_names)
-
-            # Quality scoring
             quality = _compute_quality(t_name, profiles)
-
-            # Count sensitive columns
             sensitive_count = sum(1 for p in profiles if p.get("pii", {}).get("is_sensitive"))
 
             entry = {
@@ -756,27 +758,40 @@ def run_catalog_scan(table_names: list[str] | None = None) -> dict:
                 "sensitive_columns": sensitive_count,
                 "scanned_at": datetime.utcnow().isoformat(),
             }
-            catalog.append(entry)
-            all_profiles[t_name] = profiles
-
-            # Persist to catalog tables
             _persist_scan(t_name, entry)
+            scanned += 1
+            total_cols += entry["col_count"]
+            total_rows += entry["row_count"]
 
-        # Infer relationships
+            yield {"phase": "table_done", "table": t_name, "index": i, "total": total,
+                   "quality": (quality or {}).get("overall"),
+                   "domain": (domain_info or {}).get("domain"),
+                   "sensitive": sensitive_count}
+
+        # Infer relationships (fase final, cross-table)
+        yield {"phase": "relationships", "total": total}
         relationships = _infer_relationships(conn, all_tables)
         _persist_relationships(relationships)
 
-        return {
-            "tables_scanned": len(catalog),
-            "total_columns": sum(e["col_count"] for e in catalog),
-            "total_rows": sum(e["row_count"] for e in catalog),
-            "catalog": catalog,
+        yield {"phase": "done", "result": {
+            "tables_scanned": scanned,
+            "total_columns": total_cols,
+            "total_rows": total_rows,
             "relationships": relationships,
             "scanned_at": datetime.utcnow().isoformat(),
-        }
-
+        }}
     finally:
         conn.close()
+
+
+def run_catalog_scan(table_names: list[str] | None = None) -> dict:
+    """Run full catalog scan: profile all columns, detect relationships, score quality.
+    Consome scan_catalog_iter() e devolve só o resumo final (compat. com chamadores legados)."""
+    result = {"error": "Scan não retornou resultado."}
+    for ev in scan_catalog_iter(table_names):
+        if ev.get("phase") == "done":
+            result = ev.get("result", result)
+    return result
 
 
 def _persist_scan(table_name: str, entry: dict):

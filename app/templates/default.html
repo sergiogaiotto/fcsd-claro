@@ -5246,6 +5246,18 @@ async function _rerunChatSql(key) {
 // ============================
 // Query — com suporte a saved_sql
 // ============================
+// A explicação é para leitura de NEGÓCIO. Remove blocos de código (SQL) que o modelo às
+// vezes embute no texto — o SQL vive só no bloco "SQL Gerado". Mantém `código inline`
+// (nomes de coluna). Atua no HTML já renderizado, então pega blocos cercados E indentados.
+function _stripCodeBlocksHtml(html) {
+    try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        tmp.querySelectorAll('pre').forEach(function (p) { p.remove(); });
+        return tmp.innerHTML;
+    } catch (e) { return html; }
+}
+
 // Toggle "🧠 Raciocínio profundo": força reasoning_effort=high no gpt-oss-120b nesta
 // pergunta (mais raciocínio, melhor em perguntas complexas; um pouco mais lento).
 let _reasoningHigh = false;
@@ -5356,6 +5368,7 @@ async function sendQuery() {
         }
         if (data.explanation) {
             let parsed = safeMarked(data.explanation);
+            parsed = _stripCodeBlocksHtml(parsed);   // tira SQL embutido na explicação (negócio)
             parsed = linkifySuggestions(parsed);
             html += `<div class="prose-custom text-sm leading-relaxed">${parsed}</div>`;
         }
@@ -9518,26 +9531,141 @@ async function loadCatalog() {
     }
 }
  
+// Re-scan do Catálogo com progresso REAL (SSE): modal mostra a evolução tabela-a-tabela
+// (perfil de colunas → domínio → qualidade) + a fase de relacionamentos, até concluir.
+let _scanModal = { total: 0, tables: [], done: 0, t0: 0, timer: null };
 async function runCatalogScan() {
     const btn = document.getElementById('btnCatalogScan');
     const status = document.getElementById('catalogScanStatus');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span style="animation:spin 1s linear infinite;display:inline-block">⟳</span> Escaneando...'; }
-    if (status) { status.style.color = '#8b949e'; status.textContent = 'Analisando tabelas, colunas, relacionamentos e qualidade...'; }
- 
+    if (status) { status.textContent = ''; }
+    _showScanProgress();
+    let finalResult = null, errMsg = null;
     try {
-        const res = await fetch('/api/catalog/scan', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
-        const data = await res.json();
-        if (data.error) {
-            if (status) { status.style.color = '#ff6347'; status.textContent = data.error; }
-        } else {
-            if (status) { status.style.color = '#39d353'; status.textContent = `✓ ${data.tables_scanned} tabelas · ${data.total_columns} colunas · ${data.relationships?.length || 0} relacionamentos`; }
-            setTimeout(() => loadCatalog(), 500);
+        const res = await fetch('/api/catalog/scan/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        if (!res.ok || !res.body) throw new Error('stream indisponível (HTTP ' + res.status + ')');
+        const reader = res.body.getReader();
+        const dec = new TextDecoder();
+        let buf = '';
+        while (true) {
+            const r = await reader.read();
+            if (r.done) break;
+            buf += dec.decode(r.value, { stream: true });
+            let idx;
+            while ((idx = buf.indexOf('\n\n')) >= 0) {
+                const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+                let kind = 'message', data = '';
+                chunk.split('\n').forEach(function (line) {
+                    if (line.indexOf('event:') === 0) kind = line.slice(6).trim();
+                    else if (line.indexOf('data:') === 0) data += line.slice(5).trim();
+                });
+                let obj = {}; try { obj = JSON.parse(data); } catch (_) {}
+                obj.phase = obj.phase || kind;
+                if (kind === 'done') finalResult = obj.result || obj;
+                else if (kind === 'error') errMsg = obj.error || 'erro no scan';
+                _updateScanProgress(obj);
+            }
         }
-    } catch(e) {
-        if (status) { status.style.color = '#ff6347'; status.textContent = 'Erro: ' + e.message; }
+    } catch (e) {
+        errMsg = (e && e.message) || String(e);
     }
- 
+    if (errMsg || (finalResult && finalResult.error)) {
+        const m = errMsg || finalResult.error;
+        _scanProgressError(m);
+        if (status) { status.style.color = '#ff6347'; status.textContent = 'Erro: ' + m; }
+    } else if (finalResult) {
+        _scanProgressDone(finalResult);
+        if (status) { status.style.color = '#39d353'; status.textContent = '✓ ' + finalResult.tables_scanned + ' tabelas · ' + finalResult.total_columns + ' colunas · ' + ((finalResult.relationships || []).length) + ' relacionamentos'; }
+        setTimeout(function () { _hideScanProgress(); loadCatalog(); }, 1500);
+    }
     if (btn) { btn.disabled = false; btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Executar Scanner'; }
+}
+function _showScanProgress() {
+    _hideScanProgress();
+    _scanModal = { total: 0, tables: [], done: 0, t0: Date.now(), timer: null };
+    const ov = document.createElement('div');
+    ov.id = 'catalogScanModal';
+    ov.className = 'fixed inset-0 z-[70] bg-fg-900/80 backdrop-blur-sm flex items-center justify-center p-4';
+    ov.innerHTML = '<div class="bg-fg-800 border border-fg-border rounded-2xl p-6 w-full max-w-lg mx-4 shadow-2xl">'
+        + '<div class="flex items-center gap-3 mb-4"><div id="scanSpin" class="animate-spin h-6 w-6 border-2 border-fg-accent border-t-transparent rounded-full flex-shrink-0"></div>'
+        + '<div class="flex-1 min-w-0"><div class="text-base font-bold text-fg-bright">Re-escaneando o catálogo</div>'
+        + '<div id="scanPhaseLabel" class="text-[11px] text-fg-muted truncate">Preparando…</div></div>'
+        + '<div class="text-[11px] font-mono text-fg-muted flex-shrink-0"><span id="scanCount">0</span> / <span id="scanTotal">?</span></div></div>'
+        + '<div class="h-2 bg-fg-700 rounded-full overflow-hidden mb-3"><div id="scanBar" class="h-full bg-fg-accent" style="width:0%;transition:width .25s"></div></div>'
+        + '<div id="scanTableList" class="space-y-1 max-h-64 overflow-y-auto text-xs pr-1"></div>'
+        + '<div class="flex items-center justify-between text-[11px] text-fg-muted border-t border-fg-border pt-3 mt-3">'
+        + '<span>⏱ <span id="scanElapsed">0s</span></span><span id="scanFootnote">colunas · domínios · qualidade · relacionamentos</span></div></div>';
+    document.body.appendChild(ov);
+    _scanModal.timer = setInterval(function () {
+        const el = document.getElementById('scanElapsed');
+        if (el) el.textContent = Math.floor((Date.now() - _scanModal.t0) / 1000) + 's';
+    }, 500);
+}
+function _updateScanProgress(ev) {
+    const phase = ev.phase;
+    if (phase === 'start') {
+        _scanModal.total = ev.total || 0;
+        _scanModal.tables = (ev.tables || []).map(function (n) { return { name: n, status: 'pending', quality: null }; });
+        const tot = document.getElementById('scanTotal'); if (tot) tot.textContent = _scanModal.total;
+        _renderScanList();
+    } else if (phase === 'table_start') {
+        const t = _scanModal.tables.find(function (x) { return x.name === ev.table; });
+        if (t) t.status = 'scanning';
+        const lbl = document.getElementById('scanPhaseLabel');
+        if (lbl) lbl.textContent = 'Escaneando ' + ev.table + ' · ' + (ev.columns || 0) + ' colunas · ' + Number(ev.rows || 0).toLocaleString('pt-BR') + ' linhas';
+        _renderScanList();
+    } else if (phase === 'table_done') {
+        const t = _scanModal.tables.find(function (x) { return x.name === ev.table; });
+        if (t) { t.status = 'done'; t.quality = ev.quality; }
+        _scanModal.done = (ev.index != null ? ev.index + 1 : _scanModal.done + 1);
+        _renderScanBar(false);
+        _renderScanList();
+    } else if (phase === 'relationships') {
+        const lbl = document.getElementById('scanPhaseLabel'); if (lbl) lbl.textContent = 'Inferindo relacionamentos entre as tabelas…';
+        _renderScanBar(true);
+    }
+}
+function _renderScanBar(full) {
+    const total = _scanModal.total || 1;
+    const pct = full ? 100 : Math.round((_scanModal.done / total) * 100);
+    const bar = document.getElementById('scanBar'); if (bar) bar.style.width = pct + '%';
+    const cnt = document.getElementById('scanCount'); if (cnt) cnt.textContent = _scanModal.done;
+}
+function _renderScanList() {
+    const box = document.getElementById('scanTableList'); if (!box) return;
+    box.innerHTML = _scanModal.tables.map(function (t) {
+        let icon, col;
+        if (t.status === 'done') { icon = '<span class="text-fg-green">✓</span>'; col = 'text-fg-muted'; }
+        else if (t.status === 'scanning') { icon = '<span class="animate-spin inline-block h-3 w-3 border-2 border-fg-accent border-t-transparent rounded-full align-middle"></span>'; col = 'text-fg-bright font-semibold'; }
+        else { icon = '<span class="text-fg-muted/40">○</span>'; col = 'text-fg-muted/50'; }
+        const q = (t.status === 'done' && t.quality != null) ? '<span class="ml-auto text-[10px] font-mono ' + (t.quality >= 80 ? 'text-fg-green' : (t.quality >= 50 ? 'text-amber-400' : 'text-red-400')) + '">' + t.quality + '%</span>' : '';
+        return '<div class="flex items-center gap-2 ' + col + '"><span class="w-4 inline-flex justify-center flex-shrink-0">' + icon + '</span><span class="truncate font-mono">' + escapeHtml(t.name) + '</span>' + q + '</div>';
+    }).join('');
+}
+function _scanProgressDone(result) {
+    const spin = document.getElementById('scanSpin');
+    if (spin) { spin.className = 'h-6 w-6 rounded-full bg-fg-green/20 text-fg-green flex items-center justify-center text-sm flex-shrink-0 font-bold'; spin.textContent = '✓'; }
+    const lbl = document.getElementById('scanPhaseLabel');
+    if (lbl) { lbl.className = 'text-[11px] text-fg-green truncate'; lbl.textContent = '✓ Concluído — ' + result.tables_scanned + ' tabelas · ' + result.total_columns + ' colunas · ' + ((result.relationships || []).length) + ' relacionamentos'; }
+    _renderScanBar(true);
+    if (_scanModal.timer) { clearInterval(_scanModal.timer); _scanModal.timer = null; }
+}
+function _scanProgressError(msg) {
+    const spin = document.getElementById('scanSpin');
+    if (spin) { spin.className = 'h-6 w-6 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center text-sm flex-shrink-0 font-bold'; spin.textContent = '✕'; }
+    const lbl = document.getElementById('scanPhaseLabel');
+    if (lbl) { lbl.className = 'text-[11px] text-red-400'; lbl.textContent = 'Erro: ' + msg; }
+    if (_scanModal.timer) { clearInterval(_scanModal.timer); _scanModal.timer = null; }
+    const modal = document.getElementById('catalogScanModal');
+    if (modal && !document.getElementById('scanCloseBtn')) {
+        const d = document.createElement('div'); d.className = 'text-center mt-3';
+        d.innerHTML = '<button id="scanCloseBtn" onclick="_hideScanProgress()" class="bg-fg-700 hover:bg-fg-600 border border-fg-border text-fg-bright px-4 py-1.5 rounded-lg text-xs">Fechar</button>';
+        const card = modal.firstElementChild; if (card) card.appendChild(d);
+    }
+}
+function _hideScanProgress() {
+    if (_scanModal && _scanModal.timer) { clearInterval(_scanModal.timer); _scanModal.timer = null; }
+    const ov = document.getElementById('catalogScanModal'); if (ov) ov.remove();
 }
  
 function renderCatalogDashboard(data) {
