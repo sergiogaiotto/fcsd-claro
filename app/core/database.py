@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from typing import Any
 
@@ -1550,6 +1551,13 @@ def get_tables_with_login_column(table_names: list[str] | None = None) -> list[s
         conn.close()
  
 
+# Teto de tempo para QUALQUER consulta de leitura (chat, exec, reportes). Sem ele, um
+# SQL pesado gerado pelo LLM (ex.: JOIN/GROUP BY na cuboprepagopf ~4M linhas) roda
+# indefinidamente, bloqueia o worker e a conexão acaba caindo no navegador como o
+# críptico "Failed to fetch". Excedido → QueryCanceled, devolvido como erro claro.
+_READONLY_STMT_TIMEOUT_MS = max(1000, int(os.getenv("QUERY_STATEMENT_TIMEOUT_SECONDS", "60")) * 1000)
+
+
 def execute_readonly_sql(sql: str) -> dict:
     """Execute a read-only SQL statement and return results."""
     validation_error = _validate_select_only_sql(sql)
@@ -1558,6 +1566,12 @@ def execute_readonly_sql(sql: str) -> dict:
 
     conn = get_sync_connection()
     try:
+        # SET LOCAL = escopo da transação (rollback ao devolver ao pool reseta), então
+        # não vaza o teto para a próxima consulta na mesma conexão do pool.
+        try:
+            conn.execute(f"SET LOCAL statement_timeout = {_READONLY_STMT_TIMEOUT_MS}")
+        except Exception:
+            pass
         cursor = conn.execute(sql)
         columns = [desc[0] for desc in cursor.description] if cursor.description else []
         # cursor.fetchall() returns HybridRow objects (db_engine's row factory).
@@ -1579,9 +1593,20 @@ def execute_readonly_sql(sql: str) -> dict:
         # falhas com o motivo exato (ex.: "function round(double precision,
         # integer) does not exist").
         msg = str(exc).strip()
+        etype = type(exc).__name__
+        # Timeout: mensagem acionável em vez do "canceling statement due to statement
+        # timeout" do Postgres — e error_type estável para registro/UX.
+        if etype == "QueryCanceled" or "statement timeout" in msg.lower():
+            secs = _READONLY_STMT_TIMEOUT_MS // 1000
+            return {
+                "error": (f"A consulta excedeu o tempo limite de {secs}s. Refine o escopo "
+                          "(adicione filtros, agregue, ou reduza o número de tabelas/linhas) "
+                          "e tente de novo."),
+                "error_type": "QueryTimeout",
+            }
         return {
             "error": msg or "Erro ao executar consulta de leitura.",
-            "error_type": type(exc).__name__,
+            "error_type": etype,
         }
     finally:
         conn.close()

@@ -5234,6 +5234,10 @@ async function sendQuery() {
         appendMessage('assistant', '<div class="text-[10px] text-fg-green flex items-center gap-1.5"><span>⚡</span> Executando com SQL salvo (sem passar pelo agente).</div>', true);
     }
     appendMessage('loading', '');
+    // A consulta roda o agente (LLM) + executa SQL; pode demorar. AbortController evita
+    // o críptico "Failed to fetch" quando a requisição longa cai/expira — vira mensagem clara.
+    const _qCtrl = new AbortController();
+    const _qTo = setTimeout(function () { _qCtrl.abort(); }, 180000);
     try {
         // Capture the datamart_ids actually sent to the agent so the share flow
         // can later enforce strict access on the recipient.
@@ -5254,7 +5258,9 @@ async function sendQuery() {
                 diamond_layer_ids: (typeof getSelectedDiamondLayerIds === 'function' && getSelectedDiamondLayerIds().length > 0) ? getSelectedDiamondLayerIds() : null,
                 saved_sql: pendingSql,
             }),
+            signal: _qCtrl.signal,
         });
+        clearTimeout(_qTo);
         const data = await res.json();
         removeLoading();
         if (data.detail) { appendMessage('error', data.detail); return; }
@@ -5328,8 +5334,13 @@ async function sendQuery() {
         _refreshHistoryIfOpen();
     } catch (e) {
         removeLoading();
-        appendMessage('error', 'Erro de conexão: ' + e.message);
-        _recordClientFailure({ source: 'frontend', question: q, error_message: String((e && e.message) || e), error_type: 'ClientError' });
+        const _aborted = e && e.name === 'AbortError';
+        appendMessage('error', _aborted
+            ? 'A consulta demorou demais (acima de 3 min) e foi cancelada. Refine a pergunta — menos tabelas, um filtro de período/segmento ou uma agregação — e tente de novo.'
+            : 'Erro de conexão: ' + e.message + '. A conexão caiu ou a consulta ficou muito pesada; tente refinar a pergunta.');
+        _recordClientFailure({ source: 'frontend', question: q, error_message: String((e && e.message) || e), error_type: (e && e.name) || 'ClientError' });
+    } finally {
+        clearTimeout(_qTo);
     }
 }
 
