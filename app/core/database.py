@@ -2846,6 +2846,23 @@ def list_exec_decks(owner_id: int) -> list[dict]:
         conn.close()
 
 
+def list_all_exec_decks() -> list[dict]:
+    """Todos os decks (qualquer dono) com login/nome do dono — alimenta o 'Mostrar todos'
+    (só admin/root). A listagem padrão continua sendo só os do próprio usuário."""
+    conn = get_sync_connection()
+    try:
+        rows = conn.execute(
+            "SELECT d.id, d.owner_id, d.name, d.question, d.datamart_ids, d.diamond_layer_ids, "
+            "d.n_slides, d.created_at, d.updated_at, "
+            "u.login AS owner_login, u.display_name AS owner_name "
+            "FROM exec_decks d LEFT JOIN users u ON u.id = d.owner_id "
+            "ORDER BY d.updated_at DESC"
+        ).fetchall()
+        return [_row_to_exec_deck(r, include_spec=False) for r in rows]
+    finally:
+        conn.close()
+
+
 def update_exec_deck(deck_id: int, deck_spec: dict | None = None,
                      name: str | None = None) -> dict | None:
     sets: list[str] = []

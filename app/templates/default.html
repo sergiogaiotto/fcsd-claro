@@ -4692,6 +4692,7 @@ async function exportExecPptx() {
 // ---- Deck vivo: salvar / listar / reabrir / atualizar ----
 // ---- Biblioteca de Decks salvos: busca + ordenação + recolher + metadados ----
 let _execDecksAll = [];
+let _execDecksShowAll = false;   // admin/root: mostrar decks de TODOS (padrão = só os meus)
 let _execDecksSort = 'recent';   // 'recent' | 'az'
 let _execDecksQuery = '';
 let _execDecksCollapsed = (function () { try { return localStorage.getItem('execDecksCollapsed') === '1'; } catch (e) { return false; } })();
@@ -4732,6 +4733,7 @@ function _execDeckRow(d) {
         + '<div class="flex items-center gap-1.5 flex-wrap">'
         + '<span class="text-xs font-semibold text-fg-bright truncate max-w-[26ch]" title="' + escapeHtml(d.name) + '">' + escapeHtml(d.name) + '</span>'
         + (isReplay ? '<span class="text-[9px] text-fg-muted border border-fg-border rounded px-1 shrink-0" title="Deck reexecutado (replay determinístico)">🔁 reexecutado</span>' : '')
+        + ((d.owner_login && currentUser && d.owner_login !== currentUser.login) ? '<span class="text-[9px] text-fg-blue border border-fg-blue/30 rounded px-1 shrink-0" title="Dono do deck">👤 ' + escapeHtml(d.owner_name || d.owner_login) + '</span>' : '')
         + '</div>'
         + (q ? '<div class="text-[11px] text-fg-muted mt-0.5" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + escapeHtml(q) + '</div>' : '')
         + '<div class="flex items-center gap-x-2 gap-y-0.5 flex-wrap mt-1 text-[10px] text-fg-muted/80">'
@@ -4811,6 +4813,8 @@ function _execDeckRowsHtml() {
 function _renderExecDeckRows() { var r = document.getElementById('execDecksRows'); if (r) r.innerHTML = _execDeckRowsHtml(); }
 function _execDeckFilter(v) { _execDecksQuery = v; _renderExecDeckRows(); }
 function _execDeckSort(s) { _execDecksSort = s; renderExecDecksList(); }
+function _execIsAdmin() { return !!(currentUser && ['root', 'superuser', 'admin'].includes(currentUser.user_type)); }
+function _toggleExecDecksShowAll(on) { _execDecksShowAll = !!on; loadExecDecks(); }
 function _toggleExecDecks() { _execDecksCollapsed = !_execDecksCollapsed; try { localStorage.setItem('execDecksCollapsed', _execDecksCollapsed ? '1' : '0'); } catch (e) {} renderExecDecksList(); }
 async function renameExecDeck(id) {
     var cur = (_execDecksAll.find(function (x) { return x.id === id; }) || {}).name || '';
@@ -4828,7 +4832,7 @@ async function loadExecDecks() {
     const box = document.getElementById('execSavedDecks');
     if (!box) return;
     try {
-        const r = await fetch('/api/exec/decks');
+        const r = await fetch('/api/exec/decks' + (_execDecksShowAll ? '?show_all=true' : ''));
         const list = await r.json();
         _execDecksAll = Array.isArray(list) ? list : [];
     } catch (_) { _execDecksAll = []; }
@@ -4856,7 +4860,9 @@ function renderExecDecksList() {
             + '<div class="flex gap-0.5 bg-fg-700 rounded-lg p-0.5" title="Ordenar">'
             + '<button onclick="_execDeckSort(\'recent\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'recent' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">Recentes</button>'
             + '<button onclick="_execDeckSort(\'az\')" class="px-2 py-0.5 rounded text-[10px] font-semibold ' + (_execDecksSort === 'az' ? 'bg-fg-accent text-white' : 'text-fg-muted hover:text-fg-bright') + '">A–Z</button>'
-            + '</div></div>');
+            + '</div>'
+            + (_execIsAdmin() ? '<label class="flex items-center gap-1 text-[10px] text-fg-muted cursor-pointer whitespace-nowrap" title="Mostrar os decks de TODOS os usuários (somente admin). Padrão: só os meus."><input type="checkbox" ' + (_execDecksShowAll ? 'checked' : '') + ' onchange="_toggleExecDecksShowAll(this.checked)" class="accent-fg-accent"> Mostrar todos</label>' : '')
+            + '</div>');
     box.innerHTML = '<div class="flex items-center gap-2 mb-2 flex-wrap">' + head + controls + '</div>'
         + (_execDecksCollapsed ? '' : '<div id="execDecksRows">' + _execDeckRowsHtml() + '</div>');
 }

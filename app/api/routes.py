@@ -1312,8 +1312,12 @@ async def exec_deck_pptx(deck: dict, user: dict = Depends(get_current_user)):
 # --- Análise Executiva — Decks salvos (Deck vivo) ---
 
 @router.get("/exec/decks")
-async def exec_decks_list(user: dict = Depends(get_current_user)):
-    """Lista os decks salvos do usuário (metadados, sem o spec completo)."""
+async def exec_decks_list(show_all: bool = False, user: dict = Depends(get_current_user)):
+    """Lista os decks salvos do usuário (metadados, sem o spec completo). show_all=true
+    (apenas admin/root) lista os decks de TODOS os usuários, com o dono."""
+    if show_all and is_admin(user):
+        from app.core.database import list_all_exec_decks
+        return list_all_exec_decks()
     return list_exec_decks(user["id"])
 
 
