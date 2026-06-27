@@ -218,7 +218,11 @@ def _get_analysis_config(analysis_type_id: int | None) -> dict:
             "ainda quebra (b é double precision); o certo é ROUND(((a::numeric / b) * 100)::numeric, N). "
             "O ROUND/TRUNC de 2 argumentos NÃO aceita double precision. Para divisão decimal use (a::numeric / NULLIF(b, 0)); "
             "concatene texto com ||; busca case-insensitive com ILIKE; conversões com ::numeric, ::int, ::date. "
-            "Explique os resultados de forma clara."
+            "Explique os resultados em LINGUAGEM DE NEGÓCIO (prosa e tópicos curtos), para um leitor "
+            "não-técnico. NÃO inclua SQL nem blocos de código na explicação — a consulta já é mostrada "
+            "à parte, no bloco 'SQL Gerado'. Você pode citar nomes de colunas em `código inline`, mas "
+            "NUNCA escreva consultas (SELECT/WITH/etc.) dentro da explicação. Quando sugerir próximos "
+            "passos, escreva-os como PERGUNTAS de análise em linguagem natural, não como queries."
         ),
         "guardrails_input": "",
         "guardrails_output": "",
