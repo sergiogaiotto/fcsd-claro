@@ -400,8 +400,16 @@ async def remove_table_from_dm(dm_id: int, table_name: str, user: dict = Depends
 
 
 @router.get("/datamarts/user")
-async def get_my_datamarts(user: dict = Depends(get_current_user)):
-    if is_root(user):
+async def get_my_datamarts(show_all: bool | None = None, user: dict = Depends(get_current_user)):
+    """DataMarts do usuário para os seletores.
+    - sem o parâmetro: comportamento legado (root vê todos; demais, só os atribuídos) —
+      preserva Reportes / Análise Executiva / Config inalterados.
+    - show_all=false: apenas os atribuídos ao usuário (padrão da tela Consultar, p/ todos).
+    - show_all=true: todos os DataMarts, mas só para admin/root; demais recebem só os seus
+      (escalonamento bloqueado no servidor)."""
+    if show_all is None:
+        return get_all_datamarts() if is_root(user) else get_user_datamarts(user["id"])
+    if show_all and is_admin(user):
         return get_all_datamarts()
     return get_user_datamarts(user["id"])
 
@@ -471,8 +479,14 @@ async def list_diamond_layers(user: dict = Depends(get_current_user)):
 
 
 @router.get("/diamond-layers/user")
-async def get_my_diamond_layers(user: dict = Depends(get_current_user)):
-    if is_root(user):
+async def get_my_diamond_layers(show_all: bool | None = None, user: dict = Depends(get_current_user)):
+    """DiamondLayers do usuário para os seletores. Mesma regra de /datamarts/user:
+    - sem o parâmetro: legado (root vê todas; demais, só as atribuídas).
+    - show_all=false: apenas as atribuídas ao usuário (padrão da tela Consultar).
+    - show_all=true: todas, mas só para admin/root (escalonamento bloqueado no servidor)."""
+    if show_all is None:
+        return get_all_diamond_layers() if is_root(user) else get_user_diamond_layers(user["id"])
+    if show_all and is_admin(user):
         return get_all_diamond_layers()
     return get_user_diamond_layers(user["id"])
 
