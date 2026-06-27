@@ -248,14 +248,26 @@ def _get_analysis_config(analysis_type_id: int | None) -> dict:
 # Build Deep Agent graph
 # ---------------------------------------------------------------------------
 
-def build_agent():
-    # llm = ChatOpenAI(model=settings.openai_model,api_key=settings.openai_api_key,temperature=0,)
-    llm = make_sql_llm(temperature=0)
+def build_agent(reasoning_effort: str = "medium"):
+    # Temperatura e esforço de raciocínio vêm de Configurações › Ajustes (Root).
+    try:
+        from app.core.app_settings import get_setting
+        _temp = float(get_setting("llm_temperature") or 0)
+    except Exception:
+        _temp = 0.0
+    # reasoning_effort só se aplica ao gpt-oss (primário); o fallback Azure gpt-4o NÃO o
+    # aceita, então não é passado adiante. Deve ser passado EXPLICITAMENTE (langchain
+    # ignora/avisa se vier dentro de model_kwargs).
+    _sql_prov = (settings.llm_sql_provider or "").lower()
+    _llm_kwargs = {}
+    if any(x in _sql_prov for x in ("oss", "gpt-oss")) and str(reasoning_effort).lower() in ("low", "medium", "high"):
+        _llm_kwargs["reasoning_effort"] = str(reasoning_effort).lower()
+    llm = make_sql_llm(temperature=_temp, **_llm_kwargs)
     # Fallback construído de forma defensiva: um provedor de failover mal
     # configurado (ex.: Azure sem AZURE_OPENAI_API_KEY) NÃO pode derrubar a
     # construção do agente. Sem fallback, o agente opera só com o primário.
     try:
-        fallback_llm = make_sql_fallback_llm(temperature=0)
+        fallback_llm = make_sql_fallback_llm(temperature=_temp)
     except Exception as exc:
         print(f"[agent] fallback LLM indisponível ({type(exc).__name__}): "
               f"agente seguirá só com o primário. Configure o provedor de "
@@ -407,19 +419,29 @@ def build_agent():
 # Singleton
 # ---------------------------------------------------------------------------
 
-_agent = None
+_agents: dict = {}   # cache de agentes por nível de reasoning_effort (low/medium/high)
 
 
-def get_agent():
-    global _agent
-    if _agent is None:
-        _agent = build_agent()
-    return _agent
+def get_agent(reasoning_effort=None):
+    """Retorna o agente para o esforço de raciocínio pedido (ou o default global de
+    Ajustes). Cacheia um agente por nível — o toggle '🧠 Raciocínio profundo' do
+    Consultar pede 'high' sem recriar o agente padrão."""
+    if reasoning_effort is None:
+        try:
+            from app.core.app_settings import get_setting
+            reasoning_effort = get_setting("llm_reasoning_effort") or "medium"
+        except Exception:
+            reasoning_effort = "medium"
+    key = str(reasoning_effort).lower()
+    if key not in ("low", "medium", "high"):
+        key = "medium"
+    if key not in _agents:
+        _agents[key] = build_agent(reasoning_effort=key)
+    return _agents[key]
 
 
 def reset_agent():
-    global _agent
-    _agent = None
+    _agents.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -528,6 +550,7 @@ async def run_query(
     apply_login_filter: bool = True,
     max_history_turns: int = 4,
     log_history: bool = False,
+    reasoning_high: bool = False,
 ) -> dict:
     """Run a natural language query through the Deep Agent.
 
@@ -611,7 +634,9 @@ async def run_query(
         if auto_skill_ids:
             skill_ids = auto_skill_ids
 
-    agent = get_agent()
+    # "Raciocínio profundo" (toggle do Consultar) força reasoning_effort=high nesta
+    # pergunta; senão usa o default global de Ajustes.
+    agent = get_agent(reasoning_effort="high" if reasoning_high else None)
 
     messages = []
 

@@ -21,6 +21,7 @@ class QueryRequest(BaseModel):
     diamond_layer_ids: Optional[list[int]] = Field(None, description="IDs das DiamondLayers para filtrar tabelas")
     skill_ids: Optional[list[int]] = Field(None, description="IDs das skills selecionadas manualmente pelo usuário")
     saved_sql: Optional[str] = Field(None, description="SQL salvo de pergunta anterior — executa direto sem passar pelo agente")
+    reasoning_high: Optional[bool] = Field(False, description="Força reasoning_effort=high no gpt-oss-120b para esta pergunta (toggle 'Raciocínio profundo')")
 
 
 class QueryResponse(BaseModel):
