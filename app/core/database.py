@@ -1558,11 +1558,59 @@ def get_tables_with_login_column(table_names: list[str] | None = None) -> list[s
 _READONLY_STMT_TIMEOUT_MS = max(1000, int(os.getenv("QUERY_STATEMENT_TIMEOUT_SECONDS", "60")) * 1000)
 
 
+def _fix_pg_numeric_funcs(sql: str) -> str:
+    """Blinda contra ``ROUND(double precision, N)``/``TRUNC(double precision, N)``, que
+    NÃO existem no PostgreSQL (o ``ROUND`` de 2 args só aceita ``numeric``). Como
+    ``numeric / double precision`` resulta em ``double precision``, o LLM castar só um
+    operando não basta — o argumento INTEIRO precisa virar ``numeric``. Reescreve via AST
+    (sqlglot) todo ``ROUND``/``TRUNC`` de 2 args para envolver o 1º argumento em
+    ``::numeric``. Determinístico e cobre todos os caminhos de leitura (chat, exec,
+    reportes), sem depender de o modelo acertar o cast.
+
+    Fail-safe: só age se houver ``round(``/``trunc(`` (evita custo no caso comum) e, em
+    QUALQUER erro de parse/serialização, devolve o SQL original inalterado."""
+    if not sql:
+        return sql
+    low = sql.lower()
+    if "round(" not in low and "trunc(" not in low:
+        return sql
+    try:
+        import sqlglot
+        from sqlglot import exp
+        tree = sqlglot.parse_one(sql, read="postgres")
+        if tree is None:
+            return sql
+        flag = {"changed": False}
+
+        def _wrap(node):
+            if isinstance(node, (exp.Round, exp.Trunc)) and node.args.get("decimals") is not None:
+                arg = node.this
+                # já castado p/ numeric/decimal no topo? não re-castar
+                already = (isinstance(arg, exp.Cast) and arg.to is not None
+                           and arg.to.this == exp.DataType.Type.DECIMAL)
+                if arg is not None and not already:
+                    node.set("this", exp.Cast(this=arg.copy(), to=exp.DataType.build("numeric")))
+                    flag["changed"] = True
+            return node
+
+        fixed = tree.transform(_wrap)
+        if not flag["changed"]:
+            return sql
+        return fixed.sql(dialect="postgres")
+    except Exception:
+        return sql
+
+
 def execute_readonly_sql(sql: str) -> dict:
     """Execute a read-only SQL statement and return results."""
     validation_error = _validate_select_only_sql(sql)
     if validation_error:
         return {"error": validation_error, "error_type": "ValidationError"}
+
+    # Blindagem determinística contra ROUND/TRUNC(double precision, N) — ver
+    # _fix_pg_numeric_funcs. Aplicada após a validação (que olha o SQL original) e antes
+    # de executar; fail-safe devolve o SQL original se o sqlglot não parsear.
+    sql = _fix_pg_numeric_funcs(sql)
 
     # Teto dinâmico (Configurações › Ajustes, Root); fallback p/ o env/default.
     try:
