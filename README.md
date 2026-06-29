@@ -1629,7 +1629,6 @@ Quando o usuario nao e Root, o agente recebe uma secao `RESTRICAO DE ACESSO` no 
 | `sql_db_list_tables` | Listar todas as tabelas disponiveis |
 | `sql_db_schema` | Schema detalhado de uma tabela especifica |
 | `sql_db_query` | Executar SQL read-only no banco |
-| `sql_db_query_checker` | Validar sintaxe SQL antes da execucao |
 
 ### Seguranca do Agente
 

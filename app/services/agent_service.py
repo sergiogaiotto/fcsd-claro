@@ -281,6 +281,15 @@ def build_agent(reasoning_effort: str = "medium"):
     db = SQLDatabase(engine=engine, sample_rows_in_table_info=3)
     toolkit = SQLDatabaseToolkit(db=db, llm=llm)
     sql_tools = toolkit.get_tools()
+    # Remove o 'sql_db_query_checker' (QuerySQLCheckerTool): ele faz uma chamada
+    # LLM EXTRA só para "revisar" o SQL antes de executar, usando o llm cru do
+    # toolkit — SEM o failover do agente (bind_tools_with_fallback). Foi a origem
+    # do APITimeoutError em produção (httpx.ReadTimeout -> openai.APITimeoutError).
+    # É redundante: o prompt já traz schema + catálogo e há recuperação de erro na
+    # execução. Removê-lo corta uma ida ao LLM por consulta e garante que TODA
+    # chamada ao LLM passe pelo caminho com failover (agent_node). As demais tools
+    # do toolkit (list_tables, schema, query) não chamam o LLM.
+    sql_tools = [t for t in sql_tools if getattr(t, "name", "") != "sql_db_query_checker"]
     # llm_with_tools = llm.bind_tools(sql_tools)
     llm_with_tools = bind_tools_with_fallback(
         llm,

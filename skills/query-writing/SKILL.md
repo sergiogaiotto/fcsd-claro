@@ -16,9 +16,8 @@ For straightforward questions about a single table:
 1. **Identify the table** — Which table has the data?
 2. **Get the schema** — Use `get_schema` to see columns
 3. **Write the query** — SELECT relevant columns with WHERE/LIMIT/ORDER BY
-4. **Validate** — Use `query_checker` to verify syntax
-5. **Execute** — Run with `execute_query`
-6. **Format answer** — Present results clearly in Portuguese
+4. **Execute** — Run with `execute_query`. If it errors, read the message, fix the SQL, and retry.
+5. **Format answer** — Present results clearly in Portuguese
 
 ## Workflow for Complex Queries
 
@@ -43,8 +42,9 @@ Use `get_schema` for EACH table to find join columns and needed fields.
 - ORDER BY — Sort meaningfully
 - LIMIT — Default 20 rows
 
-### 4. Validate and Execute
-Use `query_checker` first, then `execute_query`.
+### 4. Execute
+Run with `execute_query`. If it returns an error, read the message, correct the
+SQL, and retry — there is no separate validation step.
 
 ## PostgreSQL-Specific Notes
 
