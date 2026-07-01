@@ -279,6 +279,18 @@ class DialectConnection:
             return
         self._returned = True
         if self._pool is not None:
+            # Return the connection to the pool in a clean (IDLE) state.
+            # Read-only call sites never commit, so psycopg leaves the
+            # implicit SELECT transaction open (INTRANS); without this the
+            # pool would roll it back on return and log a WARNING for every
+            # read. Roll back here so the connection goes back IDLE silently.
+            # Write paths already commit() before close(), so this is a
+            # harmless no-op there (it can only discard an uncommitted
+            # residue, never committed work).
+            try:
+                self._raw.rollback()
+            except Exception:
+                pass
             # putconn returns a healthy conn to the pool; broken conns are
             # discarded automatically by psycopg_pool.
             try:
